@@ -1,0 +1,40 @@
+Standard Rules for Cricket and Tactics
+Targets:
+Only seven segments matter:
+20, 19, 18, 17, 16, 15, Bull (25/50)
+ [When Tactics is selected the segments also include 14, 13, 12, 11, and 10]  
+Everything else is dead.
+
+Marks & Closing:
+You must hit each target three times:
+Single = 1 mark
+Double = 2 marks
+Triple = 3 marks (instant close)
+Outer bull = 1 mark
+Inner bull = 2 marks
+
+Once you have 3 marks, the number is opened for you.
+When the opposing player scores 3 marks on that number it closes the number and becomes dead.
+
+Scoring
+After you open a number:
+Any additional hits score points equal to the number’s value.
+You can only score while your opponent has NOT closed that number.
+
+Winning
+To win, you must:
+Open\Close all numbers before your opponent AND
+Have equal or more points than your opponent.
+If you close everything but trail in points, the game continues until you have more points or opponent has closed the remaining numbers first.
+
+Variations:
+Standard Cricket
+The classic format described above.
+
+Cut‑Throat Cricket
+Scoring is reversed: points you score go to your opponents who haven’t closed the number.
+Lowest score wins.
+  
+No‑Score Cricket
+No points are scored at all.
+First to close all numbers wins.

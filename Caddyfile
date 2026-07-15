@@ -1,0 +1,22 @@
+# Treble-Makers soft-launch reverse proxy
+# Install Caddy, point DNS at this VPS, then:
+#   caddy run --config /path/to/Caddyfile
+#
+# Replace arena.example.com with your real domain.
+
+arena.example.com {
+	encode gzip
+
+	# WebSocket + HTTP → Node (PM2 on localhost:3000)
+	reverse_proxy 127.0.0.1:3000
+
+	header {
+		# Extra hardening; helmet already sets most of these on Node.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/treble-makers.log
+	}
+}

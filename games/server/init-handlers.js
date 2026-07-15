@@ -1,0 +1,29 @@
+/**
+ * Per-game initial state handlers (server).
+ * Add or change a game here without touching other games' init logic.
+ */
+function createGameInitHandlers(deps) {
+  const { generateHalveItTargets, initGolfCheckoutsState } = deps;
+  return {
+    'Halve-It': () => ({
+      targets: generateHalveItTargets(),
+      roundIdx: 0,
+      playerRounds: [[], []],
+      roundProgress: [
+        { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] },
+        { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] }
+      ]
+    })
+  };
+}
+
+function initGameStateForGame(game, config, handlers, deps) {
+  const fn = handlers[game];
+  if (fn) return fn(config || {});
+  if (deps.isX01Game(game)) return deps.initX01State(config || {}, game);
+  if (deps.isCricketGame(game)) return deps.initCricketState(config || {}, game);
+  if (game === 'Golf Checkouts') return deps.initGolfCheckoutsState(config || {});
+  return {};
+}
+
+module.exports = { createGameInitHandlers, initGameStateForGame };

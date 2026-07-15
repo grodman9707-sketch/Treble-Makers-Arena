@@ -1,0 +1,28 @@
+{
+  "name": "treble-makers-funhouse",
+  "version": "1.0.0",
+  "description": "World Darts League — Treble-Makers FunHouse online platform",
+  "main": "server.js",
+  "scripts": {
+    "build": "node build.js",
+    "images": "node scripts/optimize-images.js",
+    "golf-images": "node scripts/trim-golf-courses.js",
+    "backup:offsite": "node scripts/offsite-backup.js",
+    "start": "npm run build && node server.js",
+    "dev": "npm run build && node server.js",
+    "serve": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.8.1",
+    "dotenv": "^17.4.2",
+    "esbuild": "^0.28.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jimp": "^0.22.12",
+    "sharp": "^0.35.2",
+    "uuid": "^9.0.0",
+    "ws": "^8.16.0"
+  }
+}

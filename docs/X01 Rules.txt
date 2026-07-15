@@ -1,0 +1,39 @@
+🎯 Standard Rules for X01 (301 / 501 / 701 / 1001)
+Core rule: Start at X01 → subtract your score each turn → finish exactly on 0 with a double.
+
+Gameplay:
+Players alternate turns, throwing three darts per visit.
+Subtract the total scored from your remaining score.
+Scoring zones:
+  Single = face value
+  Double ring = 2× value
+  Triple ring = 3× value
+  Outer bull = 25
+  Inner bull = 50 (counts as a double)
+Finishing (Double-Out Rule)
+    You must finish on a double (outer ring) or inner bull (50).
+          Example: 32 must be finished on D16.
+Bust Rule:
+A turn is a bust if:
+You score more than your remaining total.
+You leave 1 remaining (no double finish possible).
+You reach 0 without hitting a double.
+When busting, your score resets to what it was at the start of the turn.
+Starting Variations:
+Straight‑In: Any scoring dart counts immediately.
+Double‑In: Must hit a double before scoring begins.
+Master‑In: Must hit a double or triple before scoring begins.
+Finishing Variations:
+Straight‑Out: Any scoring dart may finish.
+Double‑Out (standard): Must finish on a double.
+Master‑Out: Must finish on a double or triple
+X01 Formats
+301 —  often double‑in used for start but optional 
+
+501 — global competitive standard 
+
+701 — team play or longer matches
+
+1001 — extended team or advanced training format 
+
+101 thru 1001 can be selected as a variation if desired for game play 

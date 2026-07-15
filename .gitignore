@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Environment & secrets (never commit)
+.env
+lazy-credentials.json
+
+# Runtime data (local DB with password hashes — never commit)
+data.json
+data.json.tmp
+backups/
+
+# Generated build output (run `npm run build` before deploy)
+public/
+
+# Logs & scratch
+*.log
+logs/
+_*.js
+npm_install*.log
+
+# Debug / temp
+.tmp_ws_debug.txt
+*.tmp_ws_debug.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
