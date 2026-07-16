@@ -179,5 +179,3 @@ Golf Darts/         Golf Darts course illustration source
 - Login sessions use opaque tokens (hashed server-side); passwords are never stored in `localStorage`.
 - `data.json` and `server.js` are **not** downloadable — requests fall through to the SPA shell without exposing secrets.
 - Soft launch (`SOFT_LAUNCH=1`) keeps the arena invite-only until you open it for full launch.
-#   T r e b l e - M a k e r s  
- 
