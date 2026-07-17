@@ -707,18 +707,6 @@ function isX01Game(game) { return X01_GAMES.includes(game); }
 const CRICKET_GAMES = ['Cricket', 'Tactics'];
 function isCricketGame(game) { return CRICKET_GAMES.includes(game); }
 
-const GAME_INIT_HANDLERS = createGameInitHandlers({ generateHalveItTargets });
-
-function initGameState(game, config) {
-  return initGameStateForGame(game, config, GAME_INIT_HANDLERS, {
-    isX01Game,
-    isCricketGame,
-    initX01State,
-    initCricketState,
-    initGolfCheckoutsState
-  });
-}
-
 const GOLF_CHECKOUT_COURSE_A = [
   { target: 144, par: 9 }, { target: 233, par: 12 }, { target: 52, par: 4 },
   { target: 141, par: 9 }, { target: 230, par: 12 }, { target: 49, par: 4 },
@@ -766,6 +754,18 @@ function initGolfCheckoutsState(config = {}) {
     holes,
     playerProgress: [mkProgress(), mkProgress()]
   };
+}
+
+const GAME_INIT_HANDLERS = createGameInitHandlers({ generateHalveItTargets, initGolfCheckoutsState });
+
+function initGameState(game, config) {
+  return initGameStateForGame(game, config, GAME_INIT_HANDLERS, {
+    isX01Game,
+    isCricketGame,
+    initX01State,
+    initCricketState,
+    initGolfCheckoutsState
+  });
 }
 
 function gcEffectiveHole(gs, playerIdx) {
@@ -2771,6 +2771,15 @@ function computeBotMove(room) {
     }
     move.gameState = gs;
   } else if (game === 'Golf Darts') {
+    if (!gs.holes?.length) {
+      Object.assign(gs, {
+        holes: Array.from({ length: 18 }, (_, i) => i + 1),
+        playerHoles: gs.playerHoles || [0, 0],
+        playerDarts: gs.playerDarts || [[], []],
+        playerHoleScores: gs.playerHoleScores || [[], []],
+        ballPos: gs.ballPos || [[50, 85], [50, 15]]
+      });
+    }
     gs.playerHoles = gs.playerHoles || [0,0];
     gs.playerDarts = gs.playerDarts || [[],[]];
     gs.playerHoleScores = gs.playerHoleScores || [[],[]];

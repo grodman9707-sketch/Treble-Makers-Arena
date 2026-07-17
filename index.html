@@ -1492,29 +1492,58 @@ body.app-active .arena-bg { animation: none !important; }
 .gdg-scorecard tr.gc-meta-tgt td,
 .gdg-scorecard tr.gc-meta-tgt th { color: var(--gold-dim, #c9a84c); }
 
-/* Football Darts match room: cams top 1/3, pitch bottom 2/3 */
+/* Football Darts: cams + pitch fill the arena (no wallpaper gaps) */
 .match-layout.football-darts-match .match-main {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(0, 1fr) minmax(0, 2fr);
-  background: url('treble_arena_background.webp') center top / cover no-repeat;
+  grid-template-rows: minmax(140px, 1fr) minmax(0, 2fr);
+  background: #0c1f14;
   position: relative;
+  overflow: hidden;
 }
-.match-layout.football-darts-match .match-header { grid-row: 1; z-index: 3; position: relative; }
+.match-layout.football-darts-match .match-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+  background: linear-gradient(180deg, rgba(0,0,0,0.72), transparent);
+  border-bottom: none; padding: 0.45rem 0.75rem;
+}
+.match-layout.football-darts-match .match-header .mh-status { display: none; }
 .match-layout.football-darts-match .football-field-layer {
-  grid-row: 3; grid-column: 1;
+  grid-row: 2; grid-column: 1;
   z-index: 0; min-height: 0; pointer-events: none;
 }
 .match-layout.football-darts-match .football-field-layer.hidden { display: none; }
 .match-layout.football-darts-match .webcam-grid {
-  grid-row: 2; z-index: 2;
-  background: rgba(5, 5, 10, 0.55);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  min-height: 0;
+  grid-row: 1; z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  justify-items: center;
+  gap: 0;
+  height: auto; min-height: 0;
+  background: rgba(5, 12, 8, 0.92);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding: 0.45rem 0.65rem;
 }
-.match-layout.football-darts-match .webcam-cell { background: transparent; min-height: 0; }
+.match-layout.football-darts-match .webcam-cell {
+  background: #000;
+  min-height: 0;
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  align-self: center;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.match-layout.football-darts-match .fb-cam-spacer {
+  display: block;
+  width: 14px;
+  min-height: 1px;
+  align-self: stretch;
+  background: transparent;
+}
 .match-layout.football-darts-match .visualizer.football-darts-arena {
-  grid-row: 3; z-index: 1;
+  grid-row: 2; z-index: 1;
   flex: 1 1 0; min-height: 0;
   display: flex; flex-direction: column;
   padding: 0; overflow: hidden;
@@ -1527,6 +1556,10 @@ body.app-active .arena-bg { animation: none !important; }
   display: flex; flex-direction: column; justify-content: flex-end;
   pointer-events: none;
 }
+.match-layout.football-darts-match #scoreboard { display: none !important; }
+.match-layout.football-darts-match #chat-area { display: none !important; }
+.match-layout.football-darts-match .cam-score-box { display: none !important; }
+.fb-cam-spacer { display: none; }
 .football-pitch {
   width: 100%; height: 100%;
   background: linear-gradient(180deg, #1a4a1a, #143a14);
@@ -1572,16 +1605,10 @@ body.app-active .arena-bg { animation: none !important; }
   pointer-events: none;
 }
 .football-viz-foot > * { pointer-events: auto; }
-.football-score-strip {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 0.45rem 0.85rem; background: rgba(19, 19, 32, 0.88);
-  border: 1px solid var(--border); border-radius: 8px;
-  font-family: 'Orbitron', monospace; font-size: 0.72rem; color: var(--text);
-}
 .football-events {
-  margin-top: 0.4rem; display: flex; flex-direction: column; gap: 3px;
-  max-height: 64px; overflow-y: auto;
-  background: rgba(19, 19, 32, 0.85);
+  margin-top: 0; display: flex; flex-direction: column; gap: 3px;
+  max-height: 72px; overflow-y: auto;
+  background: rgba(19, 19, 32, 0.78);
   border: 1px solid var(--border); border-radius: 8px;
   padding: 0.3rem 0.55rem;
 }
@@ -1612,6 +1639,10 @@ body.app-active .arena-bg { animation: none !important; }
 .segment-tabs.football-segments .fb-pad-hint {
   text-align: center; font-size: 0.68rem; color: var(--muted);
   padding: 0.35rem 0.5rem; letter-spacing: 0.04em;
+}
+.match-layout.football-darts-match .halveit-chat-area {
+  min-height: 140px;
+  max-height: 240px;
 }
 
 /* Snakes & Ladders */
@@ -3435,6 +3466,7 @@ body.app-active .arena-bg { animation: none !important; }
                 <div class="cam-score-val" id="cam-score-you">0</div>
               </div>
             </div>
+            <div class="fb-cam-spacer" id="fb-cam-spacer" aria-hidden="true"></div>
             <div class="webcam-cell" id="webcam-opp">
               <div class="cam-video-frame fit-contain" id="cam-frame-remote">
                 <video id="video-remote" class="cam-video" autoplay playsinline></video>
@@ -5606,7 +5638,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   cktWasMyTurn = false;
   S.turn = 0; S.scores = [0, 0]; S.history = [];
   S.stats = { highScore: 0, turnsPlayed: 0, startTime: Date.now(), bestRound: 0 };
-  S.gameState = gameState || initGS(game);
+  S.gameState = hydrateMatchGameState(game, gameState);
   if (game === 'Halve-It') halveItInputMode = 'board';
   if (game === 'Golf Checkouts') {
     S.turn = gcSkipWaitingTurn(S.turn, S.gameState);
@@ -5641,6 +5673,36 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   hideMatchPreviewOverlay();
   updateMatchUI();
   if (!spectating) signalMatchUiReady();
+}
+
+/** Fill in missing game-state fields when the server sends an incomplete payload. */
+function hydrateMatchGameState(game, gameState) {
+  const fresh = initGS(game);
+  if (!gameState || typeof gameState !== 'object') return fresh;
+  if (game === 'Golf Darts') {
+    if (!Array.isArray(gameState.holes) || !gameState.holes.length) {
+      return {
+        ...fresh,
+        ...gameState,
+        holes: fresh.holes,
+        playerHoles: Array.isArray(gameState.playerHoles) ? gameState.playerHoles : fresh.playerHoles,
+        playerDarts: Array.isArray(gameState.playerDarts) ? gameState.playerDarts : fresh.playerDarts,
+        playerHoleScores: Array.isArray(gameState.playerHoleScores) ? gameState.playerHoleScores : fresh.playerHoleScores,
+        ballPos: gameState.ballPos || fresh.ballPos
+      };
+    }
+    gameState.playerHoles = Array.isArray(gameState.playerHoles) ? gameState.playerHoles : [0, 0];
+    gameState.playerDarts = Array.isArray(gameState.playerDarts) ? gameState.playerDarts : [[], []];
+    gameState.playerHoleScores = Array.isArray(gameState.playerHoleScores) ? gameState.playerHoleScores : [[], []];
+    return gameState;
+  }
+  if (game === 'Golf Checkouts') {
+    if (!Array.isArray(gameState.holes) || !gameState.holes.length || !Array.isArray(gameState.playerProgress)) {
+      return initGolfCheckoutsState(S.matchVariation || {});
+    }
+    return gameState;
+  }
+  return Object.keys(gameState).length ? gameState : fresh;
 }
 
 const MATCH_PREVIEW_MS = 17000;
@@ -8024,11 +8086,20 @@ function updateMatchUI() {
   ml?.classList.toggle('football-darts-match', isFootballDarts);
   ml?.classList.toggle('halveit-match', isHalveIt);
   const hideTurnHistory = isHalveIt || isGolfDarts || isGolfCheckouts || isFootballDarts;
-  const showInputChat = isHalveIt || isGolfDarts;
+  const showInputChat = isHalveIt || isGolfDarts || isFootballDarts;
   gid('turn-history-panel')?.classList.toggle('hidden', hideTurnHistory);
   gid('session-stats-panel')?.classList.toggle('hidden', isGolfCheckouts || isFootballDarts);
   gid('halveit-chat-area')?.classList.toggle('hidden', !showInputChat);
   gid('chat-area')?.classList.toggle('hidden', showInputChat);
+  const fbSpacer = document.getElementById('fb-cam-spacer');
+  if (fbSpacer) fbSpacer.style.display = isFootballDarts ? 'block' : 'none';
+  if (isFootballDarts) {
+    gid('cam-score-you-wrap')?.classList.add('hidden');
+    gid('cam-score-opp-wrap')?.classList.add('hidden');
+  } else {
+    gid('cam-score-you-wrap')?.classList.remove('hidden');
+    gid('cam-score-opp-wrap')?.classList.remove('hidden');
+  }
   const fbFieldLayer = document.getElementById('football-field-layer');
   if (fbFieldLayer && !isFootballDarts) {
     fbFieldLayer.innerHTML = '';
@@ -9030,7 +9101,9 @@ function restoreGolfCams() {
   const grid = document.getElementById('webcam-grid');
   const you = document.getElementById('webcam-you');
   const opp = document.getElementById('webcam-opp');
+  const spacer = document.getElementById('fb-cam-spacer');
   if (grid && you) grid.appendChild(you);
+  if (grid && spacer) grid.appendChild(spacer);
   if (grid && opp) grid.appendChild(opp);
   golfCamsMounted = false;
 }
@@ -9065,7 +9138,9 @@ function restoreHalveItCams() {
   const grid = document.getElementById('webcam-grid');
   const you = document.getElementById('webcam-you');
   const opp = document.getElementById('webcam-opp');
+  const spacer = document.getElementById('fb-cam-spacer');
   if (grid && you) grid.appendChild(you);
+  if (grid && spacer) grid.appendChild(spacer);
   if (grid && opp) grid.appendChild(opp);
   halveItCamsMounted = false;
 }
@@ -9224,7 +9299,10 @@ function renderGolfCheckoutsScorecardRow(playerIdx, gs, totalHoles, names) {
 }
 
 function renderGolfCheckoutsScorecard(gs) {
-  const totalHoles = gs.holes?.length || 18;
+  if (!Array.isArray(gs?.holes) || !gs.holes.length) {
+    return `<div class="gc-scorecard-wrap"><div class="gdg-scorecard-title">⛳ Checkouts Scorecard</div><div style="padding:0.75rem;color:var(--muted);font-size:0.8rem">Loading course…</div></div>`;
+  }
+  const totalHoles = gs.holes.length;
   const oppLabel = document.getElementById('sb-name-opp')?.textContent || '';
   const multiplayer = S.isBot || !/^(OPP|WAITING|OPPONENT)/i.test(oppLabel.trim());
   const youName = (S.user.username || 'You').slice(0, 12);
@@ -9422,9 +9500,6 @@ function renderVisualizer() {
   } else if (g === 'Football Darts') {
     lbl.textContent = '';
     lbl.style.display = 'none';
-    const pIdx = myPlayerIdx();
-    const hasBall = gs.possession === pIdx;
-    const ballLabel = gs.possession == null ? 'OPEN BALL' : hasBall ? 'YOUR BALL' : 'OPP BALL';
     const fbLayer = document.getElementById('football-field-layer');
     if (fbLayer) {
       fbLayer.classList.remove('hidden');
@@ -9433,11 +9508,6 @@ function renderVisualizer() {
     }
     el.innerHTML = `
       <div class="football-viz-foot">
-        <div class="football-score-strip">
-          <span>${(S.user.username || 'YOU').slice(0, 12)} <b style="color:var(--gold-light)">${gs.goals?.[pIdx] || 0}</b></span>
-          <span style="color:var(--muted);font-size:0.62rem">${ballLabel} · VISIT ${(gs.round || 0) + 1}/20</span>
-          <span><b style="color:var(--silver)">${gs.goals?.[1 - pIdx] || 0}</b> OPP</span>
-        </div>
         <div class="football-events">
           ${(gs.events || []).slice(0, 5).map(e => `<div class="football-event">${e.text}</div>`).join('') || '<div class="football-event" style="font-style:italic">Hit DBull to take first possession</div>'}
         </div>
@@ -9627,7 +9697,7 @@ function activeChatInput() {
     return document.getElementById('x01-chat-input') || document.getElementById('chat-input');
   }
   const ml = document.querySelector('.match-layout');
-  if (ml?.classList.contains('halveit-match') || ml?.classList.contains('golf-darts-match')) {
+  if (ml?.classList.contains('halveit-match') || ml?.classList.contains('golf-darts-match') || ml?.classList.contains('football-darts-match')) {
     return document.getElementById('halveit-chat-input') || document.getElementById('chat-input');
   }
   return document.getElementById('chat-input');

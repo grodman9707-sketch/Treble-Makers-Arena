@@ -14,6 +14,16 @@ function createGameInitHandlers(deps) {
         { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] }
       ]
     }),
+    'Golf Darts': () => ({
+      holes: Array.from({ length: 18 }, (_, i) => i + 1),
+      playerHoles: [0, 0],
+      playerDarts: [[], []],
+      playerHoleScores: [[], []],
+      ballPos: [[50, 85], [50, 15]]
+    }),
+    'Golf Checkouts': (config) => initGolfCheckoutsState
+      ? initGolfCheckoutsState(config || {})
+      : {},
     'Football Darts': () => ({
       ballX: 50,
       goals: [0, 0],
