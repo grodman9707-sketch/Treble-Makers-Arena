@@ -463,6 +463,17 @@ body.app-active .arena-bg { animation: none !important; }
 .auth-guest { text-align: center; padding-bottom: 0.5rem; }
 .auth-guest span { font-size: 0.75rem; color: var(--muted); cursor: pointer; text-decoration: underline; }
 .auth-guest span:hover { color: var(--silver); }
+.auth-forgot-link {
+  display: block; margin-top: -0.25rem; margin-bottom: 0.15rem;
+  font-size: 0.72rem; color: var(--silver); text-align: right;
+  cursor: pointer; text-decoration: underline; letter-spacing: 0.04em;
+}
+.auth-forgot-link:hover { color: var(--gold-light); }
+.auth-back-link {
+  display: block; margin-top: 0.35rem; text-align: center;
+  font-size: 0.72rem; color: var(--muted); cursor: pointer; text-decoration: underline;
+}
+.auth-back-link:hover { color: var(--silver); }
 
 /* ════════════════════════════════════════════
    ██ MAIN APP (nav + content)
@@ -3126,6 +3137,7 @@ body.app-active .arena-bg { animation: none !important; }
           <label for="login-password">Password</label>
           <input type="password" id="login-password" name="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
         </div>
+        <span class="auth-forgot-link" onclick="switchAuthTab('forgot')">Forgot password?</span>
         <div class="auth-remember">
           <input type="checkbox" id="login-remember" name="remember" />
           <label for="login-remember">Keep me logged in</label>
@@ -3144,6 +3156,10 @@ body.app-active .arena-bg { animation: none !important; }
           <input type="text" id="reg-username" name="username" placeholder="Min 3 characters" autocomplete="username" onkeydown="if(event.key==='Enter')doRegister()" />
         </div>
         <div class="auth-field">
+          <label for="reg-email">Email</label>
+          <input type="email" id="reg-email" name="email" placeholder="you@example.com" autocomplete="email" onkeydown="if(event.key==='Enter')doRegister()" />
+        </div>
+        <div class="auth-field">
           <label for="reg-password">Password</label>
           <input type="password" id="reg-password" name="password" placeholder="Min 8 characters" autocomplete="new-password" onkeydown="if(event.key==='Enter')doRegister()" />
         </div>
@@ -3151,6 +3167,34 @@ body.app-active .arena-bg { animation: none !important; }
         <div class="auth-info hidden" id="reg-info"></div>
         <button type="submit" class="btn btn-gold btn-lg" style="width:100%;margin-top:0.25rem">Create Account →</button>
       </form>
+    </div>
+    <div class="auth-body hidden" id="auth-forgot-body">
+      <form onsubmit="return handleAuthSubmit(event, 'forgot')">
+        <div class="auth-field">
+          <label for="forgot-username-or-email">Username or Email</label>
+          <input type="text" id="forgot-username-or-email" name="usernameOrEmail" placeholder="Your handle or email" autocomplete="username" />
+        </div>
+        <div class="auth-error hidden" id="forgot-error"></div>
+        <div class="auth-info hidden" id="forgot-info"></div>
+        <button type="submit" class="btn btn-gold btn-lg" style="width:100%;margin-top:0.25rem">Send Reset Link →</button>
+      </form>
+      <span class="auth-back-link" onclick="switchAuthTab('login')">← Back to sign in</span>
+    </div>
+    <div class="auth-body hidden" id="auth-reset-body">
+      <form onsubmit="return handleAuthSubmit(event, 'reset')">
+        <div class="auth-field">
+          <label for="reset-password">New Password</label>
+          <input type="password" id="reset-password" name="password" placeholder="Min 8 characters" autocomplete="new-password" />
+        </div>
+        <div class="auth-field">
+          <label for="reset-password-confirm">Confirm Password</label>
+          <input type="password" id="reset-password-confirm" name="passwordConfirm" placeholder="Repeat new password" autocomplete="new-password" />
+        </div>
+        <div class="auth-error hidden" id="reset-error"></div>
+        <div class="auth-info hidden" id="reset-info"></div>
+        <button type="submit" class="btn btn-gold btn-lg" style="width:100%;margin-top:0.25rem">Update Password →</button>
+      </form>
+      <span class="auth-back-link" onclick="switchAuthTab('login')">← Back to sign in</span>
     </div>
     </div>
   </div>
@@ -3654,6 +3698,10 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
             <div class="profile-username" id="profile-username">Player</div>
             <form class="profile-form" onsubmit="saveProfile(event)">
+              <div class="form-group">
+                <label for="profile-email">Email</label>
+                <input type="email" id="profile-email" maxlength="254" placeholder="you@example.com" autocomplete="email"/>
+              </div>
               <div class="form-group">
                 <label for="profile-country">Country</label>
                 <input type="text" id="profile-country" maxlength="40" placeholder="e.g. Canada"/>
@@ -4330,22 +4378,35 @@ function handleWS(msg) {
     case 'password_ok':
       S.user.mustChangePassword = false;
       closeModal('change-password-modal');
-      ['profile-current-password', 'profile-new-password', 'modal-current-password', 'modal-new-password'].forEach(id => {
+      ['profile-current-password', 'profile-new-password', 'modal-current-password', 'modal-new-password', 'reset-password', 'reset-password-confirm'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
-      toast(msg.message || 'Password updated.');
+      if (msg.code === 'password_reset') {
+        pendingResetToken = null;
+        clearResetTokenFromUrl();
+        showAuthInfo(msg.message || 'Password updated. You can sign in now.', 'reset');
+        switchAuthTab('login');
+        toast(msg.message || 'Password updated.');
+      } else {
+        toast(msg.message || 'Password updated.');
+      }
       break;
     case 'password_error': {
       const errEl = document.getElementById('change-password-error');
       if (errEl && document.getElementById('change-password-modal')?.classList.contains('open')) {
         errEl.textContent = msg.message || 'Could not update password.';
         errEl.classList.remove('hidden');
+      } else if (document.getElementById('auth-reset-body') && !document.getElementById('auth-reset-body').classList.contains('hidden')) {
+        showAuthError(msg.message || 'Could not update password.', 'reset');
       } else {
         toast(msg.message || 'Could not update password.');
       }
       break;
     }
+    case 'reset_request_ok':
+      showAuthInfo(msg.message || 'If an account matches, a password reset link has been sent.', 'forgot');
+      break;
     case 'auth_ok': {
       const wasInApp = !!(S.user && S.user.username);
       S.user = {
@@ -4380,7 +4441,14 @@ function handleWS(msg) {
         clearRememberedSession();
         sessionToken = null;
       }
-      showAuthError(msg.message);
+      {
+        const activeAuth = document.querySelector('.auth-body:not(.hidden)');
+        let prefix = 'login';
+        if (activeAuth?.id === 'auth-register-body') prefix = 'reg';
+        else if (activeAuth?.id === 'auth-forgot-body') prefix = 'forgot';
+        else if (activeAuth?.id === 'auth-reset-body') prefix = 'reset';
+        showAuthError(msg.message, prefix);
+      }
       break;
     case 'lobby': case 'lobby_update':
       S.lobbies = msg.rooms || [];
@@ -4549,8 +4617,9 @@ function handleWS(msg) {
       if (S.user) {
         S.user.profile = msg.profile || {};
         if (msg.stats) S.user.stats = msg.stats;
+        if (typeof msg.email === 'string') S.user.email = msg.email;
       }
-      renderProfilePage(msg.profile, msg.stats);
+      renderProfilePage(msg.profile, msg.stats, { email: msg.email });
       if (msg.saved) toast('Profile saved.');
       break;
     case 'profile_error':
@@ -4563,17 +4632,49 @@ function handleWS(msg) {
 // ═══════════════════════════════════════════════════════════
 //  AUTH
 // ═══════════════════════════════════════════════════════════
+let pendingResetToken = null;
+let activeAuthTab = 'login';
+
+function getResetTokenFromUrl() {
+  try {
+    const params = new URLSearchParams(location.search || '');
+    const token = params.get('reset');
+    return token && token.trim() ? token.trim() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearResetTokenFromUrl() {
+  try {
+    const url = new URL(location.href);
+    if (!url.searchParams.has('reset')) return;
+    url.searchParams.delete('reset');
+    history.replaceState({}, '', url.pathname + (url.search || '') + url.hash);
+  } catch (e) { /* ignore */ }
+}
+
 function switchAuthTab(tab) {
-  document.querySelectorAll('.auth-tab').forEach((t, i) => t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
-  document.getElementById('auth-login-body').classList.toggle('hidden', tab !== 'login');
-  document.getElementById('auth-register-body').classList.toggle('hidden', tab !== 'register');
+  activeAuthTab = tab;
+  const showTabs = tab === 'login' || tab === 'register';
+  document.querySelectorAll('.auth-tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'register'));
+    t.style.display = showTabs ? '' : 'none';
+  });
+  document.getElementById('auth-login-body')?.classList.toggle('hidden', tab !== 'login');
+  document.getElementById('auth-register-body')?.classList.toggle('hidden', tab !== 'register');
+  document.getElementById('auth-forgot-body')?.classList.toggle('hidden', tab !== 'forgot');
+  document.getElementById('auth-reset-body')?.classList.toggle('hidden', tab !== 'reset');
+  if (tab === 'login' || tab === 'register') updateArenaLandingUI();
 }
 
 function handleAuthSubmit(evt, mode) {
   evt.preventDefault();
   setAuthDebug(`Form submit: ${mode}`);
   if (mode === 'login') doLogin();
-  else doRegister();
+  else if (mode === 'register') doRegister();
+  else if (mode === 'forgot') doForgotPassword();
+  else if (mode === 'reset') doResetPassword();
   return false;
 }
 
@@ -4644,15 +4745,50 @@ function doLogin() {
 
 function doRegister() {
   const u = document.getElementById('reg-username').value.trim();
+  const email = document.getElementById('reg-email')?.value.trim() || '';
   const p = document.getElementById('reg-password').value;
   setAuthDebug(`Register attempt: ${u}`);
   console.log('AUTH ATTEMPT register', u);
-  if (!u || !p) return showAuthError('Please fill in all fields.', 'reg');
+  if (!u || !email || !p) return showAuthError('Please fill in all fields.', 'reg');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return showAuthError('Enter a valid email address.', 'reg');
+  }
   if (p.length < 8) return showAuthError('Password must be at least 8 characters.', 'reg');
   pendingRemember = false;
-  if (!wsSend({ type: 'register', username: u, password: p })) {
+  if (!wsSend({ type: 'register', username: u, email, password: p })) {
     showAuthError('Unable to connect. Start the server with: node server.js', 'reg');
   }
+}
+
+function doForgotPassword() {
+  const usernameOrEmail = document.getElementById('forgot-username-or-email')?.value.trim() || '';
+  setAuthDebug(`Forgot password: ${usernameOrEmail}`);
+  if (!usernameOrEmail) return showAuthError('Enter your username or email.', 'forgot');
+  if (!wsSend({ type: 'request_password_reset', usernameOrEmail })) {
+    showAuthError('Unable to connect. Start the server with: node server.js', 'forgot');
+  }
+}
+
+function doResetPassword() {
+  const token = pendingResetToken || getResetTokenFromUrl();
+  const p = document.getElementById('reset-password')?.value || '';
+  const confirm = document.getElementById('reset-password-confirm')?.value || '';
+  setAuthDebug('Reset password attempt');
+  if (!token) return showAuthError('Invalid or expired reset link. Request a new one.', 'reset');
+  if (!p || !confirm) return showAuthError('Please fill in all fields.', 'reset');
+  if (p.length < 8) return showAuthError('Password must be at least 8 characters.', 'reset');
+  if (p !== confirm) return showAuthError('Passwords do not match.', 'reset');
+  pendingResetToken = token;
+  if (!wsSend({ type: 'reset_password', token, newPassword: p })) {
+    showAuthError('Unable to connect. Start the server with: node server.js', 'reset');
+  }
+}
+
+function maybeShowResetFromUrl() {
+  const token = getResetTokenFromUrl();
+  if (!token) return;
+  pendingResetToken = token;
+  switchAuthTab('reset');
 }
 
 function guestEntry() {
@@ -4698,7 +4834,15 @@ function updateArenaLandingUI() {
       : 'The arena is in closed testing.');
   }
   if (guest) guest.style.display = guestAllowed ? '' : 'none';
-  if (regTab) regTab.style.display = registrationOpen ? '' : 'none';
+  if (regTab) {
+    const hideAuthTabs = activeAuthTab === 'forgot' || activeAuthTab === 'reset';
+    regTab.style.display = (!hideAuthTabs && registrationOpen) ? '' : 'none';
+  }
+  // Keep login tab hidden while on forgot/reset panels.
+  const loginTab = document.querySelector('.auth-tab[onclick*="login"]');
+  if (loginTab) {
+    loginTab.style.display = (activeAuthTab === 'forgot' || activeAuthTab === 'reset') ? 'none' : '';
+  }
 }
 
 function updateArenaAdminUI() {
@@ -4806,13 +4950,18 @@ function showAuthInfo(msg, prefix) {
 function showAuthError(msg, prefix) {
   if (!prefix) {
     const activeAuth = document.querySelector('.auth-body:not(.hidden)');
-    prefix = activeAuth && activeAuth.id === 'auth-register-body' ? 'reg' : 'login';
+    if (activeAuth?.id === 'auth-register-body') prefix = 'reg';
+    else if (activeAuth?.id === 'auth-forgot-body') prefix = 'forgot';
+    else if (activeAuth?.id === 'auth-reset-body') prefix = 'reset';
+    else prefix = 'login';
   }
   setAuthDebug(`Auth error: ${msg}`);
   const el = document.getElementById(`${prefix}-error`);
   if (!el) return;
   el.textContent = msg;
   el.classList.remove('hidden');
+  const info = document.getElementById(`${prefix}-info`);
+  if (info) info.classList.add('hidden');
   setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
@@ -9809,10 +9958,12 @@ function openProfilePage(forUsername) {
   document.getElementById('change-password-form')?.classList.toggle('hidden', readOnly || !isOwn);
   document.querySelector('.profile-avatar-upload')?.classList.toggle('hidden', readOnly);
   document.getElementById('profile-avatar-clear')?.classList.toggle('hidden', readOnly);
-  ['profile-country', 'profile-league', 'profile-equipment'].forEach(id => {
+  ['profile-email', 'profile-country', 'profile-league', 'profile-equipment'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = readOnly;
   });
+  const emailGroup = document.getElementById('profile-email')?.closest('.form-group');
+  if (emailGroup) emailGroup.classList.toggle('hidden', !isOwn || guest);
   const avatarInput = document.getElementById('profile-avatar-input');
   if (avatarInput) avatarInput.disabled = readOnly;
 
@@ -9824,11 +9975,11 @@ function openProfilePage(forUsername) {
   }
 
   if (guest) {
-    renderProfilePage(S.user?.profile || {}, S.user?.stats || {});
+    renderProfilePage(S.user?.profile || {}, S.user?.stats || {}, { email: '' });
     return;
   }
   wsSend({ type: 'get_profile' });
-  renderProfilePage(S.user?.profile || {}, S.user?.stats || {});
+  renderProfilePage(S.user?.profile || {}, S.user?.stats || {}, { email: S.user?.email || '' });
 }
 
 function renderProfilePage(profile = {}, stats = {}, opts = {}) {
@@ -9836,9 +9987,15 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   const s = stats || S.user?.stats || {};
   const displayName = opts.username || S.user?.username || 'Player';
   document.getElementById('profile-username').textContent = displayName;
+  const email = document.getElementById('profile-email');
   const country = document.getElementById('profile-country');
   const league = document.getElementById('profile-league');
   const equipment = document.getElementById('profile-equipment');
+  const emailVal = typeof opts.email === 'string' ? opts.email : (S.user?.email || '');
+  if (email && document.activeElement !== email) {
+    email.value = opts.readOnly ? '' : emailVal;
+    email.placeholder = opts.readOnly ? '' : 'you@example.com';
+  }
   if (country && document.activeElement !== country) country.value = p.country || '';
   if (league && document.activeElement !== league) league.value = p.league || '';
   if (equipment && document.activeElement !== equipment) equipment.value = p.equipment || '';
@@ -9914,8 +10071,14 @@ function saveProfile(event) {
     toast('Sign in with an account to save a profile.');
     return;
   }
+  const email = document.getElementById('profile-email')?.value.trim() || '';
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    toast('Enter a valid email address.');
+    return;
+  }
   const payload = {
     type: 'update_profile',
+    email,
     country: document.getElementById('profile-country')?.value || '',
     league: document.getElementById('profile-league')?.value || '',
     equipment: document.getElementById('profile-equipment')?.value || '',
@@ -10407,6 +10570,7 @@ async function loadLazyTicker() {
 if (location.protocol === 'file:') {
   setAuthDebug('Login needs the server — run node server.js, then open http://localhost:3000');
 }
+maybeShowResetFromUrl();
 connectWS();
 loadWdlTicker();
 setInterval(loadWdlTicker, 5 * 60 * 1000);
