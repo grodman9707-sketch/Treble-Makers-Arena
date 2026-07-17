@@ -782,6 +782,26 @@ function gcPlayerCanThrow(gs, playerIdx) {
 
 const GC_DARTS_PER_TURN = 3;
 
+const GC_ONE_DART_SCORES = (() => {
+  const s = new Set([25, 50]);
+  for (let i = 1; i <= 20; i++) {
+    s.add(i);
+    s.add(i * 2);
+    s.add(i * 3);
+  }
+  return s;
+})();
+
+function gcMinDartsForScore(score) {
+  if (!Number.isInteger(score) || score < 0) return 3;
+  if (score === 0) return 0;
+  if (GC_ONE_DART_SCORES.has(score)) return 1;
+  for (const a of GC_ONE_DART_SCORES) {
+    if (GC_ONE_DART_SCORES.has(score - a)) return 2;
+  }
+  return 3;
+}
+
 function gcSyncAdvanceBoth(gs) {
   const nextHole = (gs.syncHole ?? 0) + 1;
   gs.syncHole = nextHole;
@@ -800,8 +820,8 @@ function gcSyncAdvanceBoth(gs) {
   }
 }
 
-// Applies a whole 3-dart turn total (X01-style entry). Mutates gs.
-function gcApplyTurnTotal(gs, playerIdx, total) {
+// Applies a whole turn total (X01-style entry). Mutates gs.
+function gcApplyTurnTotal(gs, playerIdx, total, visitDarts = GC_DARTS_PER_TURN) {
   const capOn = gs.capEnabled !== false;
   const progress = gs.playerProgress[playerIdx];
   if (!progress || progress.finished) {
@@ -813,10 +833,12 @@ function gcApplyTurnTotal(gs, playerIdx, total) {
   if (!Number.isInteger(total) || total < 0 || total > 180) {
     return { blocked: true, note: 'Enter turn total 0–180', turnEnded: false, keepTurn: true, delta: 0 };
   }
+  const dartsThisVisit = Math.min(3, Math.max(1, Number(visitDarts) || GC_DARTS_PER_TURN));
   const holeIdx = gcEffectiveHole(gs, playerIdx);
   const holeDef = gs.holes[holeIdx] || { target: 0, par: 0, cap: 999 };
-  progress.currentHoleDarts = (progress.currentHoleDarts || 0) + GC_DARTS_PER_TURN;
-  progress.totalDarts = (progress.totalDarts || 0) + GC_DARTS_PER_TURN;
+  const remainingBefore = progress.remaining;
+  progress.currentHoleDarts = (progress.currentHoleDarts || 0) + dartsThisVisit;
+  progress.totalDarts = (progress.totalDarts || 0) + dartsThisVisit;
   let note;
   if (total === 0) {
     note = `Miss · ${progress.remaining} left`;
@@ -864,9 +886,12 @@ function gcApplyTurnTotal(gs, playerIdx, total) {
       }
       note = `Hole ${holeIdx + 1} complete · ${progress.finished ? 'All holes done' : 'Next hole ready'}`;
     }
+    if (!capped && remainingBefore > 0 && remainingBefore < 170 && dartsThisVisit < GC_DARTS_PER_TURN) {
+      note = `Checkout ${remainingBefore} in ${dartsThisVisit} · ${note}`;
+    }
   }
   const turnEnded = true;
-  return { blocked: false, note, delta: GC_DARTS_PER_TURN, turnEnded, keepTurn: false };
+  return { blocked: false, note, delta: dartsThisVisit, turnEnded, keepTurn: false };
 }
 
 function gcSkipWaitingTurn(turn, gs) {
@@ -2665,46 +2690,69 @@ function computeBotMove(room) {
     }
     move.gameState = gs;
   } else if (game === 'Football Darts') {
-    gs.goals = gs.goals || [0,0];
+    const playerIdx = 1;
+    const botName = room.config.guestName || 'Bot';
+    gs.goals = gs.goals || [0, 0];
     gs.events = gs.events || [];
-    gs.possession = gs.possession ?? 1;
-    const hasPossession = gs.possession === 1;
-    const steal = false; // bot is always in control during its turn unless it loses possession with a DBULL
-    const isDouble = rand() < difficulty;
-    if (hasPossession) {
-      if (isDouble) {
-        gs.goals[1] = (gs.goals[1] || 0) + 1;
-        gs.ballX = Math.max(5, (gs.ballX || 50) - 15);
-        move.delta = 1;
-        move.displayScore = 'GOAL';
-        move.note = '⚽ BOT GOAL!';
-      } else {
-        gs.ballX = Math.max(5, (gs.ballX || 50) - 5);
-        move.delta = 0;
-        move.displayScore = 'MISS';
-        move.note = 'BOT no goal';
-      }
-      move.keepTurn = true;
-      move.gameState = gs;
-    } else {
-      if (rand() < difficulty * 0.6) {
-        gs.possession = 1;
-        move.delta = 0;
+    gs.visitDarts = gs.visitDarts || [0, 0];
+    gs.visitThrows = gs.visitThrows || [[], []];
+    if (gs.possession === undefined) gs.possession = null;
+
+    const hasPossession = gs.possession === playerIdx;
+    gs.visitDarts[playerIdx] = (gs.visitDarts[playerIdx] || 0) + 1;
+    let scored = false;
+
+    if (!hasPossession) {
+      if (rand() < difficulty * 0.55) {
+        gs.possession = playerIdx;
+        gs.events.unshift({ text: `🟢 ${botName} took possession!` });
         move.displayScore = 'DBULL';
-        move.note = 'BOT stole possession!';
-        move.keepTurn = true;
+        move.note = 'BOT took possession!';
       } else {
-        move.delta = 0;
+        gs.events.unshift({ text: `${botName}: missed possession` });
         move.displayScore = 'MISS';
-        move.note = 'BOT missed steal';
-        move.keepTurn = false;
+        move.note = 'BOT missed possession';
       }
+      move.delta = 0;
+    } else if (rand() < difficulty) {
+      const useDBull = rand() < 0.12;
+      gs.goals[playerIdx] = (gs.goals[playerIdx] || 0) + 1;
+      gs.ballX = Math.max(5, (gs.ballX || 50) - 15);
+      gs.events.unshift({ text: `⚽ GOAL by ${botName}!` });
+      move.delta = 1;
+      scored = true;
+      move.displayScore = useDBull ? 'DBULL' : `D${1 + Math.floor(rand() * 20)}`;
+      move.note = '⚽ BOT GOAL!';
+    } else {
+      gs.events.unshift({ text: `${botName}: miss` });
+      move.delta = 0;
+      move.displayScore = 'MISS';
+      move.note = 'BOT miss';
     }
-    gs.round = (gs.round || 0) + 1;
-    if (gs.goals[1] >= 10) { move.gameOver = true; move.winner = room.config.guestName; }
-    if (gs.round >= 20 && !move.gameOver) {
+
+    gs.visitThrows[playerIdx] = gs.visitThrows[playerIdx] || [];
+    gs.visitThrows[playerIdx].push({ display: move.displayScore, goal: scored });
+
+    if (gs.visitDarts[playerIdx] >= 3) {
+      gs.visitDarts[playerIdx] = 0;
+      gs.visitThrows[playerIdx] = [];
+      gs.turnEnded = true;
+      move.keepTurn = false;
+      gs.round = (gs.round || 0) + 1;
+    } else {
+      gs.turnEnded = false;
+      move.keepTurn = true;
+    }
+
+    move.absoluteScore = gs.goals[playerIdx];
+    if (gs.goals[playerIdx] >= 10) {
       move.gameOver = true;
-      move.winner = (gs.goals[1] || 0) > (gs.goals[0] || 0) ? room.config.guestName : room.config.hostName;
+      move.winner = botName;
+    }
+    if (!move.gameOver && gs.turnEnded && (gs.round || 0) >= 20) {
+      move.gameOver = true;
+      const g0 = gs.goals[0] || 0, g1 = gs.goals[1] || 0;
+      move.winner = g1 === g0 ? null : (g1 > g0 ? botName : room.config.hostName);
     }
     move.gameState = gs;
   } else if (game === 'Snakes & Ladders') {
@@ -2808,8 +2856,13 @@ function computeBotMove(room) {
       const avg = { easy: 38, medium: 58, hard: 84, adaptive: 70 }[skill] || 45;
       const coAttempt = { easy: 0.18, medium: 0.34, hard: 0.6, adaptive: 0.45 }[skill] || 0.2;
       let total;
+      let visitDarts = GC_DARTS_PER_TURN;
       if (rem > 0 && rem <= 180 && rand() < coAttempt) {
         total = rem;
+        if (rem < 170) {
+          const minD = gcMinDartsForScore(rem);
+          if (minD === 1 || minD === 2) visitDarts = minD;
+        }
       } else {
         total = Math.round(avg + (rand() * 50 - 25));
         total = Math.max(0, Math.min(180, total));
@@ -2818,7 +2871,7 @@ function computeBotMove(room) {
           total = setup != null ? rem - setup : Math.max(0, Math.min(rem, Math.round(avg)));
         }
       }
-      const result = gcApplyTurnTotal(gs, playerIdx, total);
+      const result = gcApplyTurnTotal(gs, playerIdx, total, visitDarts);
       move.delta = result.delta || 0;
       move.displayScore = total === 0 ? '0' : String(total);
       move.note = result.blocked ? result.note : `BOT ${move.displayScore} · ${result.note}`;

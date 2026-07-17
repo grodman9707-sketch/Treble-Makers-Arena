@@ -148,13 +148,13 @@
 
 **Gameplay:**
 
-**Gaining Possession:** To start, a player must first hit the inner bullseye to "take possession" of the ball.
+**Gaining Possession:** To start, a player must first hit the double bullseye to "take possession" of the ball. Each visit is 3 darts.
 
-**Scoring Goals:** Once you have possession, you can start shooting at any double on the board. Each double hit counts as 1 goal.
+**Scoring Goals:** Once you have possession, each double (1–20) counts as 1 goal. Double bull also counts as a goal while you have possession.
 
-**Losing Possession:** You can keep throwing for doubles until your opponent successfully hits an inner bullseye to "steal" the ball. Once they steal it, it's their turn to shoot for doubles while you try to hit the bullseye to get the ball back.
+**Losing Possession:** Possession stays with you across visits until the opponent hits a double bull on their turn to steal the ball. Then they can shoot for doubles.
 
-**Winning:** The first player to reach a set number of goals (usually 10) wins.
+**Winning:** The first player to reach 10 goals wins (or most goals after 20 visits).
 
 
 

@@ -939,6 +939,12 @@ body.app-active .arena-bg { animation: none !important; }
 .match-layout.halveit-match #scoreboard { display: none !important; }
 .match-layout.halveit-match #turn-history-panel { display: none !important; }
 .match-layout.halveit-match #chat-area { display: none !important; }
+.match-layout.golf-darts-match #turn-history-panel { display: none !important; }
+.match-layout.golf-darts-match #chat-area { display: none !important; }
+.match-layout.golf-checkouts-match #turn-history-panel { display: none !important; }
+.match-layout.golf-checkouts-match #session-stats-panel { display: none !important; }
+.match-layout.football-darts-match #turn-history-panel { display: none !important; }
+.match-layout.football-darts-match #session-stats-panel { display: none !important; }
 .halveit-chat-area {
   margin-top: 0.75rem;
   border: 1px solid rgba(201,168,76,0.22);
@@ -950,6 +956,10 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .halveit-chat-area .chat-messages { min-height: 72px; max-height: 160px; }
 .halveit-chat-area .sidebar-panel-header { flex-shrink: 0; }
+.match-layout.golf-darts-match .halveit-chat-area {
+  min-height: 160px;
+  max-height: 280px;
+}
 .visualizer.halveit-arena #viz-label { display: none !important; }
 .visualizer.halveit-arena #viz-content {
   flex: 1 1 0; min-height: 0; height: auto !important;
@@ -1482,36 +1492,40 @@ body.app-active .arena-bg { animation: none !important; }
 .gdg-scorecard tr.gc-meta-tgt td,
 .gdg-scorecard tr.gc-meta-tgt th { color: var(--gold-dim, #c9a84c); }
 
-/* Football Darts match room (opaque arena + full-bleed pitch under cams) */
+/* Football Darts match room: cams top 1/3, pitch bottom 2/3 */
 .match-layout.football-darts-match .match-main {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto 230px 1fr;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 2fr);
   background: url('treble_arena_background.webp') center top / cover no-repeat;
   position: relative;
 }
 .match-layout.football-darts-match .match-header { grid-row: 1; z-index: 3; position: relative; }
 .match-layout.football-darts-match .football-field-layer {
-  grid-row: 2 / 4; grid-column: 1;
+  grid-row: 3; grid-column: 1;
   z-index: 0; min-height: 0; pointer-events: none;
 }
 .match-layout.football-darts-match .football-field-layer.hidden { display: none; }
 .match-layout.football-darts-match .webcam-grid {
   grid-row: 2; z-index: 2;
-  background: transparent;
+  background: rgba(5, 5, 10, 0.55);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  min-height: 0;
 }
-.match-layout.football-darts-match .webcam-cell { background: transparent; }
+.match-layout.football-darts-match .webcam-cell { background: transparent; min-height: 0; }
 .match-layout.football-darts-match .visualizer.football-darts-arena {
   grid-row: 3; z-index: 1;
   flex: 1 1 0; min-height: 0;
   display: flex; flex-direction: column;
   padding: 0; overflow: hidden;
   background: transparent;
+  pointer-events: none;
 }
 .match-layout.football-darts-match .visualizer.football-darts-arena #viz-label { display: none !important; }
 .match-layout.football-darts-match .visualizer.football-darts-arena #viz-content {
   flex: 1 1 0; min-height: 0;
   display: flex; flex-direction: column; justify-content: flex-end;
+  pointer-events: none;
 }
 .football-pitch {
   width: 100%; height: 100%;
@@ -1525,6 +1539,33 @@ body.app-active .arena-bg { animation: none !important; }
   transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 10;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
 }
+.fb-goal-score {
+  position: absolute; top: 50%; z-index: 12;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
+  min-width: 3.4rem; padding: 0.45rem 0.55rem;
+  background: rgba(5, 8, 12, 0.82);
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  pointer-events: none;
+}
+.fb-goal-score.left { left: 7%; }
+.fb-goal-score.right { right: 7%; }
+.fb-goal-score .fb-goal-name {
+  font-family: 'Orbitron', monospace; font-size: 0.52rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); max-width: 5.5rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fb-goal-score .fb-goal-count {
+  font-family: 'Orbitron', monospace; font-size: 1.55rem; font-weight: 700; line-height: 1;
+  color: var(--gold-light);
+}
+.fb-goal-score.you .fb-goal-count { color: var(--green-bright); }
+.fb-goal-score.opp .fb-goal-count { color: var(--silver); }
+.fb-goal-score .fb-goal-label {
+  font-size: 0.48rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55);
+}
 .football-viz-foot {
   flex-shrink: 0;
   padding: 0 0.85rem 0.65rem;
@@ -1533,19 +1574,45 @@ body.app-active .arena-bg { animation: none !important; }
 .football-viz-foot > * { pointer-events: auto; }
 .football-score-strip {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 0.5rem 1rem; background: rgba(19, 19, 32, 0.92);
+  padding: 0.45rem 0.85rem; background: rgba(19, 19, 32, 0.88);
   border: 1px solid var(--border); border-radius: 8px;
-  font-family: 'Orbitron', monospace; font-size: 0.8rem; color: var(--text);
+  font-family: 'Orbitron', monospace; font-size: 0.72rem; color: var(--text);
 }
 .football-events {
-  margin-top: 0.5rem; display: flex; flex-direction: column; gap: 3px;
-  max-height: 80px; overflow-y: auto;
-  background: rgba(19, 19, 32, 0.88);
+  margin-top: 0.4rem; display: flex; flex-direction: column; gap: 3px;
+  max-height: 64px; overflow-y: auto;
+  background: rgba(19, 19, 32, 0.85);
   border: 1px solid var(--border); border-radius: 8px;
-  padding: 0.35rem 0.65rem;
+  padding: 0.3rem 0.55rem;
 }
-.football-event { font-size: 0.72rem; color: var(--muted); padding: 2px 0; border-bottom: 1px solid var(--border); }
+.football-event { font-size: 0.7rem; color: var(--muted); padding: 2px 0; border-bottom: 1px solid var(--border); }
 .football-event .goal { color: var(--gold-light); font-weight: 700; }
+.number-pad.football-pad {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+.number-pad.football-pad .number-key.fb-miss {
+  grid-column: 1 / 3;
+  color: var(--crimson-bright);
+  border-color: rgba(204, 34, 34, 0.45);
+  background: rgba(204, 34, 34, 0.08);
+  font-weight: 700;
+}
+.number-pad.football-pad .number-key.fb-dbull {
+  grid-column: 3 / 6;
+  color: var(--gold-light);
+  border-color: rgba(201, 168, 76, 0.45);
+  background: rgba(201, 168, 76, 0.1);
+  font-weight: 700;
+}
+.segment-tabs.football-segments {
+  grid-template-columns: 1fr;
+  margin-bottom: 0.35rem;
+}
+.segment-tabs.football-segments .fb-pad-hint {
+  text-align: center; font-size: 0.68rem; color: var(--muted);
+  padding: 0.35rem 0.5rem; letter-spacing: 0.04em;
+}
 
 /* Snakes & Ladders */
 .snakes-board {
@@ -1704,7 +1771,20 @@ body.app-active .arena-bg { animation: none !important; }
   color: var(--text);
 }
 .number-key.special { color: var(--gold); }
-.segment-tabs.golf-segments { grid-template-columns: repeat(4, 1fr); }
+.segment-tabs.golf-segments { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.segment-tabs.golf-segments .segment-btn {
+  padding: 0.65rem 0.35rem;
+  min-height: 3.2rem;
+}
+.segment-tabs.golf-segments .segment-btn.miss-hit {
+  color: var(--crimson-bright);
+  border-color: rgba(204, 34, 34, 0.45);
+  background: rgba(204, 34, 34, 0.08);
+}
+.segment-tabs.golf-segments .segment-btn.miss-hit:hover {
+  background: rgba(204, 34, 34, 0.18);
+  color: #ff6b6b;
+}
 .segment-btn .seg-sub {
   display: block; font-size: 0.52rem; opacity: 0.65; margin-top: 0.12rem; letter-spacing: 0;
 }
@@ -1715,19 +1795,11 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .dart-progress-dot { flex-direction: column; gap: 1px; line-height: 1.05; padding: 0.2rem 0.15rem; }
 .dart-progress-dot .pip-ring { font-size: 0.48rem; text-transform: uppercase; opacity: 0.85; }
-.number-pad.golf-pad { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.number-key.miss-key {
-  grid-column: 1 / -1;
-  color: var(--crimson-bright);
-  border-color: rgba(204, 34, 34, 0.45);
-  background: rgba(204, 34, 34, 0.08);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.gc-darts-choices {
+  display: flex; gap: 0.65rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem;
 }
-.number-key.miss-key:hover {
-  background: rgba(204, 34, 34, 0.18);
-  color: #ff6b6b;
+.gc-darts-choices .btn {
+  min-width: 4.5rem; min-height: 3rem; font-size: 1.15rem; font-family: 'Orbitron', monospace;
 }
 
 .history-scroll { max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
@@ -3345,7 +3417,7 @@ body.app-active .arena-bg { animation: none !important; }
             <button class="btn btn-danger btn-sm" onclick="leaveMatch()">← Leave</button>
           </div>
 
-          <!-- Football Darts: full-bleed pitch layer (extends under player cams) -->
+          <!-- Football Darts: pitch layer (bottom 2/3 under visualizer overlays) -->
           <div id="football-field-layer" class="football-field-layer hidden" aria-hidden="true"></div>
 
           <!-- Webcams -->
@@ -3455,7 +3527,7 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
           </div>
 
-          <div class="sidebar-panel">
+          <div class="sidebar-panel" id="session-stats-panel">
             <div class="sidebar-panel-header">Session Stats</div>
             <div class="sidebar-panel-body">
               <div class="stats-mini" id="stats-mini"></div>
@@ -3951,6 +4023,23 @@ body.app-active .arena-bg { animation: none !important; }
   </div>
 </div>
 
+<!-- Golf Checkouts: darts used on short checkouts -->
+<div class="modal-overlay" id="gc-checkout-darts-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <h2>Checkout Darts</h2>
+      <button class="modal-close" onclick="cancelGcCheckoutDarts()" title="Cancel">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="gc-checkout-darts-msg" style="margin:0;line-height:1.55;color:var(--silver-light);font-size:0.92rem"></p>
+      <div class="gc-darts-choices" id="gc-checkout-darts-choices"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="cancelGcCheckoutDarts()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Game Over Overlay -->
 <div class="overlay" id="gameover-overlay">
   <div class="overlay-box">
@@ -4035,7 +4124,7 @@ const GAME_RULES = {
   'Halve-It': '<b>Halve-It</b><br>Each round has a target. Hit it to score, miss and your score is halved. 15 rounds. Highest score wins.',
   'Golf Darts': '<b>Golf Darts</b><br>18 holes — target number matches the hole. 3 darts per hole; <b>lowest dart score counts</b>. Treble = Hole in One (1), Double = Eagle (2), Inner Single = Par (3), Outer Single = Bogey (4), miss/wrong number = 7. Hat trick (same bed 3×) = −1 bonus.',
   'Golf Checkouts': '<b>Golf Checkouts</b><br>18 holes with checkout targets and pars. Hit the checkout in the fewest darts to match or beat par. Standard play uses a double-par stroke cap and synchronized holes.',
-  'Football Darts': '<b>Football Darts</b><br>Score goals by hitting target numbers. The ball moves up or down the pitch based on scores. First to 5 goals or most goals in 10 rounds wins.',
+  'Football Darts': '<b>Football Darts</b><br>Hit <b>Double Bull</b> to take possession. With the ball, each <b>Double (1–20)</b> or <b>Double Bull</b> is 1 goal. 3 darts per visit. First to 10 goals (or most after 20 visits) wins.',
   'Snakes & Ladders': '<b>Snakes & Ladders</b><br>Score on each turn moves you forward that many squares. Land on a ladder — jump up. Land on a snake — fall back. First to reach 100 wins.',
   'Around the Clock': '<b>Around the Clock</b><br>Hit 1 through 20 in order. Enter the number you hit (or 0 to miss). Advance when you hit your current number. First to 20 wins.',
   'Killer': '<b>Killer</b><br>You each have a number. Hit your number 3 times to become a Killer. Then hit your opponent\'s number to drain their 5 lives. Last one standing wins.',
@@ -6161,6 +6250,28 @@ function gcPlayerCanThrow(gs, playerIdx) {
 
 const GC_DARTS_PER_TURN = 3;
 
+// Valid scores with a single dart (S1–20, D1–20, T1–20, 25, 50).
+const GC_ONE_DART_SCORES = (() => {
+  const s = new Set([25, 50]);
+  for (let i = 1; i <= 20; i++) {
+    s.add(i);
+    s.add(i * 2);
+    s.add(i * 3);
+  }
+  return s;
+})();
+
+/** Minimum darts needed to score exactly `score` with standard dart segments. */
+function gcMinDartsForScore(score) {
+  if (!Number.isInteger(score) || score < 0) return 3;
+  if (score === 0) return 0;
+  if (GC_ONE_DART_SCORES.has(score)) return 1;
+  for (const a of GC_ONE_DART_SCORES) {
+    if (GC_ONE_DART_SCORES.has(score - a)) return 2;
+  }
+  return score <= 180 ? 3 : 3;
+}
+
 function gcSyncAdvanceBoth(gs) {
   const nextHole = (gs.syncHole ?? 0) + 1;
   gs.syncHole = nextHole;
@@ -6179,8 +6290,9 @@ function gcSyncAdvanceBoth(gs) {
   }
 }
 
-// Applies a whole 3-dart turn total (X01-style entry). Mutates gs.
-function gcApplyTurnTotal(gs, playerIdx, total) {
+// Applies a whole turn total (X01-style entry). Mutates gs.
+// visitDarts: how many darts of this visit counted (1–3), used on short checkouts.
+function gcApplyTurnTotal(gs, playerIdx, total, visitDarts = GC_DARTS_PER_TURN) {
   const capOn = gs.capEnabled !== false;
   const progress = gs.playerProgress[playerIdx];
   if (!progress || progress.finished) {
@@ -6192,10 +6304,12 @@ function gcApplyTurnTotal(gs, playerIdx, total) {
   if (!Number.isInteger(total) || total < 0 || total > 180) {
     return { blocked: true, note: 'Enter a 3-dart turn total between 0 and 180.', turnEnded: false };
   }
+  const dartsThisVisit = Math.min(3, Math.max(1, Number(visitDarts) || GC_DARTS_PER_TURN));
   const holeIdx = gcEffectiveHole(gs, playerIdx);
   const holeDef = gs.holes[holeIdx] || { target: 0, par: 0, cap: 999 };
-  progress.currentHoleDarts = (progress.currentHoleDarts || 0) + GC_DARTS_PER_TURN;
-  progress.totalDarts = (progress.totalDarts || 0) + GC_DARTS_PER_TURN;
+  const remainingBefore = progress.remaining;
+  progress.currentHoleDarts = (progress.currentHoleDarts || 0) + dartsThisVisit;
+  progress.totalDarts = (progress.totalDarts || 0) + dartsThisVisit;
   let note;
   if (total === 0) {
     note = `Miss · ${progress.remaining} left`;
@@ -6243,9 +6357,12 @@ function gcApplyTurnTotal(gs, playerIdx, total) {
       }
       note = `Hole ${holeIdx + 1} complete · ${progress.finished ? 'All holes done' : 'Next hole ready'}`;
     }
+    if (!capped && remainingBefore > 0 && remainingBefore < 170 && dartsThisVisit < GC_DARTS_PER_TURN) {
+      note = `Checkout ${remainingBefore} in ${dartsThisVisit} · ${note}`;
+    }
   }
   const turnEnded = true;
-  return { blocked: false, note, delta: GC_DARTS_PER_TURN, turnEnded };
+  return { blocked: false, note, delta: dartsThisVisit, turnEnded };
 }
 
 function gcSkipWaitingTurn(turn, gs) {
@@ -6260,6 +6377,40 @@ function gcSkipWaitingTurn(turn, gs) {
     turn = 1 - turn;
   }
   return turn;
+}
+
+let pendingGcCheckoutRaw = null;
+
+function openGcCheckoutDartsModal(remaining, minDarts, raw) {
+  pendingGcCheckoutRaw = raw;
+  const msg = document.getElementById('gc-checkout-darts-msg');
+  const choices = document.getElementById('gc-checkout-darts-choices');
+  if (msg) {
+    msg.textContent = `You checked out ${remaining}. How many darts did you use? (minimum ${minDarts})`;
+  }
+  if (choices) {
+    const buttons = [];
+    for (let d = minDarts; d <= 3; d++) {
+      buttons.push(`<button type="button" class="btn btn-gold" onclick="confirmGcCheckoutDarts(${d})">${d}</button>`);
+    }
+    choices.innerHTML = buttons.join('');
+  }
+  openModal('gc-checkout-darts-modal');
+}
+
+function cancelGcCheckoutDarts() {
+  pendingGcCheckoutRaw = null;
+  closeModal('gc-checkout-darts-modal');
+}
+
+function confirmGcCheckoutDarts(visitDarts) {
+  const raw = pendingGcCheckoutRaw;
+  pendingGcCheckoutRaw = null;
+  closeModal('gc-checkout-darts-modal');
+  if (raw == null) return;
+  const inp = document.getElementById('score-input');
+  if (inp) inp.value = '';
+  submitScore({ raw, visitDarts });
 }
 
 
@@ -6288,7 +6439,15 @@ const GAME_INIT_HANDLERS = {
     return initGolfCheckoutsState(S.matchVariation || {});
   },
   'Football Darts'() {
-    return { ballX: 50, goals: [0,0], events: [], round: 0 };
+    return {
+      ballX: 50,
+      goals: [0, 0],
+      events: [],
+      round: 0,
+      possession: null,
+      visitDarts: [0, 0],
+      visitThrows: [[], []]
+    };
   },
   'Snakes & Ladders'() {
     return { pos: [0,0],
@@ -7274,10 +7433,10 @@ function parseDartInput(raw) {
   return { value: 0, base: 0, multiplier: 1, segment: normalized, isMiss: true, isValid: false };
 }
 
-function submitScore() {
+function submitScore(opts = {}) {
   if (!isMyMatchTurn()) return;
   const inp = document.getElementById('score-input');
-  const raw = inp.value.trim();
+  const raw = (opts.raw != null ? String(opts.raw) : inp.value).trim();
   if (raw === '') return;
 
   let parsed, val, displayScore;
@@ -7290,6 +7449,19 @@ function submitScore() {
     parsed = { isValid: true, value: total, isMiss: total === 0 };
     val = total;
     displayScore = String(total);
+
+    // On checkouts below 170 that can finish in 1–2 darts, ask how many were used.
+    if (opts.visitDarts == null) {
+      const pIdx = myPlayerIdx();
+      const remaining = S.gameState?.playerProgress?.[pIdx]?.remaining;
+      if (total > 0 && total === remaining && remaining < 170) {
+        const minDarts = gcMinDartsForScore(remaining);
+        if (minDarts === 1 || minDarts === 2) {
+          openGcCheckoutDartsModal(remaining, minDarts, raw);
+          return;
+        }
+      }
+    }
     inp.value = '';
   } else {
     parsed = parseDartInput(raw);
@@ -7408,7 +7580,8 @@ function submitScore() {
       { hole: 0, remaining: gs.holes?.[0]?.target || 0, currentHoleDarts: 0, totalDarts: 0, holeResults: [], finished: false, holeDone: false }
     ];
     const playerIdx = myPlayerIdx();
-    const result = gcApplyTurnTotal(gs, playerIdx, val);
+    const visitDarts = opts.visitDarts != null ? opts.visitDarts : GC_DARTS_PER_TURN;
+    const result = gcApplyTurnTotal(gs, playerIdx, val, visitDarts);
     if (result.blocked) {
       toast(result.note);
       if (result.turnEnded) {
@@ -7428,48 +7601,80 @@ function submitScore() {
     }
 
   } else if (g === 'Football Darts') {
-    gs.goals = gs.goals || [0,0];
+    const player = myPlayerIdx();
+    const pname = S.user.username || 'You';
+    gs.goals = gs.goals || [0, 0];
     gs.events = gs.events || [];
-    gs.possession = gs.possession ?? 0;
-    const hasPossession = gs.possession === 0;
-    const steal = parsed.segment === 'DBULL';
-    const isDouble = parsed.segment === 'D' && !parsed.isMiss;
-    if (hasPossession) {
-      if (isDouble) {
-        gs.goals[0]++;
-        gs.ballX = Math.min(95, (gs.ballX || 50) + 15);
-        gs.events.unshift({ text: `⚽ GOAL by ${S.user.username}!` });
-        delta = 1;
-        note = '⚽ GOAL!';
-      } else {
-        gs.ballX = Math.max(5, (gs.ballX || 50) - 5);
-        gs.events.unshift({ text: `${S.user.username}: ${displayScore} — on target` });
-        delta = 0;
-        note = `No goal: ${displayScore}`;
-      }
-      if (steal) {
-        gs.possession = 1;
-        gs.events.unshift({ text: `🟢 ${S.user.username} lost possession!` });
-        gs.turnEnded = true;
-      } else {
-        gs.turnEnded = false;
-      }
-    } else {
-      if (steal) {
-        gs.possession = 0;
-        gs.events.unshift({ text: `🟢 ${S.user.username} stole the ball!` });
-        note = 'Steal!';
-        gs.turnEnded = false;
-      } else {
-        gs.events.unshift({ text: `🟡 ${S.user.username} missed steal: ${displayScore}` });
-        delta = 0;
-        note = `Miss steal: ${displayScore}`;
-        gs.turnEnded = true;
-      }
+    gs.visitDarts = gs.visitDarts || [0, 0];
+    gs.visitThrows = gs.visitThrows || [[], []];
+    if (gs.possession === undefined) gs.possession = null;
+
+    if ((gs.visitDarts[player] || 0) >= 3) {
+      toast('All 3 darts thrown this visit.');
+      return;
     }
-    gs.round = (gs.round || 0) + 1;
-    if (gs.goals[0] >= 10) { gameOver = true; winner = S.user.username; }
-    if (gs.round >= 20 && !gameOver) { gameOver = true; winner = gs.goals[0] > gs.goals[1] ? S.user.username : 'Opponent'; }
+
+    const isMiss = !!parsed.isMiss;
+    const isDBull = parsed.segment === 'DBULL';
+    const isDouble = parsed.segment === 'D' && !parsed.isMiss;
+    const hasPossession = gs.possession === player;
+    let scored = false;
+
+    gs.visitDarts[player] = (gs.visitDarts[player] || 0) + 1;
+
+    if (!hasPossession) {
+      if (isDBull) {
+        gs.possession = player;
+        gs.events.unshift({ text: `🟢 ${pname} took possession!` });
+        note = 'Possession!';
+        displayScore = 'DBULL';
+      } else {
+        note = isMiss ? 'Miss' : `Need DBull · ${displayScore}`;
+        gs.events.unshift({ text: `${pname}: ${note}` });
+        delta = 0;
+      }
+    } else if (isDouble || isDBull) {
+      gs.goals[player] = (gs.goals[player] || 0) + 1;
+      if (player === 0) gs.ballX = Math.min(95, (gs.ballX || 50) + 15);
+      else gs.ballX = Math.max(5, (gs.ballX || 50) - 15);
+      gs.events.unshift({ text: `⚽ GOAL by ${pname}!` });
+      delta = 1;
+      scored = true;
+      note = '⚽ GOAL!';
+      displayScore = isDBull ? 'DBULL' : displayScore;
+    } else {
+      note = isMiss ? 'Miss' : `No goal: ${displayScore}`;
+      gs.events.unshift({ text: `${pname}: ${note}` });
+      delta = 0;
+    }
+
+    gs.visitThrows[player] = gs.visitThrows[player] || [];
+    gs.visitThrows[player].push({
+      display: isMiss ? 'MISS' : displayScore,
+      goal: scored,
+      possession: !hasPossession && isDBull
+    });
+
+    if (gs.visitDarts[player] >= 3) {
+      gs.turnEnded = true;
+      gs.visitDarts[player] = 0;
+      gs.visitThrows[player] = [];
+      gs.round = (gs.round || 0) + 1;
+    } else {
+      gs.turnEnded = false;
+    }
+
+    absoluteScore = gs.goals[player];
+    if (gs.goals[player] >= 10) {
+      gameOver = true;
+      winner = pname;
+    }
+    if (!gameOver && gs.turnEnded && (gs.round || 0) >= 20) {
+      gameOver = true;
+      const mine = gs.goals[player] || 0;
+      const theirs = gs.goals[1 - player] || 0;
+      winner = mine === theirs ? null : (mine > theirs ? pname : 'Opponent');
+    }
 
   } else if (g === 'Snakes & Ladders') {
     const isMiss = parsed.isMiss;
@@ -7646,6 +7851,7 @@ function tapGolfPad(value) {
   if (!inp || inp.disabled || S.game !== 'Golf Darts' || !isMyMatchTurn()) return;
   const player = myPlayerIdx();
   const holeIdx = S.gameState.playerHoles?.[player] || 0;
+  const target = S.gameState.holes?.[holeIdx] || holeIdx + 1;
   const dartsThrown = S.gameState.playerDarts?.[player]?.length || 0;
   if (dartsThrown >= 3) {
     toast('All 3 darts thrown this hole.');
@@ -7653,11 +7859,24 @@ function tapGolfPad(value) {
   }
   if (value === 'MISS') {
     inp.value = '0';
-  } else if (activeDartSegment === 'SI' || activeDartSegment === 'SO') {
-    inp.value = `${activeDartSegment}${value}`;
   } else {
-    inp.value = `${activeDartSegment}${value}`;
+    inp.value = `${value}${target}`;
   }
+  submitScore();
+}
+
+function tapFootballPad(value) {
+  const inp = document.getElementById('score-input');
+  if (!inp || inp.disabled || S.game !== 'Football Darts' || !isMyMatchTurn()) return;
+  const player = myPlayerIdx();
+  const thrown = S.gameState.visitDarts?.[player] || 0;
+  if (thrown >= 3) {
+    toast('All 3 darts thrown this visit.');
+    return;
+  }
+  if (value === 'MISS') inp.value = '0';
+  else if (value === 'DBULL') inp.value = 'DBULL';
+  else inp.value = `D${value}`;
   submitScore();
 }
 
@@ -7665,32 +7884,42 @@ function renderDartPad(game) {
   const segmentTabs = document.getElementById('segment-tabs');
   const numberPad = document.getElementById('number-pad');
   if (!segmentTabs || !numberPad) return;
-  const dartGames = ['Golf Darts','Golf Checkouts','Halve-It','Shanghai','High Score'];
+  const dartGames = ['Golf Darts','Golf Checkouts','Halve-It','Shanghai','High Score','Football Darts'];
   // Golf Checkouts hides the dart number-pad / segment tabs: players enter a
   // 3-dart turn total (0–180) via the score text box + Enter, like X01.
   // Halve-It shows the pad only in button-input mode (board mode uses the viz board).
   const showDartPad = dartGames.includes(game) && game !== 'Golf Checkouts'
     && !(game === 'Halve-It' && halveItInputMode !== 'buttons');
   segmentTabs.style.display = showDartPad ? 'grid' : 'none';
-  numberPad.style.display = showDartPad ? 'grid' : 'none';
+  numberPad.style.display = showDartPad && game !== 'Golf Darts' ? 'grid' : 'none';
 
   if (!showDartPad) return;
 
   if (game === 'Golf Darts') {
-    if (!['SI', 'SO', 'D', 'T'].includes(activeDartSegment)) activeDartSegment = 'SO';
     segmentTabs.className = 'segment-tabs golf-segments';
-    numberPad.className = 'number-pad golf-pad';
+    numberPad.className = 'number-pad';
+    numberPad.innerHTML = '';
     segmentTabs.innerHTML = [
       { label: 'Inner', segment: 'SI', sub: 'Par · 3' },
       { label: 'Outer', segment: 'SO', sub: 'Bogey · 4' },
       { label: 'Double', segment: 'D', sub: 'Eagle · 2' },
       { label: 'Treble', segment: 'T', sub: 'HIO · 1' },
+      { label: 'Miss', segment: 'MISS', sub: '7 pts', miss: true },
     ].map(btn =>
-      `<button type="button" class="segment-btn${activeDartSegment === btn.segment ? ' active' : ''}" data-segment="${btn.segment}" onclick="setSegment('${btn.segment}')">${btn.label}<span class="seg-sub">${btn.sub}</span></button>`
+      `<button type="button" class="segment-btn${btn.miss ? ' miss-hit' : ''}" data-segment="${btn.segment}" onclick="tapGolfPad('${btn.segment}')">${btn.label}<span class="seg-sub">${btn.sub}</span></button>`
     ).join('');
-    numberPad.innerHTML = Array.from({ length: 18 }, (_, i) => String(i + 1))
-      .map(v => `<button type="button" class="number-key" onclick="tapGolfPad('${v}')">${v}</button>`)
-      .join('') + `<button type="button" class="number-key miss-key" onclick="tapGolfPad('MISS')">Miss</button>`;
+    return;
+  }
+
+  if (game === 'Football Darts') {
+    segmentTabs.className = 'segment-tabs football-segments';
+    numberPad.className = 'number-pad football-pad';
+    segmentTabs.innerHTML = `<div class="fb-pad-hint">Doubles = goals · DBull = possession (or goal if you have the ball)</div>`;
+    numberPad.innerHTML = Array.from({ length: 20 }, (_, i) => String(i + 1))
+      .map(v => `<button type="button" class="number-key" onclick="tapFootballPad('${v}')">D${v}</button>`)
+      .join('')
+      + `<button type="button" class="number-key fb-miss" onclick="tapFootballPad('MISS')">Miss</button>`
+      + `<button type="button" class="number-key fb-dbull" onclick="tapFootballPad('DBULL')">DBull</button>`;
     return;
   }
 
@@ -7716,6 +7945,13 @@ function quickScore(v) {
   if (S.game === 'Halve-It' && halveItDartsThrown() >= 3) {
     toast('All 3 darts thrown this round.');
     return;
+  }
+  if (S.game === 'Football Darts') {
+    const thrown = S.gameState.visitDarts?.[myPlayerIdx()] || 0;
+    if (thrown >= 3) {
+      toast('All 3 darts thrown this visit.');
+      return;
+    }
   }
   document.getElementById('score-input').value = v;
   submitScore();
@@ -7787,8 +8023,12 @@ function updateMatchUI() {
   ml?.classList.toggle('golf-checkouts-match', isGolfCheckouts);
   ml?.classList.toggle('football-darts-match', isFootballDarts);
   ml?.classList.toggle('halveit-match', isHalveIt);
-  gid('turn-history-panel')?.classList.toggle('hidden', isHalveIt);
-  gid('halveit-chat-area')?.classList.toggle('hidden', !isHalveIt);
+  const hideTurnHistory = isHalveIt || isGolfDarts || isGolfCheckouts || isFootballDarts;
+  const showInputChat = isHalveIt || isGolfDarts;
+  gid('turn-history-panel')?.classList.toggle('hidden', hideTurnHistory);
+  gid('session-stats-panel')?.classList.toggle('hidden', isGolfCheckouts || isFootballDarts);
+  gid('halveit-chat-area')?.classList.toggle('hidden', !showInputChat);
+  gid('chat-area')?.classList.toggle('hidden', showInputChat);
   const fbFieldLayer = document.getElementById('football-field-layer');
   if (fbFieldLayer && !isFootballDarts) {
     fbFieldLayer.innerHTML = '';
@@ -7825,6 +8065,14 @@ function updateMatchUI() {
     const modeHint = halveItInputMode === 'board' ? 'Tap the board' : 'Tap a number';
     gid('turn-sub').textContent = dartN >= 3 ? 'Round complete' : `Dart ${dartN + 1} of 3 · ${modeHint}`;
   }
+  if (isFootballDarts && isMyTurn) {
+    const dartN = gs.visitDarts?.[myPlayerIdx()] || 0;
+    const hasBall = gs.possession === myPlayerIdx();
+    const ballHint = gs.possession == null
+      ? 'Hit DBull for first possession'
+      : hasBall ? 'Shoot doubles for goals' : 'Hit DBull to take possession';
+    gid('turn-sub').textContent = dartN >= 3 ? 'Visit complete' : `Dart ${dartN + 1} of 3 · ${ballHint}`;
+  }
   gid('turn-dot').className = 'turn-dot' + (gcInputActive ? '' : ' waiting');
   gid('score-input').disabled = !gcInputActive;
 
@@ -7843,11 +8091,7 @@ function updateMatchUI() {
     const target = gs.holes?.[holeIdx] || holeIdx + 1;
     const dartsThrown = gs.playerDarts?.[pIdx]?.length || 0;
     const lastHole = gs.playerHoleScores?.[0]?.slice(-1)[0];
-    const segLabel = activeDartSegment === 'SI' ? 'Inner Single'
-      : activeDartSegment === 'SO' ? 'Outer Single'
-      : activeDartSegment === 'D' ? 'Double'
-      : activeDartSegment === 'T' ? 'Treble' : 'Outer Single';
-    label = `HOLE ${holeIdx + 1} · TARGET ${target} · ${segLabel}`;
+    label = `HOLE ${holeIdx + 1} · TARGET ${target}`;
     quickList = [];
     document.getElementById('mh-status').textContent = `Darts this hole: ${dartsThrown}/3 · Last hole: ${lastHole ? lastHole.score : '—'}`;
   } else if (g === 'Golf Checkouts') {
@@ -7867,9 +8111,13 @@ function updateMatchUI() {
     const scoreInp = document.getElementById('score-input');
     if (scoreInp) scoreInp.placeholder = 'Turn total 0–180';
   } else if (g === 'Football Darts') {
-    label = `SCORE (50+ = GOAL)`;
-    quickList = ['0','10','25','50','60','Goal'];
-    document.getElementById('mh-status').textContent = `Goals: You ${gs.goals?.[0]||0} – ${gs.goals?.[1]||0} Opp · Round ${gs.round||0}/20`;
+    const pIdx = myPlayerIdx();
+    const hasBall = gs.possession === pIdx;
+    const ballLabel = gs.possession == null ? 'No possession' : hasBall ? 'You have the ball' : 'Opponent has the ball';
+    label = hasBall ? 'DOUBLES / DBULL = GOAL' : 'HIT DBULL FOR POSSESSION';
+    quickList = [];
+    document.getElementById('mh-status').textContent =
+      `Goals: You ${gs.goals?.[pIdx]||0} – ${gs.goals?.[1-pIdx]||0} Opp · ${ballLabel} · Visit ${(gs.round||0)+1}/20`;
   } else if (g === 'Snakes & Ladders') {
     label = `ROLL (your square: ${gs.pos?.[0]||0})`;
     quickList = ['1','2','3','4','5','6'];
@@ -7897,7 +8145,7 @@ function updateMatchUI() {
   const quickBtns = document.getElementById('quick-btns');
   // Golf Darts and Golf Checkouts both drive scoring without the quick buttons.
   // Halve-It quick buttons only appear in button-input mode.
-  const hideQuick = g === 'Golf Darts' || g === 'Golf Checkouts'
+  const hideQuick = g === 'Golf Darts' || g === 'Golf Checkouts' || g === 'Football Darts'
     || (g === 'Halve-It' && halveItInputMode !== 'buttons');
   quickBtns.style.display = hideQuick ? 'none' : 'grid';
   quickBtns.innerHTML = quickList.map(q =>
@@ -7982,9 +8230,28 @@ function updateMatchUI() {
           }).join('')}
         </div>`;
     } else if (g === 'High Score' || g === 'Shanghai') darts = (gs.roundScores?.[0]?.length || 0) % 3;
-    else if (g === 'Football Darts') darts = gs.playerShoots?.[0]?.length || 0;
+    else if (g === 'Football Darts') {
+      const pIdx = myPlayerIdx();
+      const throws = gs.visitThrows?.[pIdx] || [];
+      const thrown = throws.length || gs.visitDarts?.[pIdx] || 0;
+      const hasBall = gs.possession === pIdx;
+      const labelText = thrown === 0
+        ? (hasBall || gs.possession == null ? 'Ready for Dart 1' : 'Ready for Dart 1 · Steal with DBull')
+        : thrown < 3 ? `Dart ${thrown + 1} of 3` : 'Visit complete';
+      dartPanel.innerHTML = `
+        <div class="dart-progress-label">${labelText}</div>
+        <div class="dart-progress-dots">
+          ${[0, 1, 2].map(i => {
+            const dart = throws[i];
+            const cls = dart
+              ? ` filled${dart.goal ? '' : ' miss'}`
+              : (i === thrown && isMyTurn ? ' current' : '');
+            return `<span class="dart-progress-dot${cls}">${dart ? dart.display : `D${i + 1}`}</span>`;
+          }).join('')}
+        </div>`;
+    }
     if (darts > 3) darts = 3;
-    if (showDartTracker && g !== 'Golf Darts' && g !== 'Halve-It') {
+    if (showDartTracker && g !== 'Golf Darts' && g !== 'Halve-It' && g !== 'Football Darts') {
       const labelText = darts === 0 ? 'Ready for Dart 1' : `Dart ${Math.min(darts + 1, 3)} of 3`;
       dartPanel.innerHTML = `
         <div class="dart-progress-label">${labelText}</div>
@@ -8006,23 +8273,25 @@ function updateMatchUI() {
     if (botSkillLabel) botSkillLabel.textContent = `Skill: ${S.botSkill ? S.botSkill.charAt(0).toUpperCase() + S.botSkill.slice(1) : 'Adaptive'}`;
   }
 
-  // History (hidden for Halve-It — Match Chat sits under score input instead)
+  // History (hidden for Halve-It / Golf / Football)
   const histEl = document.getElementById('history-scroll');
-  if (histEl && !isHalveIt) {
+  if (histEl && !isHalveIt && !isGolfDarts && !isGolfCheckouts && !isFootballDarts) {
     histEl.innerHTML = S.history.slice(0,15).map(h =>
       `<div class="history-row"><span class="hr-player">${h.player}</span><span class="hr-note">${h.note||''}</span><span class="hr-score">${h.score}</span></div>`
     ).join('') || '<div style="color:var(--muted);font-size:0.75rem;padding:0.25rem">No turns yet</div>';
   }
 
-  // Stats
-  const elapsed = S.stats.startTime ? Math.floor((Date.now()-S.stats.startTime)/1000) : 0;
-  const mins = Math.floor(elapsed/60), secs = elapsed%60;
-  document.getElementById('stats-mini').innerHTML = `
-    <div class="stat-mini-card"><div class="smc-label">High Score</div><div class="smc-val">${S.stats.highScore}</div></div>
-    <div class="stat-mini-card"><div class="smc-label">Turns</div><div class="smc-val">${S.stats.turnsPlayed}</div></div>
-    <div class="stat-mini-card"><div class="smc-label">Best Round</div><div class="smc-val">${S.stats.bestRound}</div></div>
-    <div class="stat-mini-card"><div class="smc-label">Time</div><div class="smc-val">${mins}:${String(secs).padStart(2,'0')}</div></div>
-  `;
+  // Stats (hidden for Golf Checkouts / Football Darts)
+  if (!isGolfCheckouts && !isFootballDarts) {
+    const elapsed = S.stats.startTime ? Math.floor((Date.now()-S.stats.startTime)/1000) : 0;
+    const mins = Math.floor(elapsed/60), secs = elapsed%60;
+    document.getElementById('stats-mini').innerHTML = `
+      <div class="stat-mini-card"><div class="smc-label">High Score</div><div class="smc-val">${S.stats.highScore}</div></div>
+      <div class="stat-mini-card"><div class="smc-label">Turns</div><div class="smc-val">${S.stats.turnsPlayed}</div></div>
+      <div class="stat-mini-card"><div class="smc-label">Best Round</div><div class="smc-val">${S.stats.bestRound}</div></div>
+      <div class="stat-mini-card"><div class="smc-label">Time</div><div class="smc-val">${mins}:${String(secs).padStart(2,'0')}</div></div>
+    `;
+  }
 
   renderVisualizer();
   if (isGolfDarts) observeGolfDartboardFit();
@@ -9068,8 +9337,20 @@ function renderGolfCheckoutsRoom(gs) {
   return renderGolfCheckoutsCourse(gs);
 }
 
-function renderFootballPitchHtml(ballX) {
-  const bx = ballX || 50;
+function renderFootballPitchHtml(gs) {
+  const bx = gs?.ballX || 50;
+  const goals = gs?.goals || [0, 0];
+  const youIdx = myPlayerIdx();
+  const youName = (S.user.username || 'You').slice(0, 10);
+  const oppLabel = document.getElementById('sb-name-opp')?.textContent || document.getElementById('cam-label-opp')?.textContent || 'OPP';
+  const oppName = (oppLabel || 'OPP').slice(0, 10);
+  // Player 0 attacks right goal; player 1 attacks left goal.
+  const leftIdx = 1;
+  const rightIdx = 0;
+  const leftName = leftIdx === youIdx ? youName : oppName;
+  const rightName = rightIdx === youIdx ? youName : oppName;
+  const leftYou = leftIdx === youIdx;
+  const rightYou = rightIdx === youIdx;
   return `
     <div class="pitch-lines">
       <svg viewBox="0 0 400 220" xmlns="http://www.w3.org/2000/svg">
@@ -9086,6 +9367,16 @@ function renderFootballPitchHtml(ballX) {
         <circle cx="330" cy="110" r="3" fill="rgba(255,255,255,0.5)"/>
         <circle cx="200" cy="110" r="3" fill="rgba(255,255,255,0.5)"/>
       </svg>
+    </div>
+    <div class="fb-goal-score left${leftYou ? ' you' : ' opp'}">
+      <span class="fb-goal-label">Goal</span>
+      <span class="fb-goal-name">${leftName}</span>
+      <span class="fb-goal-count">${goals[leftIdx] || 0}</span>
+    </div>
+    <div class="fb-goal-score right${rightYou ? ' you' : ' opp'}">
+      <span class="fb-goal-label">Goal</span>
+      <span class="fb-goal-name">${rightName}</span>
+      <span class="fb-goal-count">${goals[rightIdx] || 0}</span>
     </div>
     <div class="football-ball" style="left:calc(${bx}% - 12px);top:calc(50% - 12px)">⚽</div>`;
 }
@@ -9131,22 +9422,24 @@ function renderVisualizer() {
   } else if (g === 'Football Darts') {
     lbl.textContent = '';
     lbl.style.display = 'none';
-    const bx = gs.ballX || 50;
+    const pIdx = myPlayerIdx();
+    const hasBall = gs.possession === pIdx;
+    const ballLabel = gs.possession == null ? 'OPEN BALL' : hasBall ? 'YOUR BALL' : 'OPP BALL';
     const fbLayer = document.getElementById('football-field-layer');
     if (fbLayer) {
       fbLayer.classList.remove('hidden');
       fbLayer.setAttribute('aria-hidden', 'false');
-      fbLayer.innerHTML = `<div class="football-pitch">${renderFootballPitchHtml(bx)}</div>`;
+      fbLayer.innerHTML = `<div class="football-pitch">${renderFootballPitchHtml(gs)}</div>`;
     }
     el.innerHTML = `
       <div class="football-viz-foot">
         <div class="football-score-strip">
-          <span>${S.user.username || 'YOU'} <b style="color:var(--gold-light)">${gs.goals?.[0] || 0}</b></span>
-          <span style="color:var(--muted);font-size:0.65rem">GOALS · RD ${gs.round || 0}/20</span>
-          <span><b style="color:var(--silver)">${gs.goals?.[1] || 0}</b> OPP</span>
+          <span>${(S.user.username || 'YOU').slice(0, 12)} <b style="color:var(--gold-light)">${gs.goals?.[pIdx] || 0}</b></span>
+          <span style="color:var(--muted);font-size:0.62rem">${ballLabel} · VISIT ${(gs.round || 0) + 1}/20</span>
+          <span><b style="color:var(--silver)">${gs.goals?.[1 - pIdx] || 0}</b> OPP</span>
         </div>
         <div class="football-events">
-          ${(gs.events || []).slice(0, 5).map(e => `<div class="football-event">${e.text}</div>`).join('') || '<div class="football-event" style="font-style:italic">No events yet</div>'}
+          ${(gs.events || []).slice(0, 5).map(e => `<div class="football-event">${e.text}</div>`).join('') || '<div class="football-event" style="font-style:italic">Hit DBull to take first possession</div>'}
         </div>
       </div>`;
 
@@ -9334,7 +9627,7 @@ function activeChatInput() {
     return document.getElementById('x01-chat-input') || document.getElementById('chat-input');
   }
   const ml = document.querySelector('.match-layout');
-  if (ml?.classList.contains('halveit-match')) {
+  if (ml?.classList.contains('halveit-match') || ml?.classList.contains('golf-darts-match')) {
     return document.getElementById('halveit-chat-input') || document.getElementById('chat-input');
   }
   return document.getElementById('chat-input');

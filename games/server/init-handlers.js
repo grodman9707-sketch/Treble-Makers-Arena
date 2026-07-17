@@ -13,6 +13,15 @@ function createGameInitHandlers(deps) {
         { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] },
         { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] }
       ]
+    }),
+    'Football Darts': () => ({
+      ballX: 50,
+      goals: [0, 0],
+      events: [],
+      round: 0,
+      possession: null,
+      visitDarts: [0, 0],
+      visitThrows: [[], []]
     })
   };
 }
