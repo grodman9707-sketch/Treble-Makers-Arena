@@ -3964,7 +3964,14 @@ body.app-active .arena-bg { animation: none !important; }
         <select id="t-format"><option value="single_elimination">Single Elimination</option><option value="double_elimination">Double Elimination</option><option value="round_robin">Round Robin</option></select>
       </div>
       <div class="form-group"><label>Max Players</label><input type="number" id="t-max" value="16" min="4" max="64"/></div>
-      <div class="form-group"><label>Start Date (optional)</label><input type="date" id="t-date"/></div>
+      <div class="form-group">
+        <label>Start Date &amp; Time (optional)</label>
+        <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:0.55rem">
+          <input type="date" id="t-date"/>
+          <input type="time" id="t-time" value="19:00"/>
+        </div>
+        <p class="mp-hint" style="margin-top:0.4rem">Enter the start in your local time. Players will see it converted to their own local time.</p>
+      </div>
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;text-transform:none;letter-spacing:0">
           <input type="checkbox" id="t-add-bots" checked style="accent-color:var(--gold)"/>
@@ -10305,16 +10312,58 @@ function onTGameChange() {
   if (varRow) varRow.classList.toggle('hidden', !CRICKET_FAMILY_GAMES.includes(game));
 }
 
+/** Local date+time from the create form → UTC ISO string (or null). */
+function parseTournamentStartLocal() {
+  const date = document.getElementById('t-date')?.value?.trim();
+  if (!date) return null;
+  const time = document.getElementById('t-time')?.value?.trim() || '00:00';
+  // datetime-local style value interpreted as the creator's local timezone
+  const local = new Date(`${date}T${time}:00`);
+  if (Number.isNaN(local.getTime())) {
+    toast('Invalid start date/time.');
+    return undefined; // signal validation failure
+  }
+  return local.toISOString();
+}
+
+/** Format stored start for display in the viewer's local timezone. */
+function formatTournamentStart(t) {
+  const raw = t?.startAt || t?.startDate;
+  if (!raw) return null;
+  // Legacy date-only values (YYYY-MM-DD) — show as a local calendar date
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number);
+    const local = new Date(y, m - 1, d);
+    return local.toLocaleDateString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    });
+  }
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return String(raw);
+  return dt.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
 function createTournament() {
   const name = document.getElementById('t-name').value.trim();
   if (!name) { toast('Enter a tournament name.'); return; }
   const game = document.getElementById('t-game').value;
+  const startAt = parseTournamentStartLocal();
+  if (startAt === undefined) return; // invalid date/time
   const payload = {
     type: 'create_tournament',
     name,
     game,
     format: document.getElementById('t-format').value,
     maxPlayers: parseInt(document.getElementById('t-max').value, 10),
+    startAt,
+    // Keep startDate for older clients / display fallback (local calendar date only)
     startDate: document.getElementById('t-date').value || null,
     addTestBots: document.getElementById('t-add-bots').checked
   };
@@ -10359,7 +10408,7 @@ function renderTournaments() {
         <div class="tc-stat"><span class="tc-stat-label">Game</span><span class="tc-stat-val">${t.game}</span></div>
         <div class="tc-stat"><span class="tc-stat-label">Format</span><span class="tc-stat-val">${t.format?.replace('_',' ')}</span></div>
         <div class="tc-stat"><span class="tc-stat-label">Players</span><span class="tc-stat-val">${t.players?.length||0} / ${t.maxPlayers}</span></div>
-        ${t.startDate ? `<div class="tc-stat"><span class="tc-stat-label">Starts</span><span class="tc-stat-val">${t.startDate}</span></div>` : ''}
+        ${formatTournamentStart(t) ? `<div class="tc-stat"><span class="tc-stat-label">Starts</span><span class="tc-stat-val" title="Shown in your local time">${formatTournamentStart(t)}</span></div>` : ''}
       </div>
       <div class="tc-footer">
         <span class="tc-status ${t.status}">${t.status}</span>
@@ -10429,9 +10478,11 @@ function viewTournament(id) {
 
   if (t.status === 'registration') {
     const players = t.players || [];
+    const startLabel = formatTournamentStart(t);
     document.getElementById('bracket-title').textContent = `${t.name} — Registration (${players.length} / ${t.maxPlayers})`;
     document.getElementById('bracket-view').innerHTML = `
       <div class="tournament-reg-players">
+        ${startLabel ? `<p style="margin:0 0 0.85rem;color:var(--gold-light);font-family:'Orbitron',monospace;font-size:0.78rem;letter-spacing:0.04em" title="Shown in your local time">Starts ${startLabel}</p>` : ''}
         <h4>Registered players</h4>
         ${players.length
           ? `<ul class="tournament-reg-list">${players.map(p =>
