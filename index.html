@@ -535,6 +535,14 @@ body.app-active .arena-bg { animation: none !important; }
   font-family: 'Orbitron', monospace; padding: 2px 8px; border-radius: 2px;
   letter-spacing: 0.06em; animation: livePulse 2s infinite;
 }
+.mc-3da {
+  margin-left: 0.35rem;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.68rem;
+  color: var(--gold-light);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 @keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
 /* APP CONTENT */
@@ -4203,6 +4211,7 @@ const S = {
   iceCandidateQueue: [],
   lobbies: [], tournaments: [],
   platformUsers: [],
+  onlineCount: 0,
   arena: { mode: 'open', message: '', registrationOpen: true, guestAllowed: true, pendingCount: 0 },
   camView: { zoom: 1.15, fit: 'cover' },
   matchVariation: {},
@@ -4461,6 +4470,10 @@ function handleWS(msg) {
     case 'lobby': case 'lobby_update':
       S.lobbies = msg.rooms || [];
       renderLobby();
+      break;
+    case 'presence':
+      S.onlineCount = typeof msg.onlineCount === 'number' ? msg.onlineCount : 0;
+      updateLiveBadge();
       break;
     case 'room_created':
       S.roomId = msg.roomId; S.isHost = true;
@@ -5139,11 +5152,25 @@ function lobbyRoomVisible(r) {
   return canPlayGame(r.game, S.user);
 }
 
+function updateLiveBadge() {
+  const el = document.getElementById('nav-live');
+  if (!el) return;
+  if (S.user?.admin) {
+    const n = typeof S.onlineCount === 'number' ? S.onlineCount : 0;
+    el.textContent = `● ${n} LIVE`;
+    el.title = 'People currently on the site';
+    return;
+  }
+  const active = (S.lobbies || []).filter(r => r.status === 'active' && lobbyRoomVisible(r));
+  el.textContent = `● ${active.length} LIVE`;
+  el.title = 'Live matches';
+}
+
 function renderLobby(filter = currentFilter) {
   const waiting = S.lobbies.filter(r => r.status === 'waiting' && lobbyRoomMatchesFilter(r, filter) && lobbyRoomVisible(r));
   const active = S.lobbies.filter(r => r.status === 'active' && lobbyRoomMatchesFilter(r, filter) && lobbyRoomVisible(r));
 
-  document.getElementById('nav-live').textContent = `● ${active.length} LIVE`;
+  updateLiveBadge();
 
   const wg = document.getElementById('matches-grid');
   const ag = document.getElementById('active-grid');
@@ -5180,9 +5207,13 @@ function matchCard(r, isActive) {
   const expLabel = expiresIn >= 60 ? `${Math.ceil(expiresIn / 60)}m left` : `${expiresIn}s left`;
   const constructionBadge = isGameUnderConstruction(r.game)
     ? '<span class="mc-tag">🚧 Under Construction</span>' : '';
+  const hostAvg = Number(r.hostThreeDartAvg);
+  const hostAvgLabel = Number.isFinite(hostAvg) && hostAvg > 0
+    ? `<span class="mc-3da" title="Host career 3-dart average">${hostAvg.toFixed(1)} 3DA</span>`
+    : `<span class="mc-3da" title="No completed X01 matches yet">— 3DA</span>`;
   return `<div class="match-card">
     <div class="mc-game">${r.game}</div>
-    <div class="mc-host">Host: <strong>${usernameLinkHtml(r.hostName)}</strong></div>
+    <div class="mc-host">Host: <strong>${usernameLinkHtml(r.hostName)}</strong>${hostAvgLabel}</div>
     <div class="mc-tags">
       <span class="mc-tag ${isActive ? 'live' : 'waiting'}">${isActive ? '● LIVE' : '⌛ WAITING'}</span>
       <span class="mc-tag">📹 CAM REQ</span>

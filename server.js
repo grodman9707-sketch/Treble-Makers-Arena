@@ -123,7 +123,7 @@ function loadData() {
           admin: true,
           approved: true,
           mustChangePassword: seeded.mustChange,
-          stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0 },
+          stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0 },
           profile: { country: '', league: '', equipment: '', avatarUrl: '' },
           createdAt: Date.now()
         }
@@ -450,6 +450,8 @@ function bindClientSession(client, user, token) {
   client.userId = user.id;
   client.username = user.username;
   client.sessionToken = token || null;
+  // Presence updates after username is bound (login / resume).
+  setImmediate(() => broadcastPresence());
 }
 
 function authOkPayload(user, token) {
@@ -532,7 +534,8 @@ function underConstructionMessage() {
 function defaultUserStats() {
   return {
     wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0,
-    threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0,
+    threeDartAvg: 0, highestCheckout: 0, oneEighties: 0,
+    x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0,
   };
 }
 
@@ -650,21 +653,106 @@ function buildMatchPreview(game, hostName, guestName) {
   };
 }
 
-function recordCareerVisitStats(username, displayScore, extras = {}) {
-  if (!username || isBotPlayer(username) || !db.users[username]) return;
-  const s = ensureUserStats(db.users[username]);
-  const total = typeof displayScore === 'number'
-    ? displayScore
-    : (typeof displayScore === 'string' && displayScore !== 'BUST' ? parseInt(displayScore, 10) : NaN);
-  if (!Number.isNaN(total) && total >= 0 && total <= 180) {
-    s.x01VisitCount += 1;
-    s.x01PointsTotal += total;
-    s.threeDartAvg = Math.round((s.x01PointsTotal / s.x01VisitCount) * 100) / 100;
-    if (total === 180) s.oneEighties += 1;
+function ensureRoomPendingCareer(room) {
+  if (!room.pendingCareer || typeof room.pendingCareer !== 'object') {
+    room.pendingCareer = {};
   }
+  return room.pendingCareer;
+}
+
+/** Track checkout highs during an X01 match; career stats commit only at match end. */
+function trackPendingX01Extras(room, username, extras = {}) {
+  if (!room || !isX01Game(room.config?.game)) return;
+  if (!username || isBotPlayer(username) || !db.users[username]) return;
+  const pending = ensureRoomPendingCareer(room);
+  if (!pending[username]) pending[username] = { highestCheckout: 0 };
   const checkout = parseInt(extras.checkout, 10);
-  if (checkout > 0 && checkout > (s.highestCheckout || 0)) s.highestCheckout = checkout;
-  saveData(db);
+  if (checkout > 0 && checkout > (pending[username].highestCheckout || 0)) {
+    pending[username].highestCheckout = checkout;
+  }
+}
+
+function countMatchOneEighties(gs, playerIdx) {
+  let n = 0;
+  for (const leg of (gs?.legLog || [])) {
+    if (!Array.isArray(leg)) continue;
+    for (const visit of leg) {
+      if (visit && visit.p === playerIdx && !visit.bust && visit.v === 180) n += 1;
+    }
+  }
+  return n;
+}
+
+/**
+ * Fold a completed X01 match into career 3DA.
+ * Match average is averaged with prior completed matches (not mid-match visits).
+ */
+function commitMatchCareerStats(room) {
+  if (!room || !isX01Game(room.config?.game)) return;
+  if (room.careerStatsCommitted) return;
+  const gs = room.gameState;
+  if (!gs || !Array.isArray(gs.points) || !Array.isArray(gs.dartsThrown)) return;
+
+  const names = [room.config.hostName, room.config.guestName];
+  const pending = room.pendingCareer || {};
+  let dirty = false;
+
+  for (let i = 0; i < 2; i++) {
+    const username = names[i];
+    if (!username || isBotPlayer(username) || !db.users[username]) continue;
+    const points = Number(gs.points[i]) || 0;
+    const darts = Number(gs.dartsThrown[i]) || 0;
+    if (darts < 3) continue; // no completed visit
+
+    const matchAvg = (points / darts) * 3;
+    const s = ensureUserStats(db.users[username]);
+    const prevCount = s.x01MatchCount || 0;
+    const prevAvg = s.threeDartAvg || 0;
+    s.x01MatchCount = prevCount + 1;
+    s.threeDartAvg = Math.round(((prevAvg * prevCount) + matchAvg) / s.x01MatchCount * 100) / 100;
+    s.x01PointsTotal = (s.x01PointsTotal || 0) + points;
+    s.x01VisitCount = (s.x01VisitCount || 0) + Math.round(darts / 3);
+    s.oneEighties = (s.oneEighties || 0) + countMatchOneEighties(gs, i);
+
+    const checkout = pending[username]?.highestCheckout || 0;
+    if (checkout > (s.highestCheckout || 0)) s.highestCheckout = checkout;
+    dirty = true;
+  }
+
+  room.careerStatsCommitted = true;
+  room.pendingCareer = {};
+  if (dirty) saveData(db);
+}
+
+function getOnlineUserCount() {
+  const names = new Set();
+  clients.forEach((client) => {
+    if (client?.username) names.add(client.username);
+  });
+  return names.size;
+}
+
+/** Owner/admin only: how many distinct logged-in people are on the site. */
+function broadcastPresence() {
+  const onlineCount = getOnlineUserCount();
+  clients.forEach((client, wsId) => {
+    if (!client?.username) return;
+    if (!db.users[client.username]?.admin) return;
+    send(wsId, { type: 'presence', onlineCount });
+  });
+}
+
+function lobbyRoomPayload(room) {
+  const hostStats = ensureUserStats(db.users[room.config.hostName]);
+  return {
+    id: room.id,
+    game: room.config.game,
+    hostName: room.config.hostName,
+    hostThreeDartAvg: hostStats.threeDartAvg || 0,
+    status: room.status,
+    createdAt: room.createdAt,
+    spectators: spectators.get(room.id)?.size || 0,
+  };
 }
 
 function kickNonAdminSessions(reason) {
@@ -1197,6 +1285,7 @@ function applyX01EditToRoom(room, msg, { fromEdit = false } = {}) {
   if (msg.gameOver) {
     room.status = 'finished';
     room.lastActivity = Date.now();
+    commitMatchCareerStats(room);
     const winnerName = msg.winner;
     const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
     if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
@@ -1615,6 +1704,7 @@ async function handleMessage(wsId, msg) {
         softLaunch: SOFT_LAUNCH,
         ...publicProfilePayload(null),
       });
+      broadcastPresence();
       break;
     }
 
@@ -1645,7 +1735,7 @@ async function handleMessage(wsId, msg) {
         admin: false,
         approved: !needsApproval,
         mustChangePassword: false,
-        stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0 },
+        stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0 },
         profile: defaultUserProfile(),
         createdAt: Date.now()
       };
@@ -1737,6 +1827,7 @@ async function handleMessage(wsId, msg) {
       client.username = null;
       client.sessionToken = null;
       send(wsId, { type: 'logout_ok' });
+      broadcastPresence();
       break;
     }
 
@@ -1961,12 +2052,9 @@ async function handleMessage(wsId, msg) {
       const openRooms = [...rooms.values()]
         .filter(r => (r.status === 'waiting' || r.status === 'active') && !r.config.bot)
         .filter(r => isAdmin || !UNDER_CONSTRUCTION_GAMES.has(r.config.game))
-        .map(r => ({
-          id: r.id, game: r.config.game, hostName: r.config.hostName,
-          status: r.status, createdAt: r.createdAt,
-          spectators: spectators.get(r.id)?.size || 0
-        }));
+        .map(lobbyRoomPayload);
       send(wsId, { type: 'lobby', rooms: openRooms });
+      if (isAdmin) send(wsId, { type: 'presence', onlineCount: getOnlineUserCount() });
       break;
     }
 
@@ -2246,7 +2334,7 @@ async function handleMessage(wsId, msg) {
       if (msg.absoluteScore !== undefined) room.scores[playerIdx] = msg.absoluteScore;
       room.history.unshift({ player: client.username, score: msg.displayScore, note: msg.note, ts: Date.now() });
       if (room.history.length > 50) room.history.pop();
-      recordCareerVisitStats(client.username, msg.displayScore, { checkout: msg.x01Checkout });
+      trackPendingX01Extras(room, client.username, { checkout: msg.x01Checkout });
       room.round = Math.floor(room.history.length / 2);
       const turnEnded = shouldSwitchTurn(room.config.game, room.gameState);
       if (turnEnded) {
@@ -2293,6 +2381,7 @@ async function handleMessage(wsId, msg) {
       if (gameOver) {
         room.status = 'finished';
         room.lastActivity = Date.now();
+        commitMatchCareerStats(room);
         const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
         if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
         const endMsg = buildGameOverMessage(room, winnerName, msg.matchStats);
@@ -2718,6 +2807,7 @@ function handleDisconnect(wsId) {
     spectators.get(client.roomId)?.delete(wsId);
   }
   clients.delete(wsId);
+  broadcastPresence();
 }
 
 // ─────────────────────────────────────────────
@@ -2759,6 +2849,7 @@ function botTakeTurn(room) {
   if (move.gameOver) {
     room.status = 'finished';
     room.lastActivity = Date.now();
+    commitMatchCareerStats(room);
     if (move.winner === room.config.guestName) {
       updateStats(room.config.guestName, room.config.hostName, move.highScore || 0);
     } else if (move.winner === room.config.hostName) {
@@ -3323,11 +3414,7 @@ function broadcastToRoom(room, msg) {
 function broadcastLobbyUpdate() {
   const openRooms = [...rooms.values()]
     .filter(r => (r.status === 'waiting' || r.status === 'active') && !r.config.bot)
-    .map(r => ({
-      id: r.id, game: r.config.game, hostName: r.config.hostName,
-      status: r.status, createdAt: r.createdAt,
-      spectators: spectators.get(r.id)?.size || 0
-    }));
+    .map(lobbyRoomPayload);
   broadcastAll({ type: 'lobby_update', rooms: openRooms });
 }
 
