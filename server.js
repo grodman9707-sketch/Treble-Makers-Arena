@@ -1923,7 +1923,10 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'error', message: 'User is already approved.' });
       }
       target.approved = true;
-      saveData(db);
+      saveDirty = true;
+      // Persist the approval before confirming — otherwise a restart right
+      // after this reverts the account back to pending.
+      await flushData();
       broadcastArenaStatus();
       send(wsId, { type: 'user_approved', username });
       break;
