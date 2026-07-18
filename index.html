@@ -4913,8 +4913,8 @@ function renderArenaPendingList() {
     <li>
       <span>${escapeHtml(u.username)}</span>
       <span style="display:flex;gap:0.35rem">
-        <button class="btn btn-gold btn-sm" onclick="approveArenaUser(${JSON.stringify(u.username)})">Approve</button>
-        <button class="btn btn-danger btn-sm" onclick="rejectArenaUser(${JSON.stringify(u.username)})">Remove</button>
+        <button class="btn btn-gold btn-sm" onclick="approveArenaUser(${escapeHtml(JSON.stringify(u.username))})">Approve</button>
+        <button class="btn btn-danger btn-sm" onclick="rejectArenaUser(${escapeHtml(JSON.stringify(u.username))})">Remove</button>
       </span>
     </li>`).join('');
 }
@@ -10170,7 +10170,7 @@ function renderManagePlayersList() {
   list.innerHTML = `<ul class="mp-player-list">${players.map(p => `
     <li class="${/^bot\s*\(/i.test(p) ? 'bot' : ''}">
       <span>${escapeHtml(p)}</span>
-      <button class="btn btn-danger btn-sm" onclick="removeManagePlayer(${JSON.stringify(p)})">Remove</button>
+      <button class="btn btn-danger btn-sm" onclick="removeManagePlayer(${escapeHtml(JSON.stringify(p))})">Remove</button>
     </li>`).join('')}</ul>`;
 }
 
