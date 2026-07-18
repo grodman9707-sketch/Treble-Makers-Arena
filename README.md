@@ -107,6 +107,10 @@ Copy `.env.example` → `.env` and adjust. The server loads `.env` automatically
 | `MAX_WS_PER_IP` | `25` | Concurrent WebSocket connections per IP |
 | `MAX_MSGS_PER_SEC` | `40` | WebSocket messages per socket per second |
 | `AUTH_MAX_ATTEMPTS` | `15` | Register/login attempts per IP per 5 min |
+| `RESEND_API_KEY` | — | Resend API key for password-reset emails |
+| `EMAIL_FROM` | — | Verified Resend sender, e.g. `Treble-Makers <noreply@yourdomain.com>` |
+| `APP_URL` | — | Public base URL for reset links (no trailing slash) |
+| `PASSWORD_RESET_TTL_MS` | 1 hour | Password-reset token lifetime |
 | `LAZY_LEAGUES_EMAIL` | — | Lazy Leagues Firebase sign-in (optional) |
 | `LAZY_LEAGUES_PASSWORD` | — | Lazy Leagues Firebase sign-in (optional) |
 | `LAZY_LEAGUES_TOKEN` | — | Pre-made Firebase ID token (overrides above) |
@@ -177,5 +181,6 @@ Golf Darts/         Golf Darts course illustration source
 - `helmet` + CSP headers protect the externalized client bundle.
 - Auth and WebSocket connections are rate-limited per IP.
 - Login sessions use opaque tokens (hashed server-side); passwords are never stored in `localStorage`.
+- Registration requires a unique email. Forgot-password sends a one-time reset link via Resend (`RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`) — passwords are never emailed.
 - `data.json` and `server.js` are **not** downloadable — requests fall through to the SPA shell without exposing secrets.
 - Soft launch (`SOFT_LAUNCH=1`) keeps the arena invite-only until you open it for full launch.

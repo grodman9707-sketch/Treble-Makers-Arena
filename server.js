@@ -54,6 +54,11 @@ const TURN_URLS = (process.env.TURN_URLS || '').split(',').map(s => s.trim()).fi
 const TURN_USERNAME = process.env.TURN_USERNAME || '';
 const TURN_CREDENTIAL = process.env.TURN_CREDENTIAL || '';
 const SENTRY_DSN = (process.env.SENTRY_DSN || '').trim();
+// Password-reset email via Resend (optional — forgot-password disabled until configured).
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').trim();
+const EMAIL_FROM = (process.env.EMAIL_FROM || '').trim();
+const APP_URL = (process.env.APP_URL || '').trim().replace(/\/+$/, '');
+const PASSWORD_RESET_TTL_MS = parseInt(process.env.PASSWORD_RESET_TTL_MS, 10) || 60 * 60 * 1000; // 1 hour
 
 // Optional Sentry — install with `npm install @sentry/node` when SENTRY_DSN is set.
 let Sentry = null;
@@ -126,6 +131,7 @@ function loadData() {
       tournaments: [],
       leaderboard: [],
       sessions: {},
+      passwordResets: {},
       arena: {
         mode: SOFT_LAUNCH ? 'invite' : 'open',
         message: SOFT_LAUNCH
@@ -177,10 +183,24 @@ function migrateDbSecurity() {
     db.sessions = {};
     dirty = true;
   }
+  if (!db.passwordResets || typeof db.passwordResets !== 'object') {
+    db.passwordResets = {};
+    dirty = true;
+  }
   for (const user of Object.values(db.users || {})) {
     if (!user || typeof user !== 'object') continue;
     if (user.approved === undefined) {
       user.approved = true;
+      dirty = true;
+    }
+    if (typeof user.email === 'string' && user.email) {
+      const normalized = normalizeEmail(user.email);
+      if (normalized !== user.email) {
+        user.email = normalized;
+        dirty = true;
+      }
+    } else if (user.email == null) {
+      user.email = '';
       dirty = true;
     }
     // Flag legacy default password so soft-launch admins must rotate it.
@@ -214,6 +234,137 @@ function migrateDbSecurity() {
 
 function hashSessionToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+// Same hasher for password-reset tokens (opaque random secrets, never stored raw).
+function hashResetToken(token) {
+  return hashSessionToken(token);
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isValidEmail(email) {
+  if (typeof email !== 'string') return false;
+  const e = normalizeEmail(email);
+  if (!e || e.length > 254) return false;
+  return EMAIL_RE.test(e);
+}
+
+function findUserByEmail(email) {
+  const needle = normalizeEmail(email);
+  if (!needle) return null;
+  for (const user of Object.values(db.users || {})) {
+    if (user && normalizeEmail(user.email) === needle) return user;
+  }
+  return null;
+}
+
+function findUserByUsernameOrEmail(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (db.users[raw]) return db.users[raw];
+  // Case-insensitive username match (login still uses exact key; lookup is for reset).
+  const lower = raw.toLowerCase();
+  for (const user of Object.values(db.users || {})) {
+    if (user && String(user.username || '').toLowerCase() === lower) return user;
+  }
+  return findUserByEmail(raw);
+}
+
+function emailConfigured() {
+  return !!(RESEND_API_KEY && EMAIL_FROM && APP_URL);
+}
+
+async function sendResendEmail({ to, subject, text, html }) {
+  if (!emailConfigured()) {
+    const err = new Error('Password reset email is not configured.');
+    err.code = 'email_unconfigured';
+    throw err;
+  }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [to],
+      subject,
+      text,
+      html,
+    }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch { /* ignore */ }
+    const err = new Error(`Resend API error (${res.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`);
+    err.code = 'email_send_failed';
+    throw err;
+  }
+  return true;
+}
+
+function pruneExpiredPasswordResets() {
+  if (!db.passwordResets) return false;
+  const now = Date.now();
+  let removed = 0;
+  for (const [hash, rec] of Object.entries(db.passwordResets)) {
+    if (!rec || typeof rec.expiresAt !== 'number' || rec.expiresAt <= now) {
+      delete db.passwordResets[hash];
+      removed++;
+    }
+  }
+  return removed > 0;
+}
+
+function clearPasswordResetsForUser(username) {
+  if (!db.passwordResets) return;
+  for (const [hash, rec] of Object.entries(db.passwordResets)) {
+    if (rec?.username === username) delete db.passwordResets[hash];
+  }
+}
+
+function createPasswordResetToken(username) {
+  pruneExpiredPasswordResets();
+  clearPasswordResetsForUser(username);
+  const token = crypto.randomBytes(32).toString('base64url');
+  const hash = hashResetToken(token);
+  const now = Date.now();
+  db.passwordResets[hash] = {
+    username,
+    createdAt: now,
+    expiresAt: now + PASSWORD_RESET_TTL_MS,
+  };
+  saveData();
+  return token;
+}
+
+function consumePasswordResetToken(token) {
+  if (!token || typeof token !== 'string' || !db.passwordResets) return null;
+  pruneExpiredPasswordResets();
+  const hash = hashResetToken(token);
+  const rec = db.passwordResets[hash];
+  if (!rec) return null;
+  if (typeof rec.expiresAt !== 'number' || rec.expiresAt <= Date.now()) {
+    delete db.passwordResets[hash];
+    saveData();
+    return null;
+  }
+  const user = db.users[rec.username];
+  delete db.passwordResets[hash];
+  if (!user) {
+    saveData();
+    return null;
+  }
+  // Invalidate any other outstanding resets for this account.
+  clearPasswordResetsForUser(user.username);
+  saveData();
+  return user;
 }
 
 function pruneExpiredSessions() {
@@ -406,10 +557,10 @@ function ensureUserProfile(user) {
   return p;
 }
 
-function publicProfilePayload(user) {
+function publicProfilePayload(user, { includeEmail = false } = {}) {
   const profile = ensureUserProfile(user);
   const stats = ensureUserStats(user);
-  return {
+  const payload = {
     profile: {
       country: profile.country,
       league: profile.league,
@@ -427,6 +578,10 @@ function publicProfilePayload(user) {
       oneEighties: stats.oneEighties || 0,
     },
   };
+  if (includeEmail && user) {
+    payload.email = typeof user.email === 'string' ? user.email : '';
+  }
+  return payload;
 }
 
 function sanitizeAvatarDataUrl(raw) {
@@ -567,8 +722,11 @@ function flushDataSync() {
 
 // Run security migrations once persistence helpers exist.
 {
-  const dirty = migrateDbSecurity() || pruneExpiredSessions();
+  const dirty = migrateDbSecurity() || pruneExpiredSessions() || pruneExpiredPasswordResets();
   if (dirty) saveData();
+}
+if (!emailConfigured()) {
+  log('warn', 'Password reset email is not configured (set RESEND_API_KEY, EMAIL_FROM, APP_URL). Forgot-password will be unavailable.');
 }
 
 // ─── Backups: the whole DB is one JSON file, so keep timestamped copies so
@@ -1354,13 +1512,24 @@ function allowAuthAttempt(ip) {
 }
 
 const USERNAME_RE = /^[A-Za-z0-9_-]{3,20}$/;
-function validateRegistration(username, password) {
-  if (typeof username !== 'string' || typeof password !== 'string') return 'Invalid username or password.';
-  if (!USERNAME_RE.test(username)) return 'Username must be 3–20 characters: letters, numbers, _ or -.';
+function validatePassword(password) {
+  if (typeof password !== 'string') return 'Invalid password.';
   if (password.length < 8) return 'Password must be at least 8 characters.';
   if (password.length > 72) return 'Password must be 72 characters or fewer.'; // bcrypt truncates beyond 72 bytes
   return null;
 }
+
+function validateRegistration(username, password, email) {
+  if (typeof username !== 'string' || typeof password !== 'string') return 'Invalid username or password.';
+  if (!USERNAME_RE.test(username)) return 'Username must be 3–20 characters: letters, numbers, _ or -.';
+  const badPw = validatePassword(password);
+  if (badPw) return badPw;
+  if (!isValidEmail(email)) return 'A valid email address is required.';
+  return null;
+}
+
+const RESET_REQUEST_OK =
+  'If an account matches, a password reset link has been sent. Check your email.';
 
 wss.on('connection', (ws, req) => {
   const ip = clientIp(req);
@@ -1448,6 +1617,7 @@ function handleMessage(wsId, msg) {
 
     case 'register': {
       const { username, password } = msg;
+      const email = normalizeEmail(msg.email);
       if (!allowAuthAttempt(client.ip)) {
         return send(wsId, { type: 'auth_error', message: 'Too many attempts. Please wait a few minutes and try again.' });
       }
@@ -1455,17 +1625,20 @@ function handleMessage(wsId, msg) {
       if (arena.mode === 'maintenance') {
         return send(wsId, { type: 'auth_error', message: 'The arena is offline for maintenance. Registration is closed.' });
       }
-      const invalid = validateRegistration(username, password);
+      const invalid = validateRegistration(username, password, email);
       if (invalid) {
         return send(wsId, { type: 'auth_error', message: invalid });
       }
       if (db.users[username]) {
         return send(wsId, { type: 'auth_error', message: 'Username already taken.' });
       }
+      if (findUserByEmail(email)) {
+        return send(wsId, { type: 'auth_error', message: 'An account with that email already exists.' });
+      }
       const needsApproval = arena.mode === 'invite';
       const hash = bcrypt.hashSync(password, BCRYPT_ROUNDS);
       db.users[username] = {
-        id: uuidv4(), username, passwordHash: hash,
+        id: uuidv4(), username, email, passwordHash: hash,
         admin: false,
         approved: !needsApproval,
         mustChangePassword: false,
@@ -1575,22 +1748,108 @@ function handleMessage(wsId, msg) {
       if (!bcrypt.compareSync(currentPassword, user.passwordHash)) {
         return send(wsId, { type: 'password_error', message: 'Current password is incorrect.' });
       }
-      if (newPassword.length < 8) {
-        return send(wsId, { type: 'password_error', message: 'New password must be at least 8 characters.' });
-      }
-      if (newPassword.length > 72) {
-        return send(wsId, { type: 'password_error', message: 'New password must be 72 characters or fewer.' });
+      const badPw = validatePassword(newPassword);
+      if (badPw) {
+        return send(wsId, { type: 'password_error', message: badPw });
       }
       if (newPassword === currentPassword) {
         return send(wsId, { type: 'password_error', message: 'New password must be different from the current password.' });
       }
       user.passwordHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
       user.mustChangePassword = false;
+      clearPasswordResetsForUser(user.username);
       // Rotate sessions: keep this socket's token, revoke others.
       const keepHash = client.sessionToken ? hashSessionToken(client.sessionToken) : null;
       revokeUserSessions(user.username, keepHash);
       saveData();
       send(wsId, { type: 'password_ok', message: 'Password updated.' });
+      break;
+    }
+
+    case 'request_password_reset': {
+      if (!allowAuthAttempt(client.ip)) {
+        return send(wsId, { type: 'auth_error', message: 'Too many attempts. Please wait a few minutes and try again.' });
+      }
+      if (!emailConfigured()) {
+        return send(wsId, {
+          type: 'auth_error',
+          message: 'Password reset email is unavailable right now. Contact an admin for help.',
+        });
+      }
+      const usernameOrEmail = String(msg.usernameOrEmail || '').trim();
+      if (!usernameOrEmail) {
+        return send(wsId, { type: 'auth_error', message: 'Enter your username or email.' });
+      }
+      // Always respond with the same success text to avoid account enumeration.
+      // Only send mail when we have a matching account with an email on file.
+      const user = findUserByUsernameOrEmail(usernameOrEmail);
+      const replyOk = () => send(wsId, { type: 'reset_request_ok', message: RESET_REQUEST_OK });
+      if (!user || !isValidEmail(user.email)) {
+        return replyOk();
+      }
+      try {
+        const token = createPasswordResetToken(user.username);
+        const resetUrl = `${APP_URL}/?reset=${encodeURIComponent(token)}`;
+        const subject = 'Reset your Treble-Makers password';
+        const text = [
+          `Hi ${user.username},`,
+          '',
+          'We received a request to reset your Treble-Makers Arena password.',
+          'Open this link to choose a new password (expires in 1 hour):',
+          resetUrl,
+          '',
+          'If you did not request this, you can ignore this email.',
+        ].join('\n');
+        const html = `
+          <p>Hi <strong>${user.username}</strong>,</p>
+          <p>We received a request to reset your Treble-Makers Arena password.</p>
+          <p><a href="${resetUrl}">Choose a new password</a> (link expires in 1 hour).</p>
+          <p>If you did not request this, you can ignore this email.</p>
+        `.trim();
+        sendResendEmail({ to: user.email, subject, text, html })
+          .then(() => replyOk())
+          .catch((err) => {
+            log('error', 'Password reset email failed:', err.message || err);
+            // Roll back unused token so retries can mint a fresh one.
+            clearPasswordResetsForUser(user.username);
+            saveData();
+            send(wsId, {
+              type: 'auth_error',
+              message: 'Could not send the reset email. Please try again later.',
+            });
+          });
+      } catch (err) {
+        log('error', 'Password reset request failed:', err.message || err);
+        send(wsId, {
+          type: 'auth_error',
+          message: 'Could not send the reset email. Please try again later.',
+        });
+      }
+      break;
+    }
+
+    case 'reset_password': {
+      if (!allowAuthAttempt(client.ip)) {
+        return send(wsId, { type: 'auth_error', message: 'Too many attempts. Please wait a few minutes and try again.' });
+      }
+      const token = msg.token;
+      const newPassword = msg.newPassword;
+      if (typeof token !== 'string' || !token) {
+        return send(wsId, { type: 'auth_error', message: 'Invalid or expired reset link.' });
+      }
+      const badPw = validatePassword(newPassword);
+      if (badPw) {
+        return send(wsId, { type: 'auth_error', message: badPw });
+      }
+      const user = consumePasswordResetToken(token);
+      if (!user) {
+        return send(wsId, { type: 'auth_error', message: 'Invalid or expired reset link. Request a new one.' });
+      }
+      user.passwordHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
+      user.mustChangePassword = false;
+      revokeUserSessions(user.username);
+      saveData();
+      send(wsId, { type: 'password_ok', message: 'Password updated. You can sign in with your new password.', code: 'password_reset' });
       break;
     }
 
@@ -1669,6 +1928,8 @@ function handleMessage(wsId, msg) {
       if (target.approved !== false) {
         return send(wsId, { type: 'error', message: 'Only pending accounts can be rejected.' });
       }
+      clearPasswordResetsForUser(username);
+      revokeUserSessions(username);
       delete db.users[username];
       saveData(db);
       broadcastArenaStatus();
@@ -1887,7 +2148,7 @@ function handleMessage(wsId, msg) {
       if (!client.username || !db.users[client.username]) {
         return send(wsId, { type: 'profile_error', message: 'Must be logged in.' });
       }
-      const payload = publicProfilePayload(db.users[client.username]);
+      const payload = publicProfilePayload(db.users[client.username], { includeEmail: true });
       send(wsId, { type: 'profile_ok', username: client.username, ...payload, saved: false });
       break;
     }
@@ -1922,9 +2183,20 @@ function handleMessage(wsId, msg) {
         }
         profile.avatarUrl = avatar;
       }
+      if (Object.prototype.hasOwnProperty.call(msg, 'email')) {
+        const email = normalizeEmail(msg.email);
+        if (!isValidEmail(email)) {
+          return send(wsId, { type: 'profile_error', message: 'A valid email address is required.' });
+        }
+        const taken = findUserByEmail(email);
+        if (taken && taken.username !== user.username) {
+          return send(wsId, { type: 'profile_error', message: 'An account with that email already exists.' });
+        }
+        user.email = email;
+      }
       user.profile = profile;
       saveData(db);
-      const payload = publicProfilePayload(user);
+      const payload = publicProfilePayload(user, { includeEmail: true });
       send(wsId, { type: 'profile_ok', username: client.username, ...payload, saved: true });
       break;
     }
