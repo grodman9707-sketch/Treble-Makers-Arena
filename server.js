@@ -1946,7 +1946,10 @@ async function handleMessage(wsId, msg) {
       clearPasswordResetsForUser(username);
       revokeUserSessions(username);
       delete db.users[username];
-      saveData(db);
+      saveDirty = true;
+      // Persist the removal before confirming — otherwise a restart right
+      // after this can resurrect the pending account.
+      await flushData();
       broadcastArenaStatus();
       send(wsId, { type: 'user_rejected', username });
       break;
