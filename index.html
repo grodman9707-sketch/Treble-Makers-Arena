@@ -650,11 +650,19 @@ body.app-active .arena-bg { animation: none !important; }
 .cam-video-frame video.cam-video {
   width: 100%; height: 100%; display: block;
   object-fit: cover;
+}
+/* Zoom is a local framing preference — apply only to your preview/local feed */
+#cam-preview-frame video.cam-video,
+#cam-frame-local video.cam-video {
   transform: scale(var(--cam-zoom, 1));
   transform-origin: center center;
 }
 .cam-video-frame.fit-contain video.cam-video { object-fit: contain; }
 .webcam-cell video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.x01-cam-video,
+.ckt-cam-video {
+  transform-origin: center center;
+}
 .cam-preview-wrap {
   position: relative; width: 100%; aspect-ratio: 16/9; max-height: 240px;
   background: #000; border: 1px solid var(--border); border-radius: 6px;
@@ -3513,7 +3521,7 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="fb-cam-spacer" id="fb-cam-spacer" aria-hidden="true"></div>
             <div class="webcam-cell" id="webcam-opp">
               <div class="cam-video-frame fit-contain" id="cam-frame-remote">
-                <video id="video-remote" class="cam-video" autoplay playsinline></video>
+                <video id="video-remote" class="cam-video" autoplay muted playsinline></video>
               </div>
               <div id="cam-placeholder-opp" class="cam-placeholder">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.899L15 14"/><rect x="3" y="8" width="12" height="8" rx="2"/></svg>
@@ -5385,11 +5393,9 @@ function updateCamSettingsLock(game) {
   if (controls) controls.classList.toggle('hidden', locked);
   if (note) note.classList.toggle('hidden', !locked);
   if (locked) {
-    S.camView = { zoom: 1.15, fit: 'cover' };
-    const zoom = document.getElementById('cam-zoom');
-    if (zoom) zoom.value = 115;
-    const lbl = document.getElementById('cam-zoom-val');
-    if (lbl) lbl.textContent = '1.15×';
+    // Lock further edits for this game, but keep the zoom the player already set
+    // in Camera Setup so framing carries into the match.
+    S.camView.fit = 'cover';
     document.getElementById('cam-fit-cover')?.classList.add('active');
     document.getElementById('cam-fit-contain')?.classList.remove('active');
     applyCamView();
@@ -5419,6 +5425,31 @@ function applyCamView() {
     const frame = document.getElementById(id);
     if (frame) frame.classList.toggle('fit-contain', !golfCam && S.camView.fit === 'contain');
   });
+  // X01 / Cricket use a separate single-feed <video> — apply local zoom there too.
+  applySpecialtyCamZoom();
+}
+
+/** Zoom only when the specialty match cam is showing *your* stream. */
+function applySpecialtyCamZoom() {
+  const zoom = `scale(${S.camView.zoom})`;
+  ['x01-cam-video', 'ckt-cam-video'].forEach(id => {
+    const vid = document.getElementById(id);
+    if (!vid) return;
+    const showingLocal = !!vid.srcObject && vid.srcObject === S.localStream;
+    vid.style.transform = showingLocal ? zoom : '';
+  });
+}
+
+/** Attach a MediaStream to a <video> and ensure playback actually starts. */
+function bindVideoElement(vid, stream, { muted = false } = {}) {
+  if (!vid || !stream) return;
+  if (vid.srcObject !== stream) vid.srcObject = stream;
+  vid.muted = muted;
+  vid.playsInline = true;
+  const playPromise = vid.play?.();
+  if (playPromise && typeof playPromise.catch === 'function') {
+    playPromise.catch(() => { /* autoplay can be blocked briefly; track events retry */ });
+  }
 }
 
 async function startCameraPreview() {
@@ -5437,7 +5468,7 @@ async function startCameraPreview() {
       });
     }
     const preview = document.getElementById('cam-preview');
-    if (preview) preview.srcObject = S.localStream;
+    bindVideoElement(preview, S.localStream, { muted: true });
     ph?.classList.add('hidden');
     attachLocalCamera();
     applyCamView();
@@ -5551,6 +5582,7 @@ async function reenableCamera() {
     if (S.localStream) {
       S.camReady = true;
       updateCamNavButton();
+      await replaceLocalPeerTracks();
       const enableBtn = document.getElementById('cam-enable-btn');
       if (enableBtn) enableBtn.textContent = 'Camera Active';
       toast('Camera re-enabled.');
@@ -5597,10 +5629,12 @@ function startMatchFromModal() {
 function attachLocalCamera() {
   if (!S.localStream) return;
   const vid = document.getElementById('video-local');
-  if (vid) vid.srcObject = S.localStream;
+  bindVideoElement(vid, S.localStream, { muted: true });
   const ph = document.getElementById('cam-placeholder-you');
   if (ph) ph.style.display = 'none';
   applyCamView();
+  if (isX01Game(S.game)) updateX01Camera();
+  if (isCricketGame(S.game)) updateCricketCamera();
 }
 
 function createBotMatch() {
@@ -5643,17 +5677,47 @@ const RTC_CONFIG = {
   ]
 };
 
+async function flushIceCandidateQueue() {
+  if (!S.peerConn) return;
+  const queued = S.iceCandidateQueue.splice(0, S.iceCandidateQueue.length);
+  for (const candidate of queued) {
+    try {
+      await S.peerConn.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.warn('addIceCandidate failed:', err?.message || err);
+    }
+  }
+}
+
+function attachRemoteStream(stream) {
+  if (!stream) return;
+  S.remoteStream = stream;
+  const vid = document.getElementById('video-remote');
+  // muted avoids autoplay blocks; audio is not used for cams anyway
+  bindVideoElement(vid, stream, { muted: true });
+  const ph = document.getElementById('cam-placeholder-opp');
+  if (ph) ph.style.display = 'none';
+  if (isX01Game(S.game)) updateX01Camera();
+  if (isCricketGame(S.game)) updateCricketCamera();
+  attachBullCornerCams();
+}
+
 async function initWebRTC(createOffer) {
+  // Replace any stale peer without wiping ICE that arrived before the offer.
+  if (S.peerConn) {
+    try { S.peerConn.close(); } catch { /* ignore */ }
+    S.peerConn = null;
+  }
+  S.remoteStream = null;
+
   S.peerConn = new RTCPeerConnection(RTC_CONFIG);
-  if (S.localStream) S.localStream.getTracks().forEach(t => S.peerConn.addTrack(t, S.localStream));
+  if (S.localStream) {
+    S.localStream.getTracks().forEach(t => S.peerConn.addTrack(t, S.localStream));
+  }
 
   S.peerConn.ontrack = (e) => {
-    const vid = document.getElementById('video-remote');
-    vid.srcObject = e.streams[0];
-    S.remoteStream = e.streams[0];
-    document.getElementById('cam-placeholder-opp').style.display = 'none';
-    if (isX01Game(S.game)) updateX01Camera();
-    if (isCricketGame(S.game)) updateCricketCamera();
+    const stream = e.streams?.[0] || (e.track ? new MediaStream([e.track]) : null);
+    attachRemoteStream(stream);
   };
 
   S.peerConn.onicecandidate = (e) => {
@@ -5661,7 +5725,9 @@ async function initWebRTC(createOffer) {
   };
 
   S.peerConn.onconnectionstatechange = () => {
-    if (S.peerConn.connectionState === 'connected') toast('Peer connection established!');
+    const state = S.peerConn?.connectionState;
+    if (state === 'connected') toast('Peer connection established!');
+    if (state === 'failed') toast('Camera peer connection failed. Try Re-enable in Camera Setup.');
   };
 
   if (createOffer) {
@@ -5672,22 +5738,32 @@ async function initWebRTC(createOffer) {
 }
 
 async function handleRTCOffer(msg) {
+  if (!msg?.sdp) return;
   if (!S.peerConn) await initWebRTC(false);
   await S.peerConn.setRemoteDescription(new RTCSessionDescription(msg.sdp));
   const answer = await S.peerConn.createAnswer();
   await S.peerConn.setLocalDescription(answer);
   wsSend({ type: 'webrtc_answer', sdp: answer });
-  S.iceCandidateQueue.forEach(c => S.peerConn.addIceCandidate(new RTCIceCandidate(c)));
-  S.iceCandidateQueue = [];
+  await flushIceCandidateQueue();
 }
 
 async function handleRTCAnswer(msg) {
-  await S.peerConn?.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+  if (!S.peerConn || !msg?.sdp) return;
+  await S.peerConn.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+  // Critical: early ICE from the answerer was queued before remoteDescription
+  // existed — without flushing, the host often never completes the connection
+  // and the opponent cam stays black.
+  await flushIceCandidateQueue();
 }
 
 async function handleRTCIce(msg) {
+  if (!msg?.candidate) return;
   if (S.peerConn?.remoteDescription) {
-    await S.peerConn.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    try {
+      await S.peerConn.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    } catch (err) {
+      console.warn('addIceCandidate failed:', err?.message || err);
+    }
   } else {
     S.iceCandidateQueue.push(msg.candidate);
   }
@@ -5700,6 +5776,23 @@ function closePeerConnection() {
   S.peerConn = null;
   S.remoteStream = null;
   S.iceCandidateQueue = [];
+  const remoteVid = document.getElementById('video-remote');
+  if (remoteVid) remoteVid.srcObject = null;
+}
+
+/** Swap live tracks into an existing peer connection after Re-enable. */
+async function replaceLocalPeerTracks() {
+  if (!S.peerConn || !S.localStream) return;
+  const senders = S.peerConn.getSenders();
+  const videoTrack = S.localStream.getVideoTracks()[0] || null;
+  const videoSender = senders.find(s => !s.track || s.track.kind === 'video');
+  if (videoSender) {
+    try { await videoSender.replaceTrack(videoTrack); } catch (err) {
+      console.warn('replaceTrack failed:', err?.message || err);
+    }
+  } else if (videoTrack) {
+    S.peerConn.addTrack(videoTrack, S.localStream);
+  }
 }
 
 // Full teardown — also releases the camera. Use on logout / leaving the site.
@@ -6140,12 +6233,12 @@ function attachBullCornerCams() {
   const f0 = document.getElementById('bull-fallback-0');
   const f1 = document.getElementById('bull-fallback-1');
   if (S.isHost) {
-    if (v0 && S.localStream) { v0.srcObject = S.localStream; if (f0) f0.style.display = 'none'; }
-    if (v1 && S.remoteStream) { v1.srcObject = S.remoteStream; if (f1) f1.style.display = 'none'; }
+    if (v0 && S.localStream) { bindVideoElement(v0, S.localStream, { muted: true }); if (f0) f0.style.display = 'none'; }
+    if (v1 && S.remoteStream) { bindVideoElement(v1, S.remoteStream, { muted: true }); if (f1) f1.style.display = 'none'; }
     else if (f1) f1.style.display = '';
   } else {
-    if (v1 && S.localStream) { v1.srcObject = S.localStream; if (f1) f1.style.display = 'none'; }
-    if (v0 && S.remoteStream) { v0.srcObject = S.remoteStream; if (f0) f0.style.display = 'none'; }
+    if (v1 && S.localStream) { bindVideoElement(v1, S.localStream, { muted: true }); if (f1) f1.style.display = 'none'; }
+    if (v0 && S.remoteStream) { bindVideoElement(v0, S.remoteStream, { muted: true }); if (f0) f0.style.display = 'none'; }
     else if (f0) f0.style.display = '';
   }
   if (S.isBot && f1) f1.style.display = '';
@@ -7571,11 +7664,8 @@ function updateCricketCamera() {
   let stream;
   if (isMyTurn || S.isBot) stream = S.localStream;
   else stream = S.remoteStream || S.localStream;
-  if (stream && v.srcObject !== stream) {
-    v.srcObject = stream;
-    v.muted = true;
-    v.play?.().catch(() => {});
-  }
+  if (stream) bindVideoElement(v, stream, { muted: true });
+  applySpecialtyCamZoom();
   const badge = document.getElementById('ckt-cam-badge');
   if (badge) {
     const names = cktPlayerNames();
@@ -8831,11 +8921,8 @@ function updateX01Camera() {
   } else {
     stream = S.remoteStream || S.localStream; // PvP opponent's turn
   }
-  if (stream && v.srcObject !== stream) {
-    v.srcObject = stream;
-    v.muted = true;
-    v.play?.().catch(() => {});
-  }
+  if (stream) bindVideoElement(v, stream, { muted: true });
+  applySpecialtyCamZoom();
   const badge = document.getElementById('x01-cam-badge');
   if (badge) {
     const names = x01PlayerNames();
