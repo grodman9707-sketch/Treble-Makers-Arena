@@ -2491,13 +2491,21 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'error', message: 'Invalid game selection.' });
       }
       const maxPlayers = Math.min(64, Math.max(2, parseInt(msg.maxPlayers, 10) || 16));
+      const startAt = normalizeTournamentStartAt(msg.startAt || msg.startDate);
+      if (msg.startAt && startAt === null) {
+        return send(wsId, { type: 'error', message: 'Invalid tournament start time.' });
+      }
       const t = {
         id: uuidv4(), name, game: msg.game,
         format: msg.format || 'single_elimination',
         maxPlayers,
         players: [], bracket: [], status: 'registration',
         createdBy: client.username, createdAt: Date.now(),
-        startDate: msg.startDate || null,
+        startAt,
+        // Legacy date-only field kept for older clients / display fallback
+        startDate: typeof msg.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(msg.startDate)
+          ? msg.startDate
+          : (startAt ? startAt.slice(0, 10) : null),
         waitForHostJoin: !!msg.waitForHostJoin,
         variation: msg.variation || null,
         startRule: msg.startRule || null,
@@ -3555,10 +3563,25 @@ function generateBracket(players) {
   return rounds;
 }
 
+/** Accept ISO datetime or legacy YYYY-MM-DD; return UTC ISO or null. */
+function normalizeTournamentStartAt(raw) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Legacy date-only — keep as-is for display; not a full timestamp
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const ms = Date.parse(trimmed);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
 function sanitizeTournament(t) {
   return { id: t.id, name: t.name, game: t.game, format: t.format,
     maxPlayers: t.maxPlayers, players: t.players, bracket: t.bracket,
-    status: t.status, createdBy: t.createdBy, createdAt: t.createdAt, startDate: t.startDate,
+    status: t.status, createdBy: t.createdBy, createdAt: t.createdAt,
+    startAt: t.startAt || null,
+    startDate: t.startDate || null,
     waitForHostJoin: !!t.waitForHostJoin,
     variation: t.variation || null, startRule: t.startRule || null,
     finishRule: t.finishRule || null, x01Base: t.x01Base || null };
