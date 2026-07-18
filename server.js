@@ -71,7 +71,7 @@ if (SENTRY_DSN) {
   }
 }
 
-const DATA_FILE = path.join(__dirname, 'data.json');
+const DATA_FILE = '/app/data/data.json';
 const BACKUP_DIR = path.join(__dirname, 'backups');
 // Client assets live in public/ and are the ONLY thing served statically, so
 // source/secrets (server.js, data.json with password hashes, scripts/, smoke
