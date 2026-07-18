@@ -380,7 +380,7 @@ function pruneExpiredSessions() {
   return removed > 0;
 }
 
-function createSession(username, userId) {
+async function createSession(username, userId) {
   pruneExpiredSessions();
   const token = crypto.randomBytes(32).toString('base64url');
   const hash = hashSessionToken(token);
@@ -399,7 +399,10 @@ function createSession(username, userId) {
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
   };
-  saveData();
+  saveDirty = true;
+  // Session tokens must be durable before we hand them to the client —
+  // otherwise a restart/deploy right after login silently logs everyone out.
+  await flushData();
   return token;
 }
 
@@ -1558,13 +1561,13 @@ wss.on('connection', (ws, req) => {
     // Never let a single bad message take down the whole process — that would
     // drop every connected player's session (they'd reconnect logged-out and
     // hit "Must be logged in." on their next action).
-    try {
-      handleMessage(wsId, msg);
-    } catch (err) {
-      log('error', `handleMessage error (type=${msg && msg.type}):`, err);
-      try { Sentry?.captureException?.(err); } catch { /* ignore */ }
-      try { send(wsId, { type: 'error', message: 'Something went wrong handling that action.' }); } catch {}
-    }
+    Promise.resolve()
+      .then(() => handleMessage(wsId, msg))
+      .catch((err) => {
+        log('error', `handleMessage error (type=${msg && msg.type}):`, err);
+        try { Sentry?.captureException?.(err); } catch { /* ignore */ }
+        try { send(wsId, { type: 'error', message: 'Something went wrong handling that action.' }); } catch {}
+      });
   });
 
   ws.on('close', () => {
@@ -1578,7 +1581,7 @@ wss.on('connection', (ws, req) => {
   send(wsId, { type: 'arena_status', ...arenaStatusPayload() });
 });
 
-function handleMessage(wsId, msg) {
+async function handleMessage(wsId, msg) {
   const client = clients.get(wsId);
   if (!client) return;
 
@@ -1659,7 +1662,7 @@ function handleMessage(wsId, msg) {
       }
       {
         const user = db.users[username];
-        const token = createSession(username, user.id);
+        const token = await createSession(username, user.id);
         bindClientSession(client, user, token);
         send(wsId, authOkPayload(user, token));
       }
@@ -1689,7 +1692,7 @@ function handleMessage(wsId, msg) {
         return send(wsId, { type: 'auth_error', message: 'Your account is awaiting admin approval.' });
       }
       {
-        const token = createSession(username, user.id);
+        const token = await createSession(username, user.id);
         bindClientSession(client, user, token);
         send(wsId, authOkPayload(user, token));
       }
@@ -1718,7 +1721,10 @@ function handleMessage(wsId, msg) {
       }
       // Slide expiry forward on successful resume.
       found.sess.expiresAt = Date.now() + SESSION_TTL_MS;
-      saveData();
+      saveDirty = true;
+      // Ensure the refreshed expiry is durable before we confirm the resume —
+      // otherwise a restart right after reconnect can revert to a stale TTL.
+      await flushData();
       bindClientSession(client, user, token);
       send(wsId, authOkPayload(user, token));
       break;
@@ -1761,7 +1767,11 @@ function handleMessage(wsId, msg) {
       // Rotate sessions: keep this socket's token, revoke others.
       const keepHash = client.sessionToken ? hashSessionToken(client.sessionToken) : null;
       revokeUserSessions(user.username, keepHash);
-      saveData();
+      saveDirty = true;
+      // The new password hash must be on disk before we tell the client it
+      // succeeded — otherwise a restart right after this reverts to the
+      // one-time password and mustChangePassword flips back to true.
+      await flushData();
       send(wsId, { type: 'password_ok', message: 'Password updated.' });
       break;
     }
@@ -1848,7 +1858,9 @@ function handleMessage(wsId, msg) {
       user.passwordHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
       user.mustChangePassword = false;
       revokeUserSessions(user.username);
-      saveData();
+      saveDirty = true;
+      // Same durability guarantee as change_password: persist before confirming.
+      await flushData();
       send(wsId, { type: 'password_ok', message: 'Password updated. You can sign in with your new password.', code: 'password_reset' });
       break;
     }
