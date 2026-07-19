@@ -2305,7 +2305,8 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .profile-card, .profile-stats-card {
   padding: 1.35rem 1.4rem; border-radius: 10px;
-  background: rgba(0,0,0,0.28); border: 1px solid var(--border);
+  background: rgba(6,8,12,0.92); border: 1px solid var(--border-bright);
+  backdrop-filter: blur(4px);
 }
 .profile-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; margin-bottom: 1rem; }
 .profile-avatar {
@@ -2330,8 +2331,8 @@ body.app-active .arena-bg { animation: none !important; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.65rem;
 }
 .profile-stat {
-  padding: 0.7rem 0.8rem; border-radius: 6px; background: rgba(0,0,0,0.28);
-  border: 1px solid rgba(255,255,255,0.04);
+  padding: 0.7rem 0.8rem; border-radius: 6px; background: rgba(0,0,0,0.65);
+  border: 1px solid rgba(255,255,255,0.1);
 }
 .profile-stat .ps-label {
   display: block; font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase;
