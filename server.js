@@ -650,20 +650,44 @@ function buildMatchPreview(game, hostName, guestName) {
   };
 }
 
-function recordCareerVisitStats(username, displayScore, extras = {}) {
-  if (!username || isBotPlayer(username) || !db.users[username]) return;
-  const s = ensureUserStats(db.users[username]);
+// Per-visit career stats (3DA, 180s, high checkout) are accrued into the room as
+// the match progresses but NOT written to the player's profile yet. They are only
+// committed on a legitimate game over (commitCareerStats). If a player leaves/quits,
+// the room — and these pending stats — are discarded, so a quit match records nothing.
+function accrueCareerVisit(room, username, displayScore, extras = {}) {
+  if (!room || !username || isBotPlayer(username) || !db.users[username]) return;
+  if (!room.careerAccum) room.careerAccum = {};
+  const a = room.careerAccum[username] ||
+    (room.careerAccum[username] = { visitCount: 0, pointsTotal: 0, oneEighties: 0, highestCheckout: 0 });
   const total = typeof displayScore === 'number'
     ? displayScore
     : (typeof displayScore === 'string' && displayScore !== 'BUST' ? parseInt(displayScore, 10) : NaN);
   if (!Number.isNaN(total) && total >= 0 && total <= 180) {
-    s.x01VisitCount += 1;
-    s.x01PointsTotal += total;
-    s.threeDartAvg = Math.round((s.x01PointsTotal / s.x01VisitCount) * 100) / 100;
-    if (total === 180) s.oneEighties += 1;
+    a.visitCount += 1;
+    a.pointsTotal += total;
+    if (total === 180) a.oneEighties += 1;
   }
   const checkout = parseInt(extras.checkout, 10);
-  if (checkout > 0 && checkout > (s.highestCheckout || 0)) s.highestCheckout = checkout;
+  if (checkout > 0 && checkout > a.highestCheckout) a.highestCheckout = checkout;
+}
+
+// Commit the pending per-visit career stats accrued during a completed match.
+function commitCareerStats(room) {
+  if (!room || !room.careerAccum) return;
+  for (const [username, a] of Object.entries(room.careerAccum)) {
+    if (!db.users[username]) continue;
+    const s = ensureUserStats(db.users[username]);
+    if (a.visitCount > 0) {
+      s.x01VisitCount += a.visitCount;
+      s.x01PointsTotal += a.pointsTotal;
+      s.threeDartAvg = s.x01VisitCount > 0
+        ? Math.round((s.x01PointsTotal / s.x01VisitCount) * 100) / 100
+        : 0;
+      s.oneEighties += a.oneEighties;
+    }
+    if (a.highestCheckout > (s.highestCheckout || 0)) s.highestCheckout = a.highestCheckout;
+  }
+  room.careerAccum = {};
   saveData(db);
 }
 
@@ -1197,6 +1221,7 @@ function applyX01EditToRoom(room, msg, { fromEdit = false } = {}) {
   if (msg.gameOver) {
     room.status = 'finished';
     room.lastActivity = Date.now();
+    commitCareerStats(room);
     const winnerName = msg.winner;
     const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
     if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
@@ -2246,7 +2271,7 @@ async function handleMessage(wsId, msg) {
       if (msg.absoluteScore !== undefined) room.scores[playerIdx] = msg.absoluteScore;
       room.history.unshift({ player: client.username, score: msg.displayScore, note: msg.note, ts: Date.now() });
       if (room.history.length > 50) room.history.pop();
-      recordCareerVisitStats(client.username, msg.displayScore, { checkout: msg.x01Checkout });
+      accrueCareerVisit(room, client.username, msg.displayScore, { checkout: msg.x01Checkout });
       room.round = Math.floor(room.history.length / 2);
       const turnEnded = shouldSwitchTurn(room.config.game, room.gameState);
       if (turnEnded) {
@@ -2293,6 +2318,7 @@ async function handleMessage(wsId, msg) {
       if (gameOver) {
         room.status = 'finished';
         room.lastActivity = Date.now();
+        commitCareerStats(room);
         const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
         if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
         const endMsg = buildGameOverMessage(room, winnerName, msg.matchStats);
@@ -2461,16 +2487,22 @@ async function handleMessage(wsId, msg) {
           }
         }
         spectators.get(room.id)?.delete(wsId);
+        const isParticipant = room.hostWsId === wsId || room.guestWsId === wsId;
         if (room.hostWsId === wsId && room.status === 'waiting') {
           rooms.delete(room.id);
           spectators.delete(room.id);
           broadcastLobbyUpdate();
+        } else if (room.status === 'active' && isParticipant) {
+          // A participant quit mid-match: end the match for everyone. Leaving/quitting
+          // never records stats — updateStats is only called on a real game_over.
+          room.status = 'finished';
+          room.lastActivity = Date.now();
+          if (room.hostWsId === wsId) room.hostWsId = null;
+          else room.guestWsId = null;
+          broadcastToRoom(room, { type: 'opponent_disconnected', roomId: room.id });
+          broadcastLobbyUpdate();
         } else if (room.guestWsId === wsId) {
           room.guestWsId = null;
-          if (room.status === 'active') {
-            room.status = 'finished';
-            broadcastToRoom(room, { type: 'opponent_disconnected', roomId: room.id });
-          }
         }
       }
       client.roomId = null;
@@ -2767,6 +2799,7 @@ function botTakeTurn(room) {
   if (move.gameOver) {
     room.status = 'finished';
     room.lastActivity = Date.now();
+    commitCareerStats(room);
     if (move.winner === room.config.guestName) {
       updateStats(room.config.guestName, room.config.hostName, move.highScore || 0);
     } else if (move.winner === room.config.hostName) {

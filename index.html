@@ -2685,6 +2685,12 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .x01-cam-badge.bot { background: rgba(232,144,42,0.85); color: #1a0e00; font-weight: 700; }
+/* Swapped layout: camera lives in the center column, the score-recording log
+   (leg history) moves into the right side column and scrolls instead of the
+   whole match view growing as turns accumulate. */
+.x01-center .x01-cam { justify-content: center; }
+.x01-center .x01-cam-frame { width: 100%; max-width: 340px; }
+.x01-side .x01-leg-history { flex: 1 1 auto; min-height: 120px; max-height: 100%; overflow-y: auto; }
 
 /* ════════════════════════════════════════════
    CRICKET / TACTICS MATCH (marks board)
@@ -3408,15 +3414,15 @@ body.app-active .arena-bg { animation: none !important; }
               <button class="x01-undo-btn" id="x01-undo-btn" onclick="undoX01()" title="Undo last turn">↶</button>
               <button class="x01-submit-btn" id="x01-submit-btn" onclick="submitX01()">Submit</button>
             </div>
-            <div class="x01-leg-history" id="x01-leg-history"></div>
-          </div>
-          <div class="x01-side">
             <div class="x01-cam">
               <div class="x01-cam-frame">
                 <video id="x01-cam-video" class="x01-cam-video" autoplay muted playsinline></video>
                 <div class="x01-cam-badge" id="x01-cam-badge">🎥</div>
               </div>
             </div>
+          </div>
+          <div class="x01-side">
+            <div class="x01-leg-history" id="x01-leg-history"></div>
             <div class="chat-area x01-chat-area" id="x01-chat-area">
               <div class="sidebar-panel-header" style="border-bottom:1px solid var(--border);padding:0.6rem 1rem;font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.15em;color:var(--gold);text-transform:uppercase;">Match Chat</div>
               <div class="chat-messages" id="x01-chat-messages">
@@ -4138,13 +4144,13 @@ body.app-active .arena-bg { animation: none !important; }
 <!-- Game Over Overlay -->
 <div class="overlay" id="gameover-overlay">
   <div class="overlay-box">
-    <div class="gameover-title">GAME<br>OVER</div>
+    <div class="gameover-title" id="go-title">GAME<br>OVER</div>
     <div class="gameover-winner" id="go-winner"></div>
     <div class="gameover-stats" id="go-stats"></div>
     <div id="go-actions" style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-bottom:0.65rem"></div>
     <div style="display:flex;gap:0.75rem;justify-content:center">
       <button class="btn" onclick="closeOverlay('gameover-overlay');leaveMatch()">← Lobby</button>
-      <button class="btn btn-gold" onclick="rematch()">Rematch →</button>
+      <button class="btn btn-gold" id="go-rematch-btn" onclick="rematch()">Rematch →</button>
     </div>
   </div>
 </div>
@@ -4507,8 +4513,10 @@ function handleWS(msg) {
       break;
     case 'opponent_disconnected':
       if (msg.roomId && msg.roomId !== S.roomId) break;
-      addChatMsg('system', '', 'Opponent disconnected.');
+      addChatMsg('system', '', 'Opponent left — match ended.');
       toast('Opponent left the match.');
+      stopX01VisitTimer();
+      showMatchEndedNotice();
       break;
     case 'score_update':
       S.scores = msg.scores;
@@ -9969,7 +9977,26 @@ function addChatMsg(from, text, systemText) {
 // ═══════════════════════════════════════════════════════════
 //  GAME OVER
 // ═══════════════════════════════════════════════════════════
+// Neutral end-of-match notice shown to the player who is still in the match when
+// their opponent leaves/quits. No winner is declared and no stats are recorded.
+function showMatchEndedNotice() {
+  const title = document.getElementById('go-title');
+  if (title) title.innerHTML = 'MATCH<br>ENDED';
+  document.getElementById('go-winner').textContent = 'Opponent left the match';
+  document.getElementById('go-stats').innerHTML =
+    `<div style="grid-column:1/-1;text-align:center;font-size:0.9rem;color:var(--silver-light)">No stats were recorded for this match.</div>`;
+  const actions = document.getElementById('go-actions');
+  if (actions) actions.innerHTML = '';
+  const rematchBtn = document.getElementById('go-rematch-btn');
+  if (rematchBtn) rematchBtn.style.display = 'none';
+  document.getElementById('gameover-overlay').classList.add('open');
+}
+
 function showGameOver(winner, scores, stats, extra) {
+  const title = document.getElementById('go-title');
+  if (title) title.innerHTML = 'GAME<br>OVER';
+  const rematchBtn = document.getElementById('go-rematch-btn');
+  if (rematchBtn) rematchBtn.style.display = '';
   document.getElementById('go-winner').textContent = `🎯 ${winner} wins!`;
   const elapsed = stats?.time || 0;
   const mins = Math.floor(elapsed/60), secs = elapsed%60;
