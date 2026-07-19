@@ -2689,9 +2689,19 @@ body.app-active .arena-bg { animation: none !important; }
 /* Swapped layout: camera lives in the center column, the score-recording log
    (leg history) moves into the right side column and scrolls instead of the
    whole match view growing as turns accumulate. */
-.x01-center .x01-cam { justify-content: center; }
-.x01-center .x01-cam-frame { width: 100%; max-width: 340px; }
-.x01-side .x01-leg-history { flex: 1 1 auto; min-height: 120px; max-height: 100%; overflow-y: auto; }
+/* Bound the whole X01 view to the viewport so the columns have a definite
+   height — this lets the score log scroll internally and the cam fill down. */
+.x01-layout { height: calc(100vh - 60px); overflow: hidden; }
+.x01-body { min-height: 0; }
+.x01-center { min-height: 0; }
+/* Camera fills the space under the score entry: same width as the score input,
+   and grows down so its bottom lines up with the match chat's bottom edge. */
+.x01-center .x01-cam { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+.x01-center .x01-cam-frame {
+  width: 100%; max-width: none; height: auto; aspect-ratio: auto; align-self: stretch;
+}
+/* Score-recording log: locked height, scrolls as new scores are added. */
+.x01-side .x01-leg-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 
 /* ════════════════════════════════════════════
    CRICKET / TACTICS MATCH (marks board)
@@ -2910,6 +2920,9 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .ckt-cam-badge.bot { background: rgba(232,144,42,0.85); color: #1a0e00; font-weight: 700; }
+/* Cricket/Tactics: camera swapped into the center column, marks board moved to
+   the right column (above the scoring pad). Keep the centered cam a sane size. */
+.ckt-center .ckt-cam-frame { max-width: 420px; align-self: center; }
 </style>
 </head>
 <body>
@@ -3455,7 +3468,10 @@ body.app-active .arena-bg { animation: none !important; }
           </div>
           <div class="ckt-center">
             <div class="ckt-turn-line" id="ckt-turn-line">TURN TO THROW!</div>
-            <div class="ckt-board" id="ckt-board"></div>
+            <div class="ckt-cam-frame">
+              <video id="ckt-cam-video" class="ckt-cam-video" autoplay muted playsinline></video>
+              <div class="ckt-cam-badge" id="ckt-cam-badge">🎥</div>
+            </div>
             <div class="ckt-visit" id="ckt-visit"></div>
             <!-- Hidden manual-entry fallback (still wired to the same engine) -->
             <div class="ckt-input-wrap ckt-input-hidden" id="ckt-input-wrap">
@@ -3467,10 +3483,7 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
           </div>
           <div class="ckt-cam">
-            <div class="ckt-cam-frame">
-              <video id="ckt-cam-video" class="ckt-cam-video" autoplay muted playsinline></video>
-              <div class="ckt-cam-badge" id="ckt-cam-badge">🎥</div>
-            </div>
+            <div class="ckt-board" id="ckt-board"></div>
             <div class="ckt-pad" id="ckt-pad"></div>
             <div class="ckt-pad-actions">
               <button class="ckt-undo-btn" id="ckt-undo-btn" onclick="cktUndo()" title="Undo dart / last visit">↶ Undo</button>
@@ -10654,6 +10667,11 @@ function renderWdlTicker(leagues) {
 }
 
 function showAppTickers() {
+  // Only reveal the standings tickers on lobby-area pages — never inside a match.
+  // (Standings data can arrive asynchronously mid-match; without this guard it
+  // would pop the tickers back onto the match screen.)
+  const activePage = document.querySelector('.page.active')?.id?.replace('page-', '') || '';
+  if (!ARENA_TICKER_PAGES.has(activePage)) return;
   document.getElementById('wdl-ticker-app')?.classList.remove('hidden');
   document.getElementById('lazy-ticker-app')?.classList.remove('hidden');
 }
