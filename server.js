@@ -466,6 +466,88 @@ function authOkPayload(user, token) {
   };
 }
 
+// ─── Presence & friends ───
+function isGuestUsername(name) {
+  return typeof name === 'string' && /^Guest_/i.test(name);
+}
+
+function isRegisteredUser(username) {
+  const user = db.users?.[username];
+  return !!(user && user.passwordHash && !isGuestUsername(username));
+}
+
+function ensureFriendsFields(user) {
+  if (!user) return null;
+  if (!Array.isArray(user.friends)) user.friends = [];
+  if (!user.friendRequests || typeof user.friendRequests !== 'object') {
+    user.friendRequests = { incoming: [], outgoing: [] };
+  }
+  if (!Array.isArray(user.friendRequests.incoming)) user.friendRequests.incoming = [];
+  if (!Array.isArray(user.friendRequests.outgoing)) user.friendRequests.outgoing = [];
+  return user;
+}
+
+function presencePayload() {
+  const seen = new Map();
+  for (const c of clients.values()) {
+    if (!c.username) continue;
+    if (seen.has(c.username)) continue;
+    seen.set(c.username, {
+      username: c.username,
+      isGuest: isGuestUsername(c.username) || !isRegisteredUser(c.username),
+    });
+  }
+  const online = [...seen.values()].sort((a, b) => a.username.localeCompare(b.username));
+  return { type: 'presence_update', onlineCount: online.length, online };
+}
+
+function broadcastPresence() {
+  broadcastAll(presencePayload());
+}
+
+function sendToUsername(username, msg) {
+  if (!username) return 0;
+  let n = 0;
+  for (const [id, c] of clients) {
+    if (c.username === username) {
+      send(id, msg);
+      n++;
+    }
+  }
+  return n;
+}
+
+function friendsPayloadFor(username) {
+  const user = ensureFriendsFields(db.users[username]);
+  if (!user) {
+    return {
+      type: 'friends',
+      friends: [],
+      friendRequests: { incoming: [], outgoing: [] },
+      onlineFriends: [],
+    };
+  }
+  const onlineSet = new Set();
+  for (const c of clients.values()) {
+    if (c.username) onlineSet.add(c.username);
+  }
+  const friends = user.friends.filter(n => isRegisteredUser(n));
+  return {
+    type: 'friends',
+    friends,
+    friendRequests: {
+      incoming: [...user.friendRequests.incoming],
+      outgoing: [...user.friendRequests.outgoing],
+    },
+    onlineFriends: friends.filter(n => onlineSet.has(n)),
+  };
+}
+
+function pushFriendsUpdate(username) {
+  if (!username) return;
+  sendToUsername(username, friendsPayloadFor(username));
+}
+
 function getIceServers() {
   const servers = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -1640,6 +1722,7 @@ async function handleMessage(wsId, msg) {
         softLaunch: SOFT_LAUNCH,
         ...publicProfilePayload(null),
       });
+      broadcastPresence();
       break;
     }
 
@@ -1672,6 +1755,8 @@ async function handleMessage(wsId, msg) {
         mustChangePassword: false,
         stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0 },
         profile: defaultUserProfile(),
+        friends: [],
+        friendRequests: { incoming: [], outgoing: [] },
         createdAt: Date.now()
       };
       saveData(db);
@@ -1687,9 +1772,11 @@ async function handleMessage(wsId, msg) {
       }
       {
         const user = db.users[username];
+        ensureFriendsFields(user);
         const token = await createSession(username, user.id);
         bindClientSession(client, user, token);
         send(wsId, authOkPayload(user, token));
+        broadcastPresence();
       }
       break;
     }
@@ -1717,9 +1804,11 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'auth_error', message: 'Your account is awaiting admin approval.' });
       }
       {
+        ensureFriendsFields(user);
         const token = await createSession(username, user.id);
         bindClientSession(client, user, token);
         send(wsId, authOkPayload(user, token));
+        broadcastPresence();
       }
       break;
     }
@@ -1750,8 +1839,10 @@ async function handleMessage(wsId, msg) {
       // Ensure the refreshed expiry is durable before we confirm the resume —
       // otherwise a restart right after reconnect can revert to a stale TTL.
       await flushData();
+      ensureFriendsFields(user);
       bindClientSession(client, user, token);
       send(wsId, authOkPayload(user, token));
+      broadcastPresence();
       break;
     }
 
@@ -1762,6 +1853,7 @@ async function handleMessage(wsId, msg) {
       client.username = null;
       client.sessionToken = null;
       send(wsId, { type: 'logout_ok' });
+      broadcastPresence();
       break;
     }
 
@@ -2730,6 +2822,195 @@ async function handleMessage(wsId, msg) {
       send(wsId, { type: 'tournaments', data: db.tournaments.map(sanitizeTournament) });
       break;
     }
+
+    // ── PRESENCE & FRIENDS ────────────────────
+    case 'get_presence': {
+      send(wsId, presencePayload());
+      break;
+    }
+
+    case 'get_friends': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, {
+          type: 'friends',
+          friends: [],
+          friendRequests: { incoming: [], outgoing: [] },
+          onlineFriends: [],
+        });
+      }
+      ensureFriendsFields(db.users[client.username]);
+      send(wsId, friendsPayloadFor(client.username));
+      break;
+    }
+
+    case 'friend_request': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to add friends.' });
+      }
+      const targetName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      if (!targetName) return send(wsId, { type: 'error', message: 'Username required.' });
+      if (targetName === client.username) {
+        return send(wsId, { type: 'error', message: 'You cannot friend yourself.' });
+      }
+      if (!isRegisteredUser(targetName)) {
+        return send(wsId, { type: 'error', message: 'That player was not found.' });
+      }
+      const me = ensureFriendsFields(db.users[client.username]);
+      const them = ensureFriendsFields(db.users[targetName]);
+      if (me.friends.includes(targetName)) {
+        return send(wsId, { type: 'error', message: 'You are already friends.' });
+      }
+      if (me.friendRequests.outgoing.includes(targetName)) {
+        return send(wsId, { type: 'error', message: 'Friend request already sent.' });
+      }
+      // If they already requested us, auto-accept.
+      if (me.friendRequests.incoming.includes(targetName)) {
+        me.friendRequests.incoming = me.friendRequests.incoming.filter(n => n !== targetName);
+        them.friendRequests.outgoing = them.friendRequests.outgoing.filter(n => n !== client.username);
+        if (!me.friends.includes(targetName)) me.friends.push(targetName);
+        if (!them.friends.includes(client.username)) them.friends.push(client.username);
+        saveData();
+        pushFriendsUpdate(client.username);
+        pushFriendsUpdate(targetName);
+        send(wsId, { type: 'friend_request_ok', username: targetName, accepted: true });
+        sendToUsername(targetName, {
+          type: 'friend_accepted',
+          username: client.username,
+          message: `${client.username} accepted your friend request.`,
+        });
+        break;
+      }
+      if (!me.friendRequests.outgoing.includes(targetName)) me.friendRequests.outgoing.push(targetName);
+      if (!them.friendRequests.incoming.includes(client.username)) {
+        them.friendRequests.incoming.push(client.username);
+      }
+      saveData();
+      pushFriendsUpdate(client.username);
+      pushFriendsUpdate(targetName);
+      send(wsId, { type: 'friend_request_ok', username: targetName, accepted: false });
+      sendToUsername(targetName, {
+        type: 'friend_request_received',
+        username: client.username,
+        message: `${client.username} sent you a friend request.`,
+      });
+      break;
+    }
+
+    case 'friend_respond': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to manage friends.' });
+      }
+      const fromName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      const accept = !!msg.accept;
+      if (!fromName) return send(wsId, { type: 'error', message: 'Username required.' });
+      const me = ensureFriendsFields(db.users[client.username]);
+      if (!me.friendRequests.incoming.includes(fromName)) {
+        return send(wsId, { type: 'error', message: 'No pending request from that player.' });
+      }
+      me.friendRequests.incoming = me.friendRequests.incoming.filter(n => n !== fromName);
+      const them = ensureFriendsFields(db.users[fromName]);
+      if (them) {
+        them.friendRequests.outgoing = them.friendRequests.outgoing.filter(n => n !== client.username);
+      }
+      if (accept && them) {
+        if (!me.friends.includes(fromName)) me.friends.push(fromName);
+        if (!them.friends.includes(client.username)) them.friends.push(client.username);
+      }
+      saveData();
+      pushFriendsUpdate(client.username);
+      if (them) {
+        pushFriendsUpdate(fromName);
+        sendToUsername(fromName, {
+          type: accept ? 'friend_accepted' : 'friend_declined',
+          username: client.username,
+          message: accept
+            ? `${client.username} accepted your friend request.`
+            : `${client.username} declined your friend request.`,
+        });
+      }
+      send(wsId, { type: 'friend_respond_ok', username: fromName, accept });
+      break;
+    }
+
+    case 'friend_remove': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to manage friends.' });
+      }
+      const targetName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      if (!targetName) return send(wsId, { type: 'error', message: 'Username required.' });
+      const me = ensureFriendsFields(db.users[client.username]);
+      me.friends = me.friends.filter(n => n !== targetName);
+      me.friendRequests.incoming = me.friendRequests.incoming.filter(n => n !== targetName);
+      me.friendRequests.outgoing = me.friendRequests.outgoing.filter(n => n !== targetName);
+      const them = ensureFriendsFields(db.users[targetName]);
+      if (them) {
+        them.friends = them.friends.filter(n => n !== client.username);
+        them.friendRequests.incoming = them.friendRequests.incoming.filter(n => n !== client.username);
+        them.friendRequests.outgoing = them.friendRequests.outgoing.filter(n => n !== client.username);
+      }
+      saveData();
+      pushFriendsUpdate(client.username);
+      if (them) pushFriendsUpdate(targetName);
+      send(wsId, { type: 'friend_remove_ok', username: targetName });
+      break;
+    }
+
+    case 'invite_friend': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to invite friends.' });
+      }
+      const targetName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      const roomId = msg.roomId || client.roomId;
+      if (!targetName) return send(wsId, { type: 'error', message: 'Username required.' });
+      if (!roomId) return send(wsId, { type: 'error', message: 'No match to invite to.' });
+      const me = ensureFriendsFields(db.users[client.username]);
+      if (!me.friends.includes(targetName)) {
+        return send(wsId, { type: 'error', message: 'You can only invite friends.' });
+      }
+      const room = rooms.get(roomId);
+      if (!room || room.status !== 'waiting' || room.config.bot) {
+        return send(wsId, { type: 'error', message: 'Match is not waiting for an opponent.' });
+      }
+      if (room.hostWsId !== wsId) {
+        return send(wsId, { type: 'error', message: 'Only the host can invite a friend.' });
+      }
+      let online = false;
+      for (const c of clients.values()) {
+        if (c.username === targetName) { online = true; break; }
+      }
+      if (!online) {
+        return send(wsId, { type: 'error', message: `${targetName} is not online.` });
+      }
+      room.config.invitedUser = targetName;
+      const delivered = sendToUsername(targetName, {
+        type: 'match_invite',
+        roomId: room.id,
+        game: room.config.game,
+        from: client.username,
+        hostName: room.config.hostName,
+      });
+      if (!delivered) {
+        return send(wsId, { type: 'error', message: `${targetName} is not online.` });
+      }
+      send(wsId, { type: 'invite_friend_ok', username: targetName, roomId: room.id });
+      break;
+    }
+
+    case 'decline_invite': {
+      if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
+      const room = rooms.get(msg.roomId);
+      if (!room || room.status !== 'waiting') break;
+      if (room.config.invitedUser && room.config.invitedUser !== client.username) {
+        // Allow decline even if not the invited user tracking field (stale invites).
+      }
+      send(room.hostWsId, {
+        type: 'invite_declined',
+        roomId: room.id,
+        username: client.username,
+      });
+      send(wsId, { type: 'decline_invite_ok', roomId: room.id });
+      break;
+    }
   }
 }
 
@@ -2758,6 +3039,7 @@ function handleDisconnect(wsId) {
     spectators.get(client.roomId)?.delete(wsId);
   }
   clients.delete(wsId);
+  broadcastPresence();
 }
 
 // ─────────────────────────────────────────────
