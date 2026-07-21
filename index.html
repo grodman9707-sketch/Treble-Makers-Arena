@@ -2428,13 +2428,13 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .profile-setting-controls select:focus { outline: none; border-color: var(--gold); }
 .profile-setting-controls select option { background: var(--deep); }
+.profile-setting-field-label {
+  font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); font-family: 'Cinzel', serif;
+}
 .profile-setting-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
 .profile-setting-note {
   margin-top: 0.65rem; font-size: 0.68rem; color: var(--muted); line-height: 1.4;
-}
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 .profile-setting-meta { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .profile-setting-label {
@@ -3984,9 +3984,9 @@ body.app-active .arena-bg { animation: none !important; }
                 <span class="profile-setting-hint">Pick a system voice and delivery style</span>
               </div>
               <div class="profile-setting-controls">
-                <label class="sr-only" for="pref-announce-voice">Voice</label>
+                <label class="profile-setting-field-label" for="pref-announce-voice">Voice</label>
                 <select id="pref-announce-voice" onchange="onAnnounceVoiceChange()"></select>
-                <label class="sr-only" for="pref-announce-style">Style</label>
+                <label class="profile-setting-field-label" for="pref-announce-style">Style</label>
                 <select id="pref-announce-style" onchange="onAnnounceStyleChange()">
                   <option value="arena">Arena Classic</option>
                   <option value="oche">Oche Caller</option>
