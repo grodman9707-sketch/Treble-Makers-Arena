@@ -4449,6 +4449,10 @@ const S = {
   platformUsers: [],
   arena: { mode: 'open', message: '', registrationOpen: true, guestAllowed: true, pendingCount: 0 },
   camView: loadCamViewPrefs(),
+  // Seat 0 = Player One = match starter. Host/guest are room roles, not seats.
+  hostSeat: 0,
+  guestSeat: 1,
+  mySeat: 0,
   matchVariation: {},
   onlineCount: 0,
   onlinePlayers: [],
@@ -4460,7 +4464,7 @@ const S = {
 const GAME_RULES = {
   'Halve-It': '<b>Halve-It</b><br>Each round has a target. Hit it to score, miss and your score is halved. 15 rounds. Highest score wins.',
   'Golf Darts': '<b>Golf Darts</b><br>18 holes — target number matches the hole. 3 darts per hole; <b>lowest dart score counts</b>. Treble = Hole in One (1), Double = Eagle (2), Inner Single = Par (3), Outer Single = Bogey (4), miss/wrong number = 7. Hat trick (same bed 3×) = −1 bonus.',
-  'Golf Checkouts': '<b>Golf Checkouts</b><br>18 holes with checkout targets and pars. Hit the checkout in the fewest darts to match or beat par. Standard play uses a double-par stroke cap and synchronized holes.',
+  'Golf Checkouts': '<b>Golf Checkouts</b><br>18 holes with checkout targets and pars. Hit the checkout in the fewest darts to match or beat par — <b>double-out</b> required (finish on a double or inner bull). Leaving 1 is a bust. Standard play uses a double-par stroke cap and synchronized holes.',
   'Football Darts': '<b>Football Darts</b><br>Hit <b>Double Bull</b> to take possession. With the ball, each <b>Double (1–20)</b> or <b>Double Bull</b> is 1 goal. 3 darts per visit. First to 10 goals (or most after 20 visits) wins.',
   'Snakes & Ladders': '<b>Snakes & Ladders</b><br>Score on each turn moves you forward that many squares. Land on a ladder — jump up. Land on a snake — fall back. First to reach 100 wins.',
   'Around the Clock': '<b>Around the Clock</b><br>Hit 1 through 20 in order. Enter the number you hit (or 0 to miss). Advance when you hit your current number. First to 20 wins.',
@@ -4715,6 +4719,7 @@ function handleWS(msg) {
       break;
     case 'room_created':
       S.roomId = msg.roomId; S.isHost = true;
+      resetMatchSeats();
       setChatEnabled(true);
       updateConnStatusVisibility();
       if (pendingInviteFriend) {
@@ -4739,6 +4744,7 @@ function handleWS(msg) {
       break;
     case 'bot_room_started':
       S.roomId = msg.roomId; S.isHost = true; S.game = msg.game;
+      resetMatchSeats();
       const skillMatch = (msg.opponentName || '').match(/\((easy|medium|hard|adaptive)\)/i);
       S.botSkill = skillMatch ? skillMatch[1].toLowerCase() : (selectedBotSkill || 'easy');
       attachLocalCamera();
@@ -4749,6 +4755,7 @@ function handleWS(msg) {
       break;
     case 'joined_room':
       S.roomId = msg.roomId; S.isHost = false; S.game = msg.game;
+      resetMatchSeats();
       startMatchUI(msg.game, msg.opponentName, false, msg.gameState, msg.matchPreview);
       break;
     case 'opponent_joined':
@@ -6523,12 +6530,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   if (!spectating && matchPreview?.players?.length >= 2) {
     hideAllMatchLayouts();
     pendingMatchPreview = matchPreview;
-    // Bot matches: auto-pick host as starter and run the short preview timer.
-    // Without this, awaitStarter freezes the progress bar and never opens the game UI.
-    if (S.isBot && S.isHost) {
-      finalizeStarter(0, 'quick');
-      return;
-    }
+    // Host chooses who throws first (You / Opponent / Bot). Starter becomes Player One.
     showMatchPreviewOverlay(matchPreview, { awaitStarter: true });
     return;
   }
@@ -6758,28 +6760,54 @@ function quickPickStarter(starterIdx) {
   finalizeStarter(starterIdx === 1 ? 1 : 0, 'quick');
 }
 
-function applyLocalStarter(starterIdx, detail = {}) {
-  const idx = starterIdx === 1 ? 1 : 0;
+function applyMatchSeats(hostSeat, guestSeat) {
+  S.hostSeat = hostSeat === 1 ? 1 : 0;
+  S.guestSeat = guestSeat === 0 ? 0 : 1;
+  S.mySeat = S.isHost ? S.hostSeat : S.guestSeat;
+}
+
+function resetMatchSeats() {
+  S.hostSeat = 0;
+  S.guestSeat = 1;
+  S.mySeat = S.isHost ? 0 : 1;
+}
+
+/** Names ordered by match seat: [Player One / starter, Player Two]. */
+function seatPlayerNames() {
+  const host = S.isHost ? (S.user.username || 'You') : (S.opponentName || 'Opponent');
+  const guest = S.isHost ? (S.opponentName || 'Opponent') : (S.user.username || 'You');
+  return (S.hostSeat ?? 0) === 0 ? [host, guest] : [guest, host];
+}
+
+function applyLocalStarter(roleStarterIdx, detail = {}) {
+  // roleStarterIdx: 0 = host/creator starts, 1 = guest/opponent starts.
+  // After lock, the starter is always seat 0 (Player One).
+  const role = roleStarterIdx === 1 ? 1 : 0;
+  const hostSeat = role === 0 ? 0 : 1;
+  const guestSeat = 1 - hostSeat;
+  applyMatchSeats(hostSeat, guestSeat);
   starterFlow.decided = true;
-  starterFlow.starterIdx = idx;
-  S.turn = idx;
+  starterFlow.starterIdx = 0;
+  S.turn = 0;
   if (S.gameState) {
-    if (S.gameState.legStarter !== undefined) S.gameState.legStarter = idx;
-    if ('nextTurn' in S.gameState) S.gameState.nextTurn = idx;
+    if (S.gameState.legStarter !== undefined) S.gameState.legStarter = 0;
+    if ('nextTurn' in S.gameState) S.gameState.nextTurn = 0;
+    if (S.gameState.starter !== undefined) S.gameState.starter = 0;
   }
   if (S.game === 'Golf Checkouts') {
     S.turn = gcSkipWaitingTurn(S.turn, S.gameState);
   }
-  const names = [
+  const roleNames = [
     pendingMatchPreview?.players?.[0]?.username || (S.isHost ? S.user.username : S.opponentName),
     pendingMatchPreview?.players?.[1]?.username || (S.isHost ? S.opponentName : S.user.username),
   ];
-  const starterName = detail.starterName || names[idx] || 'Player';
+  const starterName = detail.starterName || roleNames[role] || 'Player';
   hideStarterOverlays();
   hideAllMatchLayouts();
+  const seatNames = seatPlayerNames();
   showMatchPreviewOverlay(pendingMatchPreview || { game: S.game, players: [
-    { username: names[0], avatar: (names[0] || '?')[0], threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, tournamentsWon: 0 },
-    { username: names[1], avatar: (names[1] || '?')[0], threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, tournamentsWon: 0 },
+    { username: seatNames[0], avatar: (seatNames[0] || '?')[0], threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, tournamentsWon: 0 },
+    { username: seatNames[1], avatar: (seatNames[1] || '?')[0], threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, tournamentsWon: 0 },
   ]}, { starterName });
 }
 
@@ -7107,7 +7135,16 @@ function handleStarterFlowMessage(msg) {
       break;
     case 'match_starter_set':
       if (S.isHost && starterFlow.decided) break;
-      applyLocalStarter(typeof msg.turn === 'number' ? msg.turn : msg.starterIdx, { starterName: msg.starterName });
+      if (typeof msg.hostSeat === 'number' || typeof msg.guestSeat === 'number') {
+        applyMatchSeats(msg.hostSeat, msg.guestSeat);
+      }
+      applyLocalStarter(
+        typeof msg.roleStarterIdx === 'number' ? msg.roleStarterIdx : (msg.starterIdx === 1 ? 1 : 0),
+        { starterName: msg.starterName }
+      );
+      // applyLocalStarter already set turn=0 / seats; prefer server turn if GC skipped waiting.
+      if (typeof msg.turn === 'number') S.turn = msg.turn;
+      if (msg.gameState) S.gameState = msg.gameState;
       break;
   }
 }
@@ -7236,17 +7273,29 @@ function gcApplyTurnTotal(gs, playerIdx, total, visitDarts = GC_DARTS_PER_TURN) 
   progress.currentHoleDarts = (progress.currentHoleDarts || 0) + dartsThisVisit;
   progress.totalDarts = (progress.totalDarts || 0) + dartsThisVisit;
   let note;
+  let checkoutBust = false;
   if (total === 0) {
     note = `Miss · ${progress.remaining} left`;
   } else if (total > progress.remaining) {
     note = `BUST ${total} · ${progress.remaining} left`;
   } else {
-    progress.remaining -= total;
-    note = `${total} · ${progress.remaining} left`;
+    const after = progress.remaining - total;
+    if (after === 1) {
+      checkoutBust = true;
+      note = `BUST (must finish on a double) · ${progress.remaining} left`;
+    } else if (after === 0 && !x01IsValidCheckout(remainingBefore, 'double-out')) {
+      checkoutBust = true;
+      note = `BUST (no double-out) · ${progress.remaining} left`;
+    } else {
+      progress.remaining = after;
+      note = after === 0
+        ? `Checkout ${remainingBefore}`
+        : `${total} · ${progress.remaining} left`;
+    }
   }
   let holeComplete = false;
   let capped = false;
-  if (progress.remaining === 0) {
+  if (progress.remaining === 0 && !checkoutBust) {
     holeComplete = true;
   } else if (capOn && holeDef.cap && progress.currentHoleDarts >= holeDef.cap) {
     holeComplete = true;
@@ -7515,9 +7564,7 @@ function pushX01Log(gs, p, total, bust, names) {
 }
 
 function x01PlayerNames() {
-  const host = S.isHost ? (S.user.username || 'You') : (S.opponentName || 'Opponent');
-  const guest = S.isHost ? (S.opponentName || 'Opponent') : (S.user.username || 'You');
-  return [host, guest];
+  return seatPlayerNames();
 }
 
 let x01UndoStack = [];
@@ -7995,9 +8042,7 @@ function applyCricketVisit(gs, p, darts) {
 }
 
 function cktPlayerNames() {
-  const host = S.isHost ? (S.user.username || 'You') : (S.opponentName || 'Opponent');
-  const guest = S.isHost ? (S.opponentName || 'Opponent') : (S.user.username || 'You');
-  return [host, guest];
+  return seatPlayerNames();
 }
 
 function cktVariationLabel(v) {
@@ -8372,11 +8417,16 @@ function submitScore(opts = {}) {
     val = total;
     displayScore = String(total);
 
-    // On checkouts below 170 that can finish in 1–2 darts, ask how many were used.
+    // On legal double-out checkouts below 170 that can finish in 1–2 darts, ask how many were used.
     if (opts.visitDarts == null) {
       const pIdx = myPlayerIdx();
       const remaining = S.gameState?.playerProgress?.[pIdx]?.remaining;
-      if (total > 0 && total === remaining && remaining < 170) {
+      if (
+        total > 0 &&
+        total === remaining &&
+        remaining < 170 &&
+        x01IsValidCheckout(remaining, 'double-out')
+      ) {
         const minDarts = gcMinDartsForScore(remaining);
         if (minDarts === 1 || minDarts === 2) {
           openGcCheckoutDartsModal(remaining, minDarts, raw);
@@ -8515,6 +8565,9 @@ function submitScore(opts = {}) {
     delta = result.delta;
     note = result.note;
     gs.turnEnded = result.turnEnded;
+    if (/BUST \(must finish on a double\)|BUST \(no double-out\)/i.test(result.note || '')) {
+      toast(result.note);
+    }
     if (gs.turnEnded && !gs.playerProgress[playerIdx]?.finished) {
       note = `${note} · End of turn`;
     }
@@ -8599,6 +8652,7 @@ function submitScore(opts = {}) {
     }
 
   } else if (g === 'Snakes & Ladders') {
+    const p = myPlayerIdx();
     const isMiss = parsed.isMiss;
     let spaces = 0;
     if (isMiss) spaces = 0;
@@ -8607,55 +8661,59 @@ function submitScore(opts = {}) {
     else if (parsed.segment === 'T') spaces = 3;
     else if (parsed.segment === 'D') spaces = 1;
     else spaces = 4;
-    let pos = gs.pos[0] + spaces;
+    let pos = (gs.pos[p] || 0) + spaces;
     if (pos > 100) pos = 100 - (pos - 100);
     if (gs.ladders?.[pos]) { note = `🪜 Ladder! ${pos}→${gs.ladders[pos]}`; pos = gs.ladders[pos]; }
     else if (gs.snakes?.[pos]) { note = `🐍 Snake! ${pos}→${gs.snakes[pos]}`; pos = gs.snakes[pos]; }
-    gs.pos[0] = Math.min(100, Math.max(0, pos));
-    absoluteScore = gs.pos[0];
-    displayScore = `sq.${gs.pos[0]}`;
-    if (gs.pos[0] >= 100) { gameOver = true; winner = S.user.username; }
+    gs.pos[p] = Math.min(100, Math.max(0, pos));
+    absoluteScore = gs.pos[p];
+    displayScore = `sq.${gs.pos[p]}`;
+    if (gs.pos[p] >= 100) { gameOver = true; winner = S.user.username; }
 
   } else if (g === 'Around the Clock') {
-    const needed = gs.progress[0];
-    if (!parsed.isMiss && parsed.base === needed) { gs.progress[0]++; note = `→ Now on ${gs.progress[0]}`; }
+    const p = myPlayerIdx();
+    const needed = gs.progress[p];
+    if (!parsed.isMiss && parsed.base === needed) { gs.progress[p]++; note = `→ Now on ${gs.progress[p]}`; }
     else { note = `Miss ${displayScore}`; }
-    absoluteScore = gs.progress[0] - 1; displayScore = `on ${gs.progress[0]}`;
-    if (gs.progress[0] > 20) { gameOver = true; winner = S.user.username; }
+    absoluteScore = gs.progress[p] - 1; displayScore = `on ${gs.progress[p]}`;
+    if (gs.progress[p] > 20) { gameOver = true; winner = S.user.username; }
 
   } else if (g === 'Killer') {
-    const myNum = gs.numbers[0];
-    const oppNum = gs.numbers[1];
-    if (!gs.isKiller[0]) {
+    const p = myPlayerIdx();
+    const o = 1 - p;
+    const myNum = gs.numbers[p];
+    const oppNum = gs.numbers[o];
+    if (!gs.isKiller[p]) {
       if (!parsed.isMiss && parsed.segment === 'D' && parsed.base === myNum) {
-        gs.hitCount[0] = Math.min(3, (gs.hitCount[0]||0) + 1);
-        note = `${displayScore} hit (${gs.hitCount[0]}/3)`;
-        if (gs.hitCount[0] >= 3) { gs.isKiller[0] = true; note = '⚡ KILLER!'; }
+        gs.hitCount[p] = Math.min(3, (gs.hitCount[p]||0) + 1);
+        note = `${displayScore} hit (${gs.hitCount[p]}/3)`;
+        if (gs.hitCount[p] >= 3) { gs.isKiller[p] = true; note = '⚡ KILLER!'; }
       } else {
         note = `Miss ${displayScore}`;
       }
     } else {
       if (!parsed.isMiss && parsed.segment === 'D' && parsed.base === oppNum) {
-        gs.lives[1] = Math.max(0, gs.lives[1] - 1);
+        gs.lives[o] = Math.max(0, gs.lives[o] - 1);
         note = `💀 Hit opponent ${displayScore} -1 life`;
-        if (gs.lives[1] <= 0) { gameOver = true; winner = S.user.username; }
+        if (gs.lives[o] <= 0) { gameOver = true; winner = S.user.username; }
       } else if (!parsed.isMiss && parsed.segment === 'D' && parsed.base === myNum) {
-        gs.lives[0] = Math.max(0, gs.lives[0] - 1);
+        gs.lives[p] = Math.max(0, gs.lives[p] - 1);
         note = `💥 Hit own number ${displayScore} -1 life`;
-        if (gs.lives[0] <= 0) { gameOver = true; winner = 'Opponent'; }
+        if (gs.lives[p] <= 0) { gameOver = true; winner = 'Opponent'; }
       } else {
         note = `Miss ${displayScore}`;
       }
     }
-    absoluteScore = S.scores[0];
+    absoluteScore = S.scores[p];
     delta = 0;
 
   } else if (g === 'Shanghai') {
+    const p = myPlayerIdx();
     gs.roundProgress = gs.roundProgress || [
       { round: 0, throws: 0, hits: { S:0, D:0, T:0 }, total: 0 },
       { round: 0, throws: 0, hits: { S:0, D:0, T:0 }, total: 0 }
     ];
-    const progress = gs.roundProgress[0];
+    const progress = gs.roundProgress[p];
     const target = (gs.roundIdx || 0) + 1;
     const isTarget = !parsed.isMiss && parsed.base === target && ['S','D','T'].includes(parsed.segment);
     if (isTarget) {
@@ -8672,9 +8730,10 @@ function submitScore(opts = {}) {
         winner = S.user.username;
         note = '🎯 SHANGHAI!';
       }
-      gs.roundScores[0].push(progress.total);
+      gs.roundScores = gs.roundScores || [[], []];
+      gs.roundScores[p].push(progress.total);
       delta = progress.total;
-      absoluteScore = S.scores[0] + progress.total;
+      absoluteScore = S.scores[p] + progress.total;
       progress.round++;
       progress.throws = 0;
       progress.hits = { S:0, D:0, T:0 };
@@ -8688,7 +8747,9 @@ function submitScore(opts = {}) {
     }
 
   } else if (g === 'High Score') {
-    gs.roundScores[0].push(val); delta = val;
+    const p = myPlayerIdx();
+    gs.roundScores = gs.roundScores || [[], []];
+    gs.roundScores[p].push(val); delta = val;
     if (val > S.stats.bestRound) S.stats.bestRound = val;
     gs.roundIdx = (gs.roundIdx || 0) + 1;
     if (gs.roundIdx >= 10) gameOver = true;
@@ -8927,13 +8988,15 @@ function updateMatchUI() {
   const isGolfDarts = g === 'Golf Darts';
   const isGolfCheckouts = g === 'Golf Checkouts';
   const isFootballDarts = g === 'Football Darts';
+  const me = myPlayerIdx();
+  const opp = 1 - me;
   const sbYou = gid('sb-score-you'), sbOpp = gid('sb-score-opp');
-  sbYou.textContent = S.scores[0];
-  sbOpp.textContent = S.scores[1];
+  sbYou.textContent = S.scores[me];
+  sbOpp.textContent = S.scores[opp];
   sbYou.className = 'sb-score' + (isMyTurn ? ' active' : '');
   sbOpp.className = 'sb-score' + (!isMyTurn ? ' active' : '');
-  gid('cam-score-you').textContent = S.scores[0];
-  gid('cam-score-opp').textContent = S.scores[1];
+  gid('cam-score-you').textContent = S.scores[me];
+  gid('cam-score-opp').textContent = S.scores[opp];
   gid('cam-score-you-wrap').className = 'cam-score-box you' + (isMyTurn ? ' active' : '');
   gid('cam-score-opp-wrap').className = 'cam-score-box opp' + (!isMyTurn ? ' active' : '');
   gid('scoreboard').classList.toggle('halveit-hidden', isHalveIt || isGolfDarts || isFootballDarts);
@@ -9644,14 +9707,12 @@ function golfScoreCellClass(score) {
 }
 
 function isMyMatchTurn() {
-  if (S.game === 'Golf Darts' || S.game === 'Golf Checkouts' || S.game === 'Halve-It' || isX01Game(S.game) || isCricketGame(S.game)) {
-    return (S.isHost && S.turn === 0) || (!S.isHost && S.turn === 1);
-  }
-  return S.turn === 0;
+  return S.turn === myPlayerIdx();
 }
 
 function myPlayerIdx() {
-  return S.isHost ? 0 : 1;
+  if (typeof S.mySeat === 'number') return S.mySeat;
+  return S.isHost ? (S.hostSeat ?? 0) : (S.guestSeat ?? 1);
 }
 
 function finalizeGolfHole(darts, target) {
@@ -9749,7 +9810,9 @@ function renderGolfDartsRoom(gs) {
   const multiplayer = S.isBot || !/^(OPP|WAITING|OPPONENT)/i.test(oppLabel.trim());
   const youName = (S.user.username || 'You').slice(0, 12);
   const oppName = oppLabel.slice(0, 12);
-  const names = [youName, oppName];
+  const names = seatPlayerNames().map(n => String(n).slice(0, 12));
+  const me = myPlayerIdx();
+  const opp = 1 - me;
   const phase = golfHolePhase(gs, activePlayer, holeIdx, dartsThrown);
 
   const holeDarts = gs.playerDarts?.[activePlayer] || [];
@@ -9779,8 +9842,8 @@ function renderGolfDartsRoom(gs) {
       <div class="gdg-header">
         <div class="gdg-logo"><span class="gdg-logo-icon">⛳</span> DARTS GOLF</div>
         <div class="gdg-player-badges">
-          <span class="gdg-player-badge${S.turn === 0 ? ' active' : ''}">${youName}:${S.scores[0]}</span>
-          ${multiplayer ? `<span class="gdg-player-badge opp${S.turn === 1 ? ' active' : ''}">${oppName}:${S.scores[1]}</span>` : ''}
+          <span class="gdg-player-badge${S.turn === me ? ' active' : ''}">${youName}:${S.scores[me]}</span>
+          ${multiplayer ? `<span class="gdg-player-badge opp${S.turn === opp ? ' active' : ''}">${oppName}:${S.scores[opp]}</span>` : ''}
         </div>
       </div>
       <div class="gdg-play-body">
@@ -10164,7 +10227,8 @@ function renderGolfCheckoutsScorecard(gs) {
   const multiplayer = S.isBot || !/^(OPP|WAITING|OPPONENT)/i.test(oppLabel.trim());
   const youName = (S.user.username || 'You').slice(0, 12);
   const oppName = oppLabel.slice(0, 12) || 'Opponent';
-  const names = [youName, oppName];
+  // Scorecard rows follow match seats (Player One = starter), not you/opp labels.
+  const names = seatPlayerNames().map(n => String(n).slice(0, 12));
 
   const holeHeaders = Array.from({ length: totalHoles }, (_, i) => {
     let hh = `<th>${i + 1}</th>`;
