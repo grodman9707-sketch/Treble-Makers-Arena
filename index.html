@@ -30,6 +30,10 @@
   --green: #2a8b5a;
   --green-bright: #3dd68c;
   --radius: 4px;
+  /* Shared player-cam frame: square crop so Camera Setup framing matches every match box */
+  --cam-frame-ratio: 1 / 1;
+  --cam-zoom: 1.15;
+  --cam-box-max: 280px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -676,14 +680,23 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .mh-status { font-size: 0.72rem; font-family: 'Orbitron', monospace; color: var(--muted); }
 
-/* Webcams */
+/* Webcams — fixed square player-cam boxes; Camera Setup zoom applies to your feed */
 .webcam-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
-  background: var(--border); flex-shrink: 0; height: 230px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem;
+  background: transparent; flex-shrink: 0; height: auto;
+  justify-items: center; align-items: center;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--border);
 }
 .webcam-cell {
   position: relative; background: var(--black); overflow: hidden;
   transition: box-shadow 0.3s;
+  aspect-ratio: var(--cam-frame-ratio);
+  width: min(100%, var(--cam-box-max));
+  max-height: var(--cam-box-max);
+  min-height: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
 }
 .webcam-cell.your-turn { box-shadow: inset 0 0 0 3px var(--gold); }
 .cam-video-frame {
@@ -697,7 +710,9 @@ body.app-active .arena-bg { animation: none !important; }
 }
 /* Zoom is a local framing preference — apply only to your preview/local feed */
 #cam-preview-frame video.cam-video,
-#cam-frame-local video.cam-video {
+#cam-frame-local video.cam-video,
+.x01-cam-video.cam-local-framed,
+.ckt-cam-video.cam-local-framed {
   transform: scale(var(--cam-zoom, 1));
   transform-origin: center center;
 }
@@ -707,10 +722,13 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-cam-video {
   transform-origin: center center;
 }
+/* Setup preview uses the same fixed square frame as in-match player cams */
 .cam-preview-wrap {
-  position: relative; width: 100%; aspect-ratio: 16/9; max-height: 240px;
-  background: #000; border: 1px solid var(--border); border-radius: 6px;
-  overflow: hidden; margin-top: 0.75rem;
+  position: relative; width: min(100%, var(--cam-box-max));
+  aspect-ratio: var(--cam-frame-ratio);
+  max-height: min(var(--cam-box-max), 55vh); margin: 0.75rem auto 0;
+  background: #000; border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden;
 }
 .cam-preview-wrap .cam-video-frame { position: absolute; inset: 0; }
 .cam-adjust-controls {
@@ -1045,9 +1063,19 @@ body.app-active .arena-bg { animation: none !important; }
   border-radius: 8px; overflow: hidden;
   border: 2px solid rgba(201,168,76,0.28);
   background: #000;
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;
 }
 .halveit-cam-slot .webcam-cell {
-  position: absolute; inset: 0; width: 100%; height: 100%;
+  position: relative;
+  width: min(100cqw, 100cqh);
+  height: auto;
+  aspect-ratio: var(--cam-frame-ratio);
+  max-width: 100%;
+  max-height: 100%;
+  inset: auto;
+  border: none;
+  border-radius: 0;
 }
 .halveit-cam-slot .cam-video-frame {
   position: absolute; inset: 0; width: 100%; height: 100%;
@@ -1197,10 +1225,20 @@ body.app-active .arena-bg { animation: none !important; }
   border-bottom: none;
   box-shadow: 0 4px 18px rgba(0,0,0,0.45);
   background: #000;
+  /* Keep player cam crop on the shared square frame when the side panel is taller */
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;
 }
 .gdg-cam-player-wrap .webcam-cell {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
+  position: relative;
+  width: min(100cqw, 100cqh);
+  height: auto;
+  aspect-ratio: var(--cam-frame-ratio);
+  max-width: 100%;
+  max-height: 100%;
+  inset: auto;
+  border-radius: 0;
+  border: none;
 }
 .gdg-cam-player-wrap .cam-video-frame {
   position: absolute; inset: 0;
@@ -1236,11 +1274,18 @@ body.app-active .arena-bg { animation: none !important; }
   position: relative; border-radius: 10px; overflow: hidden;
   background: #050505; border: 1px solid rgba(255,255,255,0.08);
   min-height: 140px;
+  aspect-ratio: var(--cam-frame-ratio);
+  max-width: min(100%, var(--cam-box-max));
+  margin: 0 auto;
+  width: 100%;
 }
 .gdg-cam-slot { position: absolute; inset: 0; }
 .gdg-cam-slot .webcam-cell {
   width: 100%; height: 100%; border-radius: inherit;
   position: relative; min-height: 0;
+  aspect-ratio: auto;
+  max-height: none;
+  border: none;
 }
 .gdg-cam-slot .cam-label { font-size: 0.52rem; }
 .gdg-cam-slot .cam-score-box { font-size: 0.62rem; padding: 0.15rem 0.35rem; }
@@ -1590,12 +1635,12 @@ body.app-active .arena-bg { animation: none !important; }
 .match-layout.football-darts-match .webcam-cell {
   background: #000;
   min-height: 0;
-  width: 100%;
-  max-width: 420px;
-  aspect-ratio: 16 / 9;
+  width: min(100%, var(--cam-box-max));
+  max-width: var(--cam-box-max);
+  aspect-ratio: var(--cam-frame-ratio);
   height: auto;
   align-self: center;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
 }
 .match-layout.football-darts-match .fb-cam-spacer {
@@ -2715,16 +2760,16 @@ body.app-active .arena-bg { animation: none !important; }
 
 /* Camera + chat column */
 .x01-side { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; }
-.x01-cam { display: flex; flex-shrink: 0; }
+.x01-cam { display: flex; flex-shrink: 0; justify-content: center; }
 .x01-chat-area {
   flex: 1; min-height: 140px; max-height: 280px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
 }
 .x01-cam-frame {
-  position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden;
-  border: 1px solid var(--border); background: #000; align-self: flex-start;
+  position: relative; width: 100%; aspect-ratio: var(--cam-frame-ratio); border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--border); background: #000; align-self: center;
 }
-.x01-cam-video { width: 100%; height: 100%; object-fit: cover; }
+.x01-cam-video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .x01-cam-badge {
   position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); color: #fff;
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
@@ -2734,15 +2779,23 @@ body.app-active .arena-bg { animation: none !important; }
    (leg history) moves into the right side column and scrolls instead of the
    whole match view growing as turns accumulate. */
 /* Bound the whole X01 view to the viewport so the columns have a definite
-   height — this lets the score log scroll internally and the cam fill down. */
+   height — this lets the score log scroll internally and the cam use a fixed square. */
 .x01-layout { height: calc(100vh - 60px); overflow: hidden; }
 .x01-body { min-height: 0; }
 .x01-center { min-height: 0; }
-/* Camera fills the space under the score entry: same width as the score input,
-   and grows down so its bottom lines up with the match chat's bottom edge. */
-.x01-center .x01-cam { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+/* Fixed square player-cam area: largest square that fits under the score entry */
+.x01-center .x01-cam {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;
+}
 .x01-center .x01-cam-frame {
-  width: 100%; max-width: none; height: auto; aspect-ratio: auto; align-self: stretch;
+  width: min(100cqw, 100cqh);
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+  aspect-ratio: var(--cam-frame-ratio);
+  align-self: center;
 }
 /* Score-recording log: locked height, scrolls as new scores are added. */
 .x01-side .x01-leg-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
@@ -2841,7 +2894,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-chat-close:hover { border-color: var(--gold); color: var(--gold-light); }
 
 /* Center column */
-.ckt-center { display: flex; flex-direction: column; gap: 0.7rem; }
+.ckt-center { display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; }
 .ckt-turn-line { font-family: 'Cinzel', serif; font-size: 1.08rem; letter-spacing: 0.1em; color: var(--gold-light); text-transform: uppercase; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9); }
 
 /* Marks board */
@@ -2955,18 +3008,24 @@ body.app-active .arena-bg { animation: none !important; }
 /* Camera column: cam on top, scoring pad underneath (beside marks board) */
 .ckt-cam { display: flex; flex-direction: column; gap: 0.7rem; align-self: start; }
 .ckt-cam-frame {
-  position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden;
+  position: relative; width: 100%; aspect-ratio: var(--cam-frame-ratio); border-radius: 12px; overflow: hidden;
   border: 1px solid var(--border); background: #000; flex-shrink: 0;
 }
-.ckt-cam-video { width: 100%; height: 100%; object-fit: cover; }
+.ckt-cam-video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ckt-cam-badge {
   position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); color: #fff;
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .ckt-cam-badge.bot { background: rgba(232,144,42,0.85); color: #1a0e00; font-weight: 700; }
 /* Cricket/Tactics: camera swapped into the center column, marks board moved to
-   the right column (above the scoring pad). Keep the centered cam a sane size. */
-.ckt-center .ckt-cam-frame { max-width: 420px; align-self: center; }
+   the right column (above the scoring pad). Same fixed square frame as X01. */
+.ckt-center .ckt-cam-frame {
+  width: min(100%, 360px);
+  max-width: 100%;
+  aspect-ratio: var(--cam-frame-ratio);
+  align-self: center;
+  flex-shrink: 0;
+}
 </style>
 </head>
 <body>
@@ -4034,7 +4093,7 @@ body.app-active .arena-bg { animation: none !important; }
       <button class="modal-close" onclick="closeCameraModal()">×</button>
     </div>
     <div class="modal-body">
-      <p style="color:var(--muted);font-size:0.88rem;line-height:1.7">Enable your camera once — it stays linked for every match until you leave the site. Adjust zoom and framing below. Use <strong>Re-enable</strong> if your feed freezes, or <strong>Disconnect</strong> to turn the camera off.</p>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.7">Enable your camera once — it stays linked for every match until you leave the site. Frame your board in the square preview with zoom so it fills the box; that framing is reused for every player camera box. Use <strong>Re-enable</strong> if your feed freezes, or <strong>Disconnect</strong> to turn the camera off.</p>
       <div class="cam-preview-wrap">
         <div class="cam-video-frame" id="cam-preview-frame">
           <video id="cam-preview" class="cam-video" autoplay muted playsinline></video>
@@ -4344,6 +4403,34 @@ const PREFERS_REDUCED_MOTION =
 })();
 
 // ═══════════════════════════════════════════════════════════
+//  CAMERA FRAMING PREFS (shared square frame + zoom for all cams)
+// ═══════════════════════════════════════════════════════════
+const CAM_VIEW_STORAGE_KEY = 'tma_cam_view';
+const CAM_VIEW_DEFAULTS = { zoom: 1.15, fit: 'cover' };
+
+function loadCamViewPrefs() {
+  try {
+    const raw = sessionStorage.getItem(CAM_VIEW_STORAGE_KEY);
+    if (!raw) return { ...CAM_VIEW_DEFAULTS };
+    const parsed = JSON.parse(raw);
+    const zoom = Number(parsed?.zoom);
+    const fit = parsed?.fit === 'contain' ? 'contain' : 'cover';
+    return {
+      zoom: Number.isFinite(zoom) ? Math.min(2.2, Math.max(1, zoom)) : CAM_VIEW_DEFAULTS.zoom,
+      fit,
+    };
+  } catch {
+    return { ...CAM_VIEW_DEFAULTS };
+  }
+}
+
+function saveCamViewPrefs() {
+  try {
+    sessionStorage.setItem(CAM_VIEW_STORAGE_KEY, JSON.stringify(S.camView));
+  } catch { /* ignore quota / private mode */ }
+}
+
+// ═══════════════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════════════
 const S = {
@@ -4361,7 +4448,7 @@ const S = {
   lobbies: [], tournaments: [],
   platformUsers: [],
   arena: { mode: 'open', message: '', registrationOpen: true, guestAllowed: true, pendingCount: 0 },
-  camView: { zoom: 1.15, fit: 'cover' },
+  camView: loadCamViewPrefs(),
   matchVariation: {},
   onlineCount: 0,
   onlinePlayers: [],
@@ -5950,16 +6037,18 @@ function applyCamView() {
   });
   // X01 / Cricket use a separate single-feed <video> — apply local zoom there too.
   applySpecialtyCamZoom();
+  saveCamViewPrefs();
 }
 
 /** Zoom only when the specialty match cam is showing *your* stream. */
 function applySpecialtyCamZoom() {
-  const zoom = `scale(${S.camView.zoom})`;
   ['x01-cam-video', 'ckt-cam-video'].forEach(id => {
     const vid = document.getElementById(id);
     if (!vid) return;
     const showingLocal = !!vid.srcObject && vid.srcObject === S.localStream;
-    vid.style.transform = showingLocal ? zoom : '';
+    vid.classList.toggle('cam-local-framed', showingLocal);
+    // Prefer CSS --cam-zoom via .cam-local-framed; clear any legacy inline scale.
+    vid.style.transform = '';
   });
 }
 
@@ -6025,7 +6114,12 @@ function openCameraPanel(autoProceed) {
     btn.textContent = isCamReady() ? 'Camera Active' : 'Enable Camera';
   }
   const zoom = document.getElementById('cam-zoom');
-  if (zoom) { zoom.value = Math.round(S.camView.zoom * 100); setCamZoom(zoom.value); }
+  if (zoom) zoom.value = Math.round(S.camView.zoom * 100);
+  const lbl = document.getElementById('cam-zoom-val');
+  if (lbl) lbl.textContent = S.camView.zoom.toFixed(2) + '×';
+  document.getElementById('cam-fit-cover')?.classList.toggle('active', S.camView.fit === 'cover');
+  document.getElementById('cam-fit-contain')?.classList.toggle('active', S.camView.fit === 'contain');
+  applyCamView();
   startCameraPreview();
 }
 
@@ -11253,6 +11347,7 @@ if (location.protocol === 'file:') {
   setAuthDebug('Login needs the server — run node server.js, then open http://localhost:3000');
 }
 maybeShowResetFromUrl();
+applyCamView();
 connectWS();
 loadWdlTicker();
 setInterval(loadWdlTicker, 5 * 60 * 1000);
