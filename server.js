@@ -942,12 +942,55 @@ function createRoom(hostWsId, config) {
     turn: 0,
     round: 0,
     history: [],
+    // Seat 0 = Player One = whoever starts (throws first). Host/guest are roles, not seats.
+    hostSeat: 0,
+    guestSeat: 1,
+    starterLocked: false,
     createdAt: Date.now(),
     lastActivity: Date.now()
   };
   rooms.set(room.id, room);
   spectators.set(room.id, new Set());
   return room;
+}
+
+/** Match seat of the room creator (host role). Defaults to 0 until starter is locked. */
+function roomHostSeat(room) {
+  return room.hostSeat === 1 ? 1 : 0;
+}
+
+/** Match seat of the joiner / bot (guest role). */
+function roomGuestSeat(room) {
+  return room.guestSeat === 0 ? 0 : 1;
+}
+
+/** Resolve a websocket client's player seat (0 = Player One / starter). */
+function seatOfWs(room, wsId) {
+  if (wsId === room.hostWsId) return roomHostSeat(room);
+  if (wsId === room.guestWsId) return roomGuestSeat(room);
+  return -1;
+}
+
+function nameAtSeat(room, seat) {
+  return seat === roomHostSeat(room) ? room.config.hostName : room.config.guestName;
+}
+
+function botSeat(room) {
+  return room.config.bot ? roomGuestSeat(room) : -1;
+}
+
+/** Lock seats so the chosen starter becomes Player One (seat 0). roleStarter: 0=host, 1=guest. */
+function lockMatchSeats(room, roleStarter) {
+  const starterIsGuest = roleStarter === 1;
+  room.hostSeat = starterIsGuest ? 1 : 0;
+  room.guestSeat = starterIsGuest ? 0 : 1;
+  room.turn = 0;
+  room.starterLocked = true;
+  if (room.gameState && typeof room.gameState === 'object') {
+    if (room.gameState.legStarter !== undefined) room.gameState.legStarter = 0;
+    if ('nextTurn' in room.gameState) room.gameState.nextTurn = 0;
+    if (room.gameState.starter !== undefined) room.gameState.starter = 0;
+  }
 }
 
 function generateHalveItTargets() {
@@ -1088,6 +1131,7 @@ function gcSyncAdvanceBoth(gs) {
 }
 
 // Applies a whole turn total (X01-style entry). Mutates gs.
+// Golf Checkouts uses double-out: finish exactly on 0 via a legal checkout; leaving 1 busts.
 function gcApplyTurnTotal(gs, playerIdx, total, visitDarts = GC_DARTS_PER_TURN) {
   const capOn = gs.capEnabled !== false;
   const progress = gs.playerProgress[playerIdx];
@@ -1107,17 +1151,29 @@ function gcApplyTurnTotal(gs, playerIdx, total, visitDarts = GC_DARTS_PER_TURN) 
   progress.currentHoleDarts = (progress.currentHoleDarts || 0) + dartsThisVisit;
   progress.totalDarts = (progress.totalDarts || 0) + dartsThisVisit;
   let note;
+  let checkoutBust = false;
   if (total === 0) {
     note = `Miss · ${progress.remaining} left`;
   } else if (total > progress.remaining) {
     note = `Bust · ${progress.remaining} left`;
   } else {
-    progress.remaining -= total;
-    note = `${total} · ${progress.remaining} left`;
+    const after = progress.remaining - total;
+    if (after === 1) {
+      checkoutBust = true;
+      note = `BUST (must finish on a double) · ${progress.remaining} left`;
+    } else if (after === 0 && !x01IsValidCheckout(remainingBefore, 'double-out')) {
+      checkoutBust = true;
+      note = `BUST (no double-out) · ${progress.remaining} left`;
+    } else {
+      progress.remaining = after;
+      note = after === 0
+        ? `Checkout ${remainingBefore}`
+        : `${total} · ${progress.remaining} left`;
+    }
   }
   let holeComplete = false;
   let capped = false;
-  if (progress.remaining === 0) {
+  if (progress.remaining === 0 && !checkoutBust) {
     holeComplete = true;
   } else if (capOn && holeDef.cap && progress.currentHoleDarts >= holeDef.cap) {
     holeComplete = true;
@@ -1313,7 +1369,7 @@ function applyX01EditToRoom(room, msg, { fromEdit = false } = {}) {
       recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, winnerName);
     }
     broadcastLobbyUpdate();
-  } else if (room.config.bot && room.turn === 1) {
+  } else if (room.config.bot && room.turn === botSeat(room)) {
     scheduleBotMove(room.id);
   }
 }
@@ -1327,7 +1383,7 @@ function halveItGameOver(gs) {
 
 function halveItWinner(room) {
   if (room.scores[0] === room.scores[1]) return null;
-  return room.scores[0] > room.scores[1] ? room.config.hostName : room.config.guestName;
+  return room.scores[0] > room.scores[1] ? nameAtSeat(room, 0) : nameAtSeat(room, 1);
 }
 
 // ─────────────────────────────────────────────
@@ -1543,14 +1599,14 @@ function cricketGameOver(room) {
   if (!gs || gs.kind !== 'cricket') return { gameOver: false, winner: null };
   const need = gs.legsToWin || 1;
   if (Array.isArray(gs.legs)) {
-    if (gs.legs[0] >= need) return { gameOver: true, winner: room.config.hostName };
-    if (gs.legs[1] >= need) return { gameOver: true, winner: room.config.guestName };
+    if (gs.legs[0] >= need) return { gameOver: true, winner: nameAtSeat(room, 0) };
+    if (gs.legs[1] >= need) return { gameOver: true, winner: nameAtSeat(room, 1) };
   }
   // Single-leg / legacy: board closed with a declared winner and no legs progress.
   if ((gs.bestOf || 1) <= 1) {
     const w = cricketWinnerIdx(gs);
     if (w === null || w === undefined) return { gameOver: false, winner: null };
-    return { gameOver: true, winner: w === 0 ? room.config.hostName : room.config.guestName };
+    return { gameOver: true, winner: nameAtSeat(room, w === 0 ? 0 : 1) };
   }
   return { gameOver: false, winner: null };
 }
@@ -2242,23 +2298,21 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'error', message: 'Only the match creator can set who starts.' });
       }
       if (room.starterLocked) return;
-      const starterIdx = msg.starterIdx === 1 ? 1 : 0;
-      room.turn = starterIdx;
-      room.starterLocked = true;
+      // msg.starterIdx is still role-based (0 = host/creator, 1 = guest/opponent).
+      const roleStarter = msg.starterIdx === 1 ? 1 : 0;
       room.starterMethod = msg.method || room.starterMethod || null;
-      if (room.gameState && typeof room.gameState === 'object') {
-        if (room.gameState.legStarter !== undefined) room.gameState.legStarter = starterIdx;
-        if ('nextTurn' in room.gameState) room.gameState.nextTurn = starterIdx;
-      }
+      lockMatchSeats(room, roleStarter);
       if (room.config.game === 'Golf Checkouts') {
         room.turn = gcSkipWaitingTurn(room.turn, room.gameState);
       }
-      const names = [room.config.hostName, room.config.guestName];
-      const starterName = msg.starterName || names[starterIdx] || 'Player';
+      const starterName = msg.starterName || nameAtSeat(room, 0) || 'Player';
       broadcastToRoom(room, {
         type: 'match_starter_set',
         roomId: room.id,
-        starterIdx: room.turn,
+        starterIdx: 0,
+        roleStarterIdx: roleStarter,
+        hostSeat: roomHostSeat(room),
+        guestSeat: roomGuestSeat(room),
         starterName,
         method: room.starterMethod,
         turn: room.turn,
@@ -2273,7 +2327,7 @@ async function handleMessage(wsId, msg) {
       if (room.hostWsId !== wsId) return;
       if (room.uiReady) return;
       room.uiReady = true;
-      if (room.config.bot && room.turn === 1) {
+      if (room.config.bot && room.turn === botSeat(room)) {
         scheduleBotMove(room.id);
       }
       break;
@@ -2351,8 +2405,8 @@ async function handleMessage(wsId, msg) {
     case 'submit_score': {
       const room = rooms.get(client.roomId);
       if (!room || room.status !== 'active') return;
-      const isHost = room.hostWsId === wsId;
-      const playerIdx = isHost ? 0 : 1;
+      const playerIdx = seatOfWs(room, wsId);
+      if (playerIdx < 0) return;
       if (room.turn !== playerIdx) return send(wsId, { type: 'error', message: 'Not your turn.' });
 
       room.gameState = msg.gameState
@@ -2419,8 +2473,8 @@ async function handleMessage(wsId, msg) {
           recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, winnerName);
         }
         broadcastLobbyUpdate();
-      } else if (room.config.bot && room.turn === 1) {
-        // Schedule on final turn===1 (not only turnEnded) so cricket/tactics
+      } else if (room.config.bot && room.turn === botSeat(room)) {
+        // Schedule on bot seat turn (not only turnEnded) so cricket/tactics
         // bots keep moving even if nextTurn wiring and turnEnded disagree.
         scheduleBotMove(room.id);
       }
@@ -2543,7 +2597,7 @@ async function handleMessage(wsId, msg) {
         round: room.round, history: [], gameState: room.gameState
       };
       broadcastToRoom(room, update);
-      if (room.config.bot && room.turn === 1) scheduleBotMove(room.id);
+      if (room.config.bot && room.turn === botSeat(room)) scheduleBotMove(room.id);
       break;
     }
 
@@ -3048,13 +3102,14 @@ function handleDisconnect(wsId) {
 function scheduleBotMove(roomId, attempt = 0) {
   setTimeout(() => {
     const room = rooms.get(roomId);
-    if (!room || !room.config.bot || room.status !== 'active' || room.turn !== 1) return;
+    const bSeat = room ? botSeat(room) : -1;
+    if (!room || !room.config.bot || room.status !== 'active' || room.turn !== bSeat) return;
     try {
       botTakeTurn(room);
     } catch (err) {
       console.error('Bot turn failed:', err);
       // Recover from transient state errors so cricket/tactics bots don't freeze mid-match.
-      if (attempt < 2 && room.status === 'active' && room.turn === 1) {
+      if (attempt < 2 && room.status === 'active' && room.turn === bSeat) {
         if (isCricketGame(room.config.game)) {
           room.gameState = ensureCricketState(room.gameState, room.config, room.config.game);
         }
@@ -3065,18 +3120,20 @@ function scheduleBotMove(roomId, attempt = 0) {
 }
 
 function botTakeTurn(room) {
+  const B = botSeat(room);
+  const H = 1 - B;
   const move = computeBotMove(room);
   room.lastActivity = Date.now();
   room.history.unshift({ player: room.config.guestName, score: move.displayScore, note: move.note, ts: Date.now() });
   if (room.history.length > 50) room.history.pop();
   room.turn = (move.nextTurn !== undefined && move.nextTurn !== null)
     ? move.nextTurn
-    : (move.keepTurn ? 1 : 0);
+    : (move.keepTurn ? B : H);
   if (room.config.game === 'Golf Checkouts' && !move.keepTurn) {
     room.turn = gcSkipWaitingTurn(room.turn, room.gameState);
   }
-  if (move.absoluteScore !== undefined) room.scores[1] = move.absoluteScore;
-  else room.scores[1] += move.delta || 0;
+  if (move.absoluteScore !== undefined) room.scores[B] = move.absoluteScore;
+  else room.scores[B] += move.delta || 0;
   room.gameState = move.gameState || room.gameState;
   if (move.gameOver) {
     room.status = 'finished';
@@ -3101,7 +3158,7 @@ function botTakeTurn(room) {
     if (room.config.tournamentId && room.config.bracketMatchId && move.winner) {
       recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, move.winner);
     }
-  } else if (room.turn === 1 && room.status === 'active') {
+  } else if (room.turn === B && room.status === 'active') {
     scheduleBotMove(room.id);
   }
 }
@@ -3120,9 +3177,13 @@ function computeBotMove(room) {
   const difficulty = { easy: 0.45, medium: 0.65, hard: 0.85, adaptive: 0.75 }[skill] || 0.55;
   let move = { delta: 0, absoluteScore: undefined, displayScore: 'MISS', note: 'Miss', gameState: gs, gameOver: false, winner: '', keepTurn: false };
   const game = room.config.game;
+  const B = botSeat(room);
+  const H = 1 - B;
+  const botName = room.config.guestName;
+  const humanName = room.config.hostName;
 
   if (isX01Game(game)) {
-    const p = 1;
+    const p = B;
     if (!gs.remaining) Object.assign(gs, initX01State(room.config, game));
     const rem = gs.remaining[p];
     const avg = { easy: 38, medium: 58, hard: 84, adaptive: 70 }[skill] || 45;
@@ -3153,20 +3214,20 @@ function computeBotMove(room) {
     move.delta = 0;
     move.absoluteScore = gs.legs[p];
     move.keepTurn = false;
-    move.nextTurn = res.matchOver ? 0 : gs.nextTurn;
+    move.nextTurn = res.matchOver ? H : gs.nextTurn;
     move.displayScore = res.bust ? 'BUST' : String(total);
-    if (res.matchOver) move.note = `${room.config.guestName} wins the match!`;
-    else if (res.legWon) move.note = `${room.config.guestName} wins leg ${gs.currentLeg - 1}!`;
+    if (res.matchOver) move.note = `${botName} wins the match!`;
+    else if (res.legWon) move.note = `${botName} wins leg ${gs.currentLeg - 1}!`;
     else if (res.bust) move.note = `BUST · ${gs.remaining[p]} left`;
     else move.note = `${total} · ${gs.remaining[p]} left`;
-    if (res.matchOver) { move.gameOver = true; move.winner = room.config.guestName; }
+    if (res.matchOver) { move.gameOver = true; move.winner = botName; }
     move.highScore = Math.max(gs.points[0], gs.points[1]);
     move.matchStats = { scores: [gs.legs[0], gs.legs[1]], time: Math.floor((Date.now() - room.createdAt) / 1000), bestRound: Math.max(gs.points[0], gs.points[1]) };
     return move;
   }
 
   if (isCricketGame(game)) {
-    const p = 1;
+    const p = B;
     room.gameState = ensureCricketState(gs, room.config, game);
     const state = room.gameState;
     const hitChance = { easy: 0.45, medium: 0.62, hard: 0.8, adaptive: 0.72 }[skill] || 0.5;
@@ -3208,12 +3269,12 @@ function computeBotMove(room) {
     move.gameState = state;
     move.absoluteScore = state.score[p];
     move.nextTurn = res.matchOver
-      ? 0
-      : (state.nextTurn === 0 || state.nextTurn === 1 ? state.nextTurn : 0);
+      ? H
+      : (state.nextTurn === 0 || state.nextTurn === 1 ? state.nextTurn : H);
     move.displayScore = darts.map(d => d.label).join(' ');
-    if (res.matchOver) move.note = `${room.config.guestName} wins the match!`;
+    if (res.matchOver) move.note = `${botName} wins the match!`;
     else if (res.legWon) {
-      const lw = res.legWinnerIdx === 0 ? room.config.hostName : room.config.guestName;
+      const lw = nameAtSeat(room, res.legWinnerIdx === 0 ? 0 : 1);
       move.note = `${lw} wins the leg!`;
     } else if (res.points > 0) move.note = `BOT ${move.displayScore} · +${res.points}`;
     else move.note = `BOT ${move.displayScore}`;
@@ -3221,8 +3282,8 @@ function computeBotMove(room) {
       move.gameOver = true;
       const w = res.winnerIdx !== null && res.winnerIdx !== undefined
         ? res.winnerIdx
-        : (state.legs[1] >= (state.legsToWin || 1) ? 1 : 0);
-      move.winner = w === 0 ? room.config.hostName : room.config.guestName;
+        : (state.legs[B] >= (state.legsToWin || 1) ? B : H);
+      move.winner = nameAtSeat(room, w === 0 ? 0 : 1);
     }
     move.highScore = Math.max(state.score[0], state.score[1]);
     move.matchStats = {
@@ -3239,7 +3300,7 @@ function computeBotMove(room) {
       { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] },
       { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] }
     ];
-    const progress = gs.roundProgress[1];
+    const progress = gs.roundProgress[B];
     const target = gs.targets[progress.round] ?? gs.targets[0];
     const hitChance = Math.min(0.95, Math.max(0.25, difficulty + (typeof target === 'number' ? 0 : 0.1)));
     const dartLabels = [];
@@ -3286,7 +3347,7 @@ function computeBotMove(room) {
       move.note = `BOT round complete +${progress.pending}`;
     }
     gs.playerRounds = gs.playerRounds || [[], []];
-    gs.playerRounds[1].push({
+    gs.playerRounds[B].push({
       round: progress.round + 1, target, darts: progress.throws,
       hits: progress.hits, roundScore: progress.pending, total: progress.total, hit: progress.hits > 0
     });
@@ -3299,11 +3360,13 @@ function computeBotMove(room) {
     move.keepTurn = false;
     if (halveItGameOver(gs)) {
       move.gameOver = true;
-      move.winner = halveItWinner({ ...room, scores: [room.scores[0], move.absoluteScore ?? room.scores[1]] });
+      move.winner = halveItWinner({ ...room, scores: B === 0
+        ? [move.absoluteScore ?? room.scores[0], room.scores[1]]
+        : [room.scores[0], move.absoluteScore ?? room.scores[1]] });
     }
     move.gameState = gs;
   } else if (game === 'Football Darts') {
-    const playerIdx = 1;
+    const playerIdx = B;
     const botName = room.config.guestName || 'Bot';
     gs.goals = gs.goals || [0, 0];
     gs.events = gs.events || [];
@@ -3364,23 +3427,23 @@ function computeBotMove(room) {
     }
     if (!move.gameOver && gs.turnEnded && (gs.round || 0) >= 20) {
       move.gameOver = true;
-      const g0 = gs.goals[0] || 0, g1 = gs.goals[1] || 0;
-      move.winner = g1 === g0 ? null : (g1 > g0 ? botName : room.config.hostName);
+      const gBot = gs.goals[B] || 0, gHum = gs.goals[H] || 0;
+      move.winner = gBot === gHum ? null : (gBot > gHum ? botName : humanName);
     }
     move.gameState = gs;
   } else if (game === 'Snakes & Ladders') {
     const roll = Math.ceil(rand() * 6);
     gs.pos = gs.pos || [0,0];
-    let pos = gs.pos[1] + roll;
+    let pos = gs.pos[B] + roll;
     if (pos > 100) pos = 100 - (pos - 100);
     if (gs.ladders?.[pos]) { pos = gs.ladders[pos]; move.note = `BOT Ladder ${pos}`; }
     else if (gs.snakes?.[pos]) { pos = gs.snakes[pos]; move.note = `BOT Snake ${pos}`; }
-    gs.pos[1] = Math.min(100, Math.max(0, pos));
-    move.absoluteScore = gs.pos[1];
-    move.displayScore = `sq.${gs.pos[1]}`;
-    if (gs.pos[1] >= 100) {
+    gs.pos[B] = Math.min(100, Math.max(0, pos));
+    move.absoluteScore = gs.pos[B];
+    move.displayScore = `sq.${gs.pos[B]}`;
+    if (gs.pos[B] >= 100) {
       move.gameOver = true;
-      move.winner = room.config.guestName;
+      move.winner = botName;
     }
     move.gameState = gs;
   } else if (game === 'Golf Darts') {
@@ -3396,9 +3459,9 @@ function computeBotMove(room) {
     gs.playerHoles = gs.playerHoles || [0,0];
     gs.playerDarts = gs.playerDarts || [[],[]];
     gs.playerHoleScores = gs.playerHoleScores || [[],[]];
-    const holeIdx = gs.playerHoles[1] || 0;
+    const holeIdx = gs.playerHoles[B] || 0;
     const target = gs.holes?.[holeIdx] ?? holeIdx + 1;
-    const darts = gs.playerDarts[1] || [];
+    const darts = gs.playerDarts[B] || [];
     if (darts.length >= 3) {
       move.note = 'BOT already finished hole';
       move.keepTurn = false;
@@ -3435,14 +3498,14 @@ function computeBotMove(room) {
       darts.push(parsed);
       move.displayScore = parsed.isMiss ? 'MISS' : `${parsed.segment}${parsed.base}`;
       move.note = `Dart ${darts.length}/3: ${move.displayScore} (${parsed.golfPts})`;
-      gs.playerDarts[1] = darts;
+      gs.playerDarts[B] = darts;
       if (darts.length >= 3) {
         const { holeScore, hatTrick } = finalizeGolfHole(darts, target);
         move.delta = holeScore;
-        move.absoluteScore = (room.scores[1] || 0) + holeScore;
+        move.absoluteScore = (room.scores[B] || 0) + holeScore;
         move.displayScore = `Hole ${holeIdx + 1}: ${holeScore}`;
         move.note = `Hole ${holeIdx + 1} complete · best ${holeScore}${hatTrick ? ' · Hat trick −1!' : ''}`;
-        gs.playerHoleScores[1].push({
+        gs.playerHoleScores[B].push({
           hole: holeIdx + 1,
           target,
           darts: darts.map(d => d.isMiss ? 'MISS' : `${d.segment}${d.base}`),
@@ -3450,8 +3513,8 @@ function computeBotMove(room) {
           score: holeScore,
           bonus: hatTrick
         });
-        gs.playerDarts[1] = [];
-        gs.playerHoles[1] = holeIdx + 1;
+        gs.playerDarts[B] = [];
+        gs.playerHoles[B] = holeIdx + 1;
         gs.turnEnded = true;
         move.keepTurn = false;
       } else {
@@ -3466,7 +3529,7 @@ function computeBotMove(room) {
       { hole: 0, remaining: gs.holes?.[0]?.target || 0, currentHoleDarts: 0, totalDarts: 0, holeResults: [], finished: false, holeDone: false },
       { hole: 0, remaining: gs.holes?.[0]?.target || 0, currentHoleDarts: 0, totalDarts: 0, holeResults: [], finished: false, holeDone: false }
     ];
-    const playerIdx = 1;
+    const playerIdx = B;
     const progress = gs.playerProgress[playerIdx];
     if (!gcPlayerCanThrow(gs, playerIdx)) {
       move.note = progress?.finished ? 'BOT finished' : 'BOT waiting for opponent';
@@ -3479,7 +3542,7 @@ function computeBotMove(room) {
       const coAttempt = { easy: 0.18, medium: 0.34, hard: 0.6, adaptive: 0.45 }[skill] || 0.2;
       let total;
       let visitDarts = GC_DARTS_PER_TURN;
-      if (rem > 0 && rem <= 180 && rand() < coAttempt) {
+      if (rem > 0 && rem <= 180 && x01IsValidCheckout(rem, 'double-out') && rand() < coAttempt) {
         total = rem;
         if (rem < 170) {
           const minD = gcMinDartsForScore(rem);
@@ -3502,34 +3565,34 @@ function computeBotMove(room) {
       move.gameState = gs;
     }
   } else if (game === 'Around the Clock') {
-    const needed = gs.progress?.[1] || 1;
+    const needed = gs.progress?.[B] || 1;
     if (rand() < difficulty) {
       move.displayScore = `S${needed}`;
       move.delta = needed;
       gs.progress = gs.progress || [1,1];
-      gs.progress[1] = needed + 1;
+      gs.progress[B] = needed + 1;
       move.note = `BOT hit ${needed}`;
-      if (gs.progress[1] > 20) {
+      if (gs.progress[B] > 20) {
         move.gameOver = true;
-        move.winner = room.config.guestName;
+        move.winner = botName;
       }
     } else {
       move.displayScore = 'MISS';
       move.note = 'BOT MISS';
       gs.progress = gs.progress || [1,1];
     }
-    move.absoluteScore = (gs.progress[1] || 1) - 1;
+    move.absoluteScore = (gs.progress[B] || 1) - 1;
     move.gameState = gs;
   } else if (game === 'Killer') {
     gs.isKiller = gs.isKiller || [false,false];
     gs.hitCount = gs.hitCount || [0,0];
     gs.lives = gs.lives || [5,5];
-    if (!gs.isKiller[1]) {
+    if (!gs.isKiller[B]) {
       if (rand() < difficulty) {
-        gs.hitCount[1] = Math.min(3, gs.hitCount[1] + 1);
-        move.note = `BOT hit ${gs.numbers?.[1] || '?'} (${gs.hitCount[1]}/3)`;
-        if (gs.hitCount[1] >= 3) {
-          gs.isKiller[1] = true;
+        gs.hitCount[B] = Math.min(3, gs.hitCount[B] + 1);
+        move.note = `BOT hit ${gs.numbers?.[B] || '?'} (${gs.hitCount[B]}/3)`;
+        if (gs.hitCount[B] >= 3) {
+          gs.isKiller[B] = true;
           move.note = '⚡ BOT KILLER!';
         }
       } else {
@@ -3537,11 +3600,11 @@ function computeBotMove(room) {
       }
     } else {
       if (rand() < difficulty) {
-        gs.lives[0] = Math.max(0, gs.lives[0] - 1);
-        move.note = `BOT hit your number ${gs.numbers?.[0] || '?'} -1 life`;
-        if (gs.lives[0] <= 0) {
+        gs.lives[H] = Math.max(0, gs.lives[H] - 1);
+        move.note = `BOT hit your number ${gs.numbers?.[H] || '?'} -1 life`;
+        if (gs.lives[H] <= 0) {
           move.gameOver = true;
-          move.winner = room.config.guestName;
+          move.winner = botName;
         }
       } else {
         move.note = 'BOT MISS';
@@ -3554,7 +3617,7 @@ function computeBotMove(room) {
       { round: 0, throws: 0, hits: { S:0,D:0,T:0 }, total: 0 },
       { round: 0, throws: 0, hits: { S:0,D:0,T:0 }, total: 0 }
     ];
-    const progress = gs.roundProgress[1];
+    const progress = gs.roundProgress[B];
     const target = (gs.roundIdx || 0) + 1;
     const hitTarget = rand() < difficulty;
     if (hitTarget) {
@@ -3572,13 +3635,13 @@ function computeBotMove(room) {
     if (progress.throws >= 3) {
       if (progress.hits.S && progress.hits.D && progress.hits.T) {
         move.gameOver = true;
-        move.winner = room.config.guestName;
+        move.winner = botName;
         move.note = 'BOT SHANGHAI!';
       }
       gs.roundScores = gs.roundScores || [[],[]];
-      gs.roundScores[1].push(progress.total);
+      gs.roundScores[B].push(progress.total);
       move.delta = progress.total;
-      move.absoluteScore = room.scores[1] + progress.total;
+      move.absoluteScore = room.scores[B] + progress.total;
       progress.round++;
       progress.throws = 0;
       progress.hits = { S:0, D:0, T:0 };
@@ -3597,16 +3660,16 @@ function computeBotMove(room) {
     move.displayScore = score;
     move.note = `BOT scored ${score}`;
     gs.roundScores = gs.roundScores || [[],[]];
-    gs.roundScores[1].push(score);
+    gs.roundScores[B].push(score);
     gs.roundIdx = (gs.roundIdx || 0) + 1;
     if (gs.roundIdx >= 10) {
       move.gameOver = true;
-      move.winner = (room.scores[1] + score) >= room.scores[0] ? room.config.guestName : room.config.hostName;
+      move.winner = (room.scores[B] + score) >= room.scores[H] ? botName : humanName;
     }
     move.gameState = gs;
   }
 
-  move.highScore = Math.max(room.scores[1], room.scores[0]);
+  move.highScore = Math.max(room.scores[B], room.scores[H]);
   move.matchStats = { scores: room.scores, time: Math.floor((Date.now() - room.createdAt) / 1000), bestRound: 0 };
   return move;
 }
@@ -3672,7 +3735,7 @@ function computeGolfGameOver(room) {
     const p1done = (gs.playerHoles?.[1] || 0) >= (gs.holes?.length || 18);
     if (p0done && p1done) {
       if (room.scores[0] === room.scores[1]) return { gameOver: true, winner: null };
-      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? room.config.hostName : room.config.guestName };
+      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? nameAtSeat(room, 0) : nameAtSeat(room, 1) };
     }
   }
   if (game === 'Golf Checkouts') {
@@ -3680,7 +3743,7 @@ function computeGolfGameOver(room) {
     const p1done = !!gs.playerProgress?.[1]?.finished;
     if (p0done && p1done) {
       if (room.scores[0] === room.scores[1]) return { gameOver: true, winner: null };
-      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? room.config.hostName : room.config.guestName };
+      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? nameAtSeat(room, 0) : nameAtSeat(room, 1) };
     }
   }
   return { gameOver: false, winner: null };
