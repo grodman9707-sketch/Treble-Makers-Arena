@@ -2385,17 +2385,56 @@ body.app-active .arena-bg { animation: none !important; }
   border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s;
 }
 .username-link:hover { color: var(--gold-light); border-bottom-color: rgba(201,168,76,0.55); }
-.profile-page { padding: 1.5rem 2rem 2.5rem; max-width: 980px; }
+.profile-page { padding: 1.5rem 2rem 2.5rem; max-width: 1100px; }
 .profile-layout {
-  display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 1.25rem; margin-top: 1.25rem;
+  display: grid; grid-template-columns: minmax(260px, 320px) 1fr minmax(220px, 280px); gap: 1.25rem; margin-top: 1.25rem;
+}
+@media (max-width: 980px) {
+  .profile-layout { grid-template-columns: minmax(260px, 1fr) 1fr; }
+  .profile-settings-card { grid-column: 1 / -1; }
 }
 @media (max-width: 800px) {
   .profile-layout { grid-template-columns: 1fr; }
+  .profile-settings-card { grid-column: auto; }
 }
-.profile-card, .profile-stats-card {
+.profile-card, .profile-stats-card, .profile-settings-card {
   padding: 1.35rem 1.4rem; border-radius: 10px;
   background: rgba(6,8,12,0.92); border: 1px solid var(--border-bright);
   backdrop-filter: blur(4px);
+}
+.profile-setting-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.85rem 0.9rem; border-radius: 6px;
+  background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.1);
+}
+.profile-setting-meta { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.profile-setting-label {
+  font-family: 'Cinzel', serif; font-size: 0.78rem; letter-spacing: 0.08em;
+  color: var(--gold-light); text-transform: uppercase;
+}
+.profile-setting-hint { font-size: 0.72rem; color: var(--muted); line-height: 1.35; }
+.pref-toggle {
+  position: relative; width: 46px; height: 26px; flex-shrink: 0;
+  border: 1px solid rgba(201,168,76,0.35); border-radius: 999px;
+  background: rgba(255,255,255,0.08); cursor: pointer; padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pref-toggle[aria-checked="true"] {
+  background: rgba(201,168,76,0.35); border-color: rgba(201,168,76,0.7);
+}
+.pref-toggle-knob {
+  position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--silver-light); transition: transform 0.15s, background 0.15s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+}
+.pref-toggle[aria-checked="true"] .pref-toggle-knob {
+  transform: translateX(20px); background: var(--gold-light);
+}
+.app-footer {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end;
+  gap: 0.75rem; padding: 0.65rem 1.5rem;
+  background: var(--deep); border-top: 1px solid var(--border);
+  position: sticky; bottom: 0; z-index: 95;
 }
 .profile-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; margin-bottom: 1rem; }
 .profile-avatar {
@@ -3372,7 +3411,6 @@ body.app-active .arena-bg { animation: none !important; }
       </span>
       <button class="btn btn-sm hidden" id="nav-arena-access-btn" onclick="openArenaAccessPanel()">Arena Access</button>
       <button class="btn btn-sm" id="nav-cam-btn" onclick="openCameraPanel(false)">📷 Enable Cam</button>
-      <button class="btn btn-sm" onclick="doLogout()">Leave</button>
       <button class="btn btn-gold btn-sm" onclick="openCreateMatch()">+ Match</button>
     </div>
   </nav>
@@ -3885,11 +3923,26 @@ body.app-active .arena-bg { animation: none !important; }
               <div class="profile-stat"><span class="ps-label">Games Played</span><span class="ps-val" id="ps-games">0</span></div>
             </div>
           </div>
+          <div class="profile-settings-card" id="profile-settings-card">
+            <div class="profile-stats-title">Preferred Settings</div>
+            <div class="profile-setting-row">
+              <div class="profile-setting-meta">
+                <span class="profile-setting-label">Announce scores</span>
+                <span class="profile-setting-hint">Speak visit scores and match cues aloud</span>
+              </div>
+              <button type="button" class="pref-toggle" id="pref-announce-toggle"
+                role="switch" aria-checked="true" aria-label="Announce scores"
+                onclick="toggleAnnounceMute()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
   </div>
+  <footer class="app-footer">
+    <button type="button" class="btn btn-sm" onclick="doLogout()">Log Out</button>
+  </footer>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -4795,6 +4848,12 @@ function handleWS(msg) {
         x01EditApprovalPromptOpen = false;
         closeModal('x01-edit-approve-modal');
       }
+      if (msg.history?.[0]?.score != null) {
+        announceVisitScore(msg.history[0].score);
+      } else if (msg.displayScore != null) {
+        announceVisitScore(msg.displayScore);
+      }
+      maybeAnnounceX01Require();
       updateMatchUI();
       break;
     case 'x01_edit_pending':
@@ -6537,7 +6596,13 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
 
   hideMatchPreviewOverlay();
   updateMatchUI();
-  if (!spectating) signalMatchUiReady();
+  if (!spectating) {
+    signalMatchUiReady();
+    if (!matchPreview) {
+      announceMatchStart();
+      maybeAnnounceX01Require();
+    }
+  }
 }
 
 /** Fill in missing game-state fields when the server sends an incomplete payload. */
@@ -6747,6 +6812,8 @@ function beginMatchAfterPreview() {
   hideStarterOverlays();
   updateMatchUI();
   signalMatchUiReady();
+  announceMatchStart();
+  maybeAnnounceX01Require();
 }
 
 function signalMatchUiReady() {
@@ -10670,9 +10737,13 @@ function showGameOver(winner, scores, stats, extra) {
   document.getElementById('go-winner').textContent = `🎯 ${winner} wins!`;
   const elapsed = stats?.time || 0;
   const mins = Math.floor(elapsed/60), secs = elapsed%60;
+  // scores are seat-ordered [Player One, Player Two], not you/opponent.
+  const me = myPlayerIdx();
+  const youScore = scores?.[me] ?? 0;
+  const oppScore = scores?.[1 - me] ?? 0;
   document.getElementById('go-stats').innerHTML = `
-    <div class="go-stat"><div class="go-stat-label">Your Score</div><div class="go-stat-val">${scores?.[0]||0}</div></div>
-    <div class="go-stat"><div class="go-stat-label">Opponent</div><div class="go-stat-val">${scores?.[1]||0}</div></div>
+    <div class="go-stat"><div class="go-stat-label">Your Score</div><div class="go-stat-val">${youScore}</div></div>
+    <div class="go-stat"><div class="go-stat-label">Opponent</div><div class="go-stat-val">${oppScore}</div></div>
     <div class="go-stat"><div class="go-stat-label">Best Score</div><div class="go-stat-val">${stats?.highScore||0}</div></div>
     <div class="go-stat"><div class="go-stat-label">Match Time</div><div class="go-stat-val">${mins}:${String(secs).padStart(2,'0')}</div></div>
     ${extra?.tournamentName ? `<div style="grid-column:1/-1;text-align:center;margin-top:0.5rem;font-size:0.75rem;color:var(--gold)">🏆 ${extra.tournamentName}</div>` : ''}
@@ -10747,6 +10818,7 @@ function openProfilePage(forUsername) {
   document.getElementById('profile-guest-note')?.classList.toggle('hidden', isOwn ? !guest : true);
   document.getElementById('profile-save-btn')?.classList.toggle('hidden', readOnly);
   document.getElementById('change-password-form')?.classList.toggle('hidden', readOnly || !isOwn);
+  document.getElementById('profile-settings-card')?.classList.toggle('hidden', !isOwn);
   document.querySelector('.profile-avatar-upload')?.classList.toggle('hidden', readOnly);
   document.getElementById('profile-avatar-clear')?.classList.toggle('hidden', readOnly);
   ['profile-email', 'profile-country', 'profile-league', 'profile-equipment'].forEach(id => {
@@ -10812,6 +10884,7 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   setStat('ps-wins', String(s.wins || 0));
   setStat('ps-losses', String(s.losses || 0));
   setStat('ps-games', String(s.gamesPlayed || 0));
+  syncAnnouncePrefToggle();
 }
 
 function onProfileAvatarSelected(event) {
@@ -11279,6 +11352,78 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
+
+// ═══════════════════════════════════════════════════════════
+//  ANNOUNCE (speechSynthesis) — mute preference in localStorage
+// ═══════════════════════════════════════════════════════════
+const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
+let announceMuted = (() => {
+  try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
+})();
+let lastX01RequireKey = '';
+
+function syncAnnouncePrefToggle() {
+  const toggle = document.getElementById('pref-announce-toggle');
+  if (!toggle) return;
+  const on = !announceMuted;
+  toggle.setAttribute('aria-checked', on ? 'true' : 'false');
+  toggle.title = on ? 'Mute match announcements' : 'Unmute match announcements';
+}
+
+function toggleAnnounceMute() {
+  announceMuted = !announceMuted;
+  try { localStorage.setItem(ANNOUNCE_MUTE_KEY, announceMuted ? '1' : '0'); } catch { /* ignore */ }
+  syncAnnouncePrefToggle();
+  toast(announceMuted ? 'Announcements muted' : 'Announcements on');
+  if (!announceMuted) announceSpeak('Announcer on');
+}
+
+function announceSpeak(text) {
+  if (announceMuted || text == null || text === '') return;
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.rate = 1.05;
+    window.speechSynthesis.speak(u);
+  } catch { /* ignore TTS failures */ }
+}
+
+function announceMatchStart() {
+  const names = seatPlayerNames();
+  const game = S.game || 'Match';
+  const a = names[0] || 'Player 1';
+  const b = names[1] || 'Player 2';
+  announceSpeak(`${game}. ${a} versus ${b}.`);
+}
+
+function announceVisitScore(display) {
+  if (display == null || display === '') return;
+  const raw = String(display).trim();
+  if (!raw) return;
+  if (/^bust$/i.test(raw)) {
+    announceSpeak('bust');
+    return;
+  }
+  announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim());
+}
+
+function maybeAnnounceX01Require() {
+  if (!isX01Game(S.game)) return;
+  const gs = S.gameState;
+  if (!gs?.remaining) return;
+  const active = typeof S.turn === 'number' ? S.turn : 0;
+  const rem = gs.remaining[active];
+  if (!(rem > 0 && rem <= 170 && x01IsValidCheckout(rem, gs.finishRule || 'double-out'))) {
+    return;
+  }
+  const key = `${S.roomId || 'match'}|${gs.currentLeg}|${active}|${rem}`;
+  if (key === lastX01RequireKey) return;
+  lastX01RequireKey = key;
+  announceSpeak(`require ${rem}`);
+}
+
+syncAnnouncePrefToggle();
 
 // ═══════════════════════════════════════════════════════════
 //  STATS TIMER
