@@ -6436,12 +6436,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   if (!spectating && matchPreview?.players?.length >= 2) {
     hideAllMatchLayouts();
     pendingMatchPreview = matchPreview;
-    // Bot matches: auto-pick host as starter and run the short preview timer.
-    // Without this, awaitStarter freezes the progress bar and never opens the game UI.
-    if (S.isBot && S.isHost) {
-      finalizeStarter(0, 'quick');
-      return;
-    }
+    // Host chooses who throws first (You / Opponent / Bot). Starter becomes Player One.
     showMatchPreviewOverlay(matchPreview, { awaitStarter: true });
     return;
   }
@@ -8328,11 +8323,16 @@ function submitScore(opts = {}) {
     val = total;
     displayScore = String(total);
 
-    // On checkouts below 170 that can finish in 1–2 darts, ask how many were used.
+    // On legal double-out checkouts below 170 that can finish in 1–2 darts, ask how many were used.
     if (opts.visitDarts == null) {
       const pIdx = myPlayerIdx();
       const remaining = S.gameState?.playerProgress?.[pIdx]?.remaining;
-      if (total > 0 && total === remaining && remaining < 170) {
+      if (
+        total > 0 &&
+        total === remaining &&
+        remaining < 170 &&
+        x01IsValidCheckout(remaining, 'double-out')
+      ) {
         const minDarts = gcMinDartsForScore(remaining);
         if (minDarts === 1 || minDarts === 2) {
           openGcCheckoutDartsModal(remaining, minDarts, raw);
@@ -8471,6 +8471,9 @@ function submitScore(opts = {}) {
     delta = result.delta;
     note = result.note;
     gs.turnEnded = result.turnEnded;
+    if (/BUST \(must finish on a double\)|BUST \(no double-out\)/i.test(result.note || '')) {
+      toast(result.note);
+    }
     if (gs.turnEnded && !gs.playerProgress[playerIdx]?.finished) {
       note = `${note} · End of turn`;
     }
