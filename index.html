@@ -2407,6 +2407,35 @@ body.app-active .arena-bg { animation: none !important; }
   padding: 0.85rem 0.9rem; border-radius: 6px;
   background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.1);
 }
+.profile-setting-row + .profile-setting-row,
+.profile-setting-stack + .profile-setting-row,
+.profile-setting-row + .profile-setting-stack {
+  margin-top: 0.65rem;
+}
+.profile-setting-stack {
+  display: flex; flex-direction: column; gap: 0.55rem;
+  padding: 0.85rem 0.9rem; border-radius: 6px;
+  background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.1);
+}
+.profile-setting-stack .profile-setting-meta { margin-bottom: 0.15rem; }
+.profile-setting-controls {
+  display: flex; flex-direction: column; gap: 0.45rem;
+}
+.profile-setting-controls select {
+  width: 100%; padding: 0.5rem 0.7rem; background: var(--black);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); font-family: 'Exo 2', sans-serif; font-size: 0.82rem;
+}
+.profile-setting-controls select:focus { outline: none; border-color: var(--gold); }
+.profile-setting-controls select option { background: var(--deep); }
+.profile-setting-field-label {
+  font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); font-family: 'Cinzel', serif;
+}
+.profile-setting-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.profile-setting-note {
+  margin-top: 0.65rem; font-size: 0.68rem; color: var(--muted); line-height: 1.4;
+}
 .profile-setting-meta { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .profile-setting-label {
   font-family: 'Cinzel', serif; font-size: 0.78rem; letter-spacing: 0.08em;
@@ -3948,6 +3977,30 @@ body.app-active .arena-bg { animation: none !important; }
               <button type="button" class="pref-toggle" id="pref-announce-toggle"
                 role="switch" aria-checked="true" aria-label="Announce scores"
                 onclick="toggleAnnounceMute()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
+            </div>
+            <div class="profile-setting-stack" id="pref-announce-voice-stack">
+              <div class="profile-setting-meta">
+                <span class="profile-setting-label">Announcer voice</span>
+                <span class="profile-setting-hint">Pick a system voice and delivery style</span>
+              </div>
+              <div class="profile-setting-controls">
+                <label class="profile-setting-field-label" for="pref-announce-voice">Voice</label>
+                <select id="pref-announce-voice" onchange="onAnnounceVoiceChange()"></select>
+                <label class="profile-setting-field-label" for="pref-announce-style">Style</label>
+                <select id="pref-announce-style" onchange="onAnnounceStyleChange()">
+                  <option value="arena">Arena Classic</option>
+                  <option value="oche">Oche Caller</option>
+                  <option value="rapid">Rapid Fire</option>
+                  <option value="calm">Calm Desk</option>
+                </select>
+                <div class="profile-setting-actions">
+                  <button type="button" class="btn btn-sm" onclick="previewAnnounceVoice()">Preview</button>
+                </div>
+              </div>
+              <p class="profile-setting-note">
+                Voices come from your browser/OS. Official darts callers (Russ Bray, Owen Binks, etc.)
+                need licensed audio and aren’t available here yet.
+              </p>
             </div>
           </div>
         </div>
@@ -10970,7 +11023,7 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   setStat('ps-wins', String(s.wins || 0));
   setStat('ps-losses', String(s.losses || 0));
   setStat('ps-games', String(s.gamesPlayed || 0));
-  syncAnnouncePrefToggle();
+  syncAnnouncePrefsUI();
 }
 
 function onProfileAvatarSelected(event) {
@@ -11440,13 +11493,116 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  ANNOUNCE (speechSynthesis) — mute preference in localStorage
+//  ANNOUNCE (speechSynthesis) — mute / voice prefs in localStorage
 // ═══════════════════════════════════════════════════════════
 const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
+const ANNOUNCE_VOICE_KEY = 'tma-announce-voice';
+const ANNOUNCE_STYLE_KEY = 'tma-announce-style';
+const ANNOUNCE_STYLES = {
+  arena: { label: 'Arena Classic', rate: 1.05, pitch: 1 },
+  oche: { label: 'Oche Caller', rate: 0.92, pitch: 0.85 },
+  rapid: { label: 'Rapid Fire', rate: 1.22, pitch: 1.05 },
+  calm: { label: 'Calm Desk', rate: 0.95, pitch: 1.1 },
+};
+
 let announceMuted = (() => {
   try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
 })();
+let announceVoiceURI = (() => {
+  try { return localStorage.getItem(ANNOUNCE_VOICE_KEY) || ''; } catch { return ''; }
+})();
+let announceStyleId = (() => {
+  try {
+    const id = localStorage.getItem(ANNOUNCE_STYLE_KEY) || 'arena';
+    return ANNOUNCE_STYLES[id] ? id : 'arena';
+  } catch { return 'arena'; }
+})();
 let lastX01RequireKey = '';
+let announceVoicesReady = false;
+
+function getAnnounceStyle() {
+  return ANNOUNCE_STYLES[announceStyleId] || ANNOUNCE_STYLES.arena;
+}
+
+function listAnnounceVoices() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return [];
+  try {
+    return window.speechSynthesis.getVoices() || [];
+  } catch {
+    return [];
+  }
+}
+
+function preferredAnnounceVoices(voices) {
+  const list = Array.isArray(voices) ? [...voices] : [];
+  const score = (v) => {
+    const lang = String(v.lang || '').toLowerCase();
+    const name = String(v.name || '').toLowerCase();
+    let s = 0;
+    if (lang.startsWith('en')) s += 40;
+    if (lang.startsWith('en-gb') || lang.startsWith('en-uk')) s += 20;
+    if (lang.startsWith('en-us')) s += 10;
+    if (lang.startsWith('en-au') || lang.startsWith('en-ie')) s += 8;
+    if (/male|daniel|george|ravi|thomas|fred|alex|david|mark|james/.test(name)) s += 6;
+    if (v.localService) s += 4;
+    if (/google|microsoft|premium|enhanced|neural/.test(name)) s += 3;
+    return s;
+  };
+  list.sort((a, b) => score(b) - score(a) || String(a.name).localeCompare(String(b.name)));
+  return list;
+}
+
+function resolveAnnounceVoice() {
+  const voices = listAnnounceVoices();
+  if (!voices.length) return null;
+  if (announceVoiceURI) {
+    const match = voices.find(v => v.voiceURI === announceVoiceURI);
+    if (match) return match;
+  }
+  const ranked = preferredAnnounceVoices(voices);
+  return ranked[0] || voices[0] || null;
+}
+
+function populateAnnounceVoiceSelect() {
+  const sel = document.getElementById('pref-announce-voice');
+  if (!sel) return;
+  const voices = preferredAnnounceVoices(listAnnounceVoices());
+  const prev = announceVoiceURI || sel.value;
+  sel.innerHTML = '';
+  if (!voices.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'Default system voice';
+    sel.appendChild(opt);
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  voices.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.voiceURI;
+    const lang = v.lang ? ` (${v.lang})` : '';
+    opt.textContent = `${v.name}${lang}`;
+    sel.appendChild(opt);
+  });
+  if (prev && [...sel.options].some(o => o.value === prev)) {
+    sel.value = prev;
+    announceVoiceURI = prev;
+  } else {
+    const best = resolveAnnounceVoice();
+    if (best) {
+      sel.value = best.voiceURI;
+      if (!announceVoiceURI) announceVoiceURI = best.voiceURI;
+    }
+  }
+}
+
+function syncAnnounceStyleSelect() {
+  const sel = document.getElementById('pref-announce-style');
+  if (!sel) return;
+  if (![...sel.options].some(o => o.value === announceStyleId)) announceStyleId = 'arena';
+  sel.value = announceStyleId;
+}
 
 function syncAnnouncePrefToggle() {
   const toggle = document.getElementById('pref-announce-toggle');
@@ -11454,6 +11610,37 @@ function syncAnnouncePrefToggle() {
   const on = !announceMuted;
   toggle.setAttribute('aria-checked', on ? 'true' : 'false');
   toggle.title = on ? 'Mute match announcements' : 'Unmute match announcements';
+  const stack = document.getElementById('pref-announce-voice-stack');
+  if (stack) stack.style.opacity = on ? '1' : '0.55';
+}
+
+function syncAnnouncePrefsUI() {
+  syncAnnouncePrefToggle();
+  populateAnnounceVoiceSelect();
+  syncAnnounceStyleSelect();
+}
+
+function persistAnnounceVoice() {
+  try { localStorage.setItem(ANNOUNCE_VOICE_KEY, announceVoiceURI || ''); } catch { /* ignore */ }
+}
+
+function persistAnnounceStyle() {
+  try { localStorage.setItem(ANNOUNCE_STYLE_KEY, announceStyleId); } catch { /* ignore */ }
+}
+
+function onAnnounceVoiceChange() {
+  const sel = document.getElementById('pref-announce-voice');
+  announceVoiceURI = sel?.value || '';
+  persistAnnounceVoice();
+  if (!announceMuted) previewAnnounceVoice();
+}
+
+function onAnnounceStyleChange() {
+  const sel = document.getElementById('pref-announce-style');
+  const id = sel?.value || 'arena';
+  announceStyleId = ANNOUNCE_STYLES[id] ? id : 'arena';
+  persistAnnounceStyle();
+  if (!announceMuted) previewAnnounceVoice();
 }
 
 function toggleAnnounceMute() {
@@ -11464,15 +11651,27 @@ function toggleAnnounceMute() {
   if (!announceMuted) announceSpeak('Announcer on');
 }
 
-function announceSpeak(text) {
-  if (announceMuted || text == null || text === '') return;
+function announceSpeak(text, { force = false } = {}) {
+  if ((!force && announceMuted) || text == null || text === '') return;
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(String(text));
-    u.rate = 1.05;
+    const style = getAnnounceStyle();
+    u.rate = style.rate;
+    u.pitch = style.pitch;
+    const voice = resolveAnnounceVoice();
+    if (voice) u.voice = voice;
     window.speechSynthesis.speak(u);
   } catch { /* ignore TTS failures */ }
+}
+
+function previewAnnounceVoice() {
+  const style = getAnnounceStyle();
+  const wasMuted = announceMuted;
+  // Preview always speaks even if muted so players can audition voices.
+  announceSpeak(`One hundred and eighty. ${style.label}.`, { force: true });
+  if (wasMuted) toast('Preview only — announcements still muted');
 }
 
 function announceMatchStart() {
@@ -11510,7 +11709,20 @@ function maybeAnnounceX01Require() {
   announceSpeak(`require ${rem}`);
 }
 
-syncAnnouncePrefToggle();
+function initAnnounceVoiceList() {
+  populateAnnounceVoiceSelect();
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const markReady = () => {
+    announceVoicesReady = true;
+    populateAnnounceVoiceSelect();
+  };
+  // Chrome loads voices asynchronously.
+  if (listAnnounceVoices().length) markReady();
+  window.speechSynthesis.onvoiceschanged = markReady;
+}
+
+syncAnnouncePrefsUI();
+initAnnounceVoiceList();
 
 // ═══════════════════════════════════════════════════════════
 //  STATS TIMER
