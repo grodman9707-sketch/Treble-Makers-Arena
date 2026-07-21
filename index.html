@@ -2803,8 +2803,13 @@ body.app-active .arena-bg { animation: none !important; }
 /* ════════════════════════════════════════════
    CRICKET / TACTICS MATCH (marks board)
 ════════════════════════════════════════════ */
-.ckt-layout { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem 1rem 1.25rem; min-height: calc(100vh - 60px); }
-.ckt-topbar { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; }
+.ckt-layout {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 0.75rem 1rem 1.25rem;
+  height: calc(100vh - 60px); overflow: hidden;
+  min-height: 0;
+}
+.ckt-topbar { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; flex-shrink: 0; }
 .ckt-icon-btn {
   width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); color: var(--silver-light); cursor: pointer; font-size: 1rem;
@@ -2820,8 +2825,8 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 1.02rem; color: var(--silver-light); letter-spacing: 0.1em; margin-top: 2px;
   text-shadow: 0 1px 6px rgba(0,0,0,0.85);
 }
-.ckt-body { display: grid; grid-template-columns: 230px 1fr 360px; gap: 1rem; align-items: stretch; flex: 1; }
-@media (max-width: 1100px) { .ckt-body { grid-template-columns: 200px 1fr; } .ckt-cam { grid-column: 1 / -1; } }
+.ckt-body { display: grid; grid-template-columns: 230px 1fr 360px; gap: 1rem; align-items: stretch; flex: 1; min-height: 0; }
+@media (max-width: 1100px) { .ckt-body { grid-template-columns: 200px 1fr; } .ckt-side { grid-column: 1 / -1; } }
 @media (max-width: 720px) {
   .ckt-body { grid-template-columns: 1fr; }
   .ckt-cards { flex-direction: row; }
@@ -2893,9 +2898,16 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .ckt-chat-close:hover { border-color: var(--gold); color: var(--gold-light); }
 
-/* Center column */
-.ckt-center { display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; }
-.ckt-turn-line { font-family: 'Cinzel', serif; font-size: 1.08rem; letter-spacing: 0.1em; color: var(--gold-light); text-transform: uppercase; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9); }
+/* Center column — stretch cam like X01 (largest square in remaining space) */
+.ckt-center {
+  display: flex; flex-direction: column; gap: 0.7rem; min-height: 0;
+}
+.ckt-turn-line { font-family: 'Cinzel', serif; font-size: 1.08rem; letter-spacing: 0.1em; color: var(--gold-light); text-transform: uppercase; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9); flex-shrink: 0; }
+.ckt-center .ckt-cam {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;
+}
 
 /* Marks board */
 .ckt-board {
@@ -2967,9 +2979,9 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-seg-miss { grid-column: 1 / -1; background: linear-gradient(160deg, #5a2a22, #3a1812); border-color: rgba(214,69,42,0.5); color: var(--crimson-bright); }
 .ckt-pad-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 0.55rem; }
 @media (max-width: 720px) { .ckt-pad { grid-template-columns: 1fr; } }
-.ckt-cam .ckt-pad { flex: 0 0 auto; }
-.ckt-cam .ckt-pad-actions { flex: 0 0 auto; }
-.ckt-cam .ckt-hint { padding: 0; }
+.ckt-side .ckt-pad { flex: 0 0 auto; }
+.ckt-side .ckt-pad-actions { flex: 0 0 auto; }
+.ckt-side .ckt-hint { padding: 0; }
 
 /* Input row (secondary / hidden manual fallback) */
 .ckt-input-wrap {
@@ -3005,8 +3017,8 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-submit-btn:hover:not(:disabled) { filter: brightness(1.08); }
 .ckt-hint { font-size: 0.66rem; color: var(--muted); line-height: 1.5; text-align: center; padding: 0 0.4rem; }
 
-/* Camera column: cam on top, scoring pad underneath (beside marks board) */
-.ckt-cam { display: flex; flex-direction: column; gap: 0.7rem; align-self: start; }
+/* Right column: marks board + scoring pad */
+.ckt-side { display: flex; flex-direction: column; gap: 0.7rem; align-self: stretch; min-height: 0; }
 .ckt-cam-frame {
   position: relative; width: 100%; aspect-ratio: var(--cam-frame-ratio); border-radius: 12px; overflow: hidden;
   border: 1px solid var(--border); background: #000; flex-shrink: 0;
@@ -3017,11 +3029,12 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .ckt-cam-badge.bot { background: rgba(232,144,42,0.85); color: #1a0e00; font-weight: 700; }
-/* Cricket/Tactics: camera swapped into the center column, marks board moved to
-   the right column (above the scoring pad). Same fixed square frame as X01. */
+/* Cricket/Tactics: camera in center column — same stretch square as X01 */
 .ckt-center .ckt-cam-frame {
-  width: min(100%, 360px);
+  width: min(100cqw, 100cqh);
   max-width: 100%;
+  max-height: 100%;
+  height: auto;
   aspect-ratio: var(--cam-frame-ratio);
   align-self: center;
   flex-shrink: 0;
@@ -3371,6 +3384,7 @@ body.app-active .arena-bg { animation: none !important; }
         <span id="nav-username" class="nav-username-btn" onclick="openUserProfile()" title="Open profile">Player</span>
       </span>
       <button class="btn btn-sm hidden" id="nav-arena-access-btn" onclick="openArenaAccessPanel()">Arena Access</button>
+      <button class="btn btn-sm" id="nav-announce-btn" onclick="toggleAnnounceMute()" title="Announce scores aloud">🔊 Announce</button>
       <button class="btn btn-sm" id="nav-cam-btn" onclick="openCameraPanel(false)">📷 Enable Cam</button>
       <button class="btn btn-sm" onclick="doLogout()">Leave</button>
       <button class="btn btn-gold btn-sm" onclick="openCreateMatch()">+ Match</button>
@@ -3583,9 +3597,11 @@ body.app-active .arena-bg { animation: none !important; }
           </div>
           <div class="ckt-center">
             <div class="ckt-turn-line" id="ckt-turn-line">TURN TO THROW!</div>
-            <div class="ckt-cam-frame">
-              <video id="ckt-cam-video" class="ckt-cam-video" autoplay muted playsinline></video>
-              <div class="ckt-cam-badge" id="ckt-cam-badge">🎥</div>
+            <div class="ckt-cam">
+              <div class="ckt-cam-frame">
+                <video id="ckt-cam-video" class="ckt-cam-video" autoplay muted playsinline></video>
+                <div class="ckt-cam-badge" id="ckt-cam-badge">🎥</div>
+              </div>
             </div>
             <div class="ckt-visit" id="ckt-visit"></div>
             <!-- Hidden manual-entry fallback (still wired to the same engine) -->
@@ -3597,7 +3613,7 @@ body.app-active .arena-bg { animation: none !important; }
               <button class="ckt-add-btn" id="ckt-add-btn" onclick="cktAddDart()" title="Add dart">+ Dart</button>
             </div>
           </div>
-          <div class="ckt-cam">
+          <div class="ckt-side">
             <div class="ckt-board" id="ckt-board"></div>
             <div class="ckt-pad" id="ckt-pad"></div>
             <div class="ckt-pad-actions">
@@ -3991,7 +4007,11 @@ body.app-active .arena-bg { animation: none !important; }
           <select id="match-mode" onchange="setMatchType(this.value)">
             <option value="human">Human Opponent</option>
             <option value="bot">Bot Opponent</option>
+            <option value="local">Play Local (same device)</option>
           </select>
+          <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
+            Same-device play for X01 and Cricket/Tactics — no camera or online opponent.
+          </div>
         </div>
         <div class="form-group" id="invite-friend-row">
           <label>Invite</label>
@@ -4062,7 +4082,7 @@ body.app-active .arena-bg { animation: none !important; }
       <button class="modal-close" onclick="closeModal('invite-friend-modal')">×</button>
     </div>
     <div class="modal-body">
-      <p class="presence-row-meta" style="margin-bottom:0.75rem">Choose an online friend to invite when the match starts.</p>
+      <p class="presence-row-meta" style="margin-bottom:0.75rem">Choose an online friend to invite when the match starts. Tap Add to select them.</p>
       <div class="presence-list" id="invite-friend-list"></div>
     </div>
   </div>
@@ -4459,6 +4479,8 @@ const S = {
   friends: [],
   friendRequests: { incoming: [], outgoing: [] },
   onlineFriends: [],
+  isLocal: false,
+  localNames: null,
 };
 
 const GAME_RULES = {
@@ -4795,6 +4817,12 @@ function handleWS(msg) {
         x01EditApprovalPromptOpen = false;
         closeModal('x01-edit-approve-modal');
       }
+      if (msg.history?.[0]?.score != null) {
+        announceVisitScore(msg.history[0].score);
+      } else if (msg.displayScore != null) {
+        announceVisitScore(msg.displayScore);
+      }
+      maybeAnnounceX01Require();
       updateMatchUI();
       break;
     case 'x01_edit_pending':
@@ -5308,6 +5336,8 @@ function doLogout() {
   S.onlineFriends = [];
   pendingInviteFriend = null;
   pendingMatchInvite = null;
+  S.isLocal = false;
+  S.localNames = null;
   resetArenaDoors();
   const landing = document.getElementById('screen-landing');
   const app = document.getElementById('screen-app');
@@ -5709,7 +5739,7 @@ function renderInviteFriendPicker() {
     <div class="presence-row">
       <div class="presence-row-name">${usernameLinkHtml(name)}</div>
       <div class="presence-row-actions">
-        <button class="btn btn-gold btn-sm" onclick="selectInviteFriend(${JSON.stringify(name)})">Select</button>
+        <button class="btn btn-gold btn-sm" onclick="selectInviteFriend(${JSON.stringify(name)})">Add</button>
       </div>
     </div>`).join('');
 }
@@ -5921,6 +5951,7 @@ function setMatchType(type) {
   selectedMatchType = type;
   document.getElementById('bot-skill-row').classList.toggle('hidden', type !== 'bot');
   document.getElementById('invite-friend-row')?.classList.toggle('hidden', type !== 'human');
+  document.getElementById('local-match-hint')?.classList.toggle('hidden', type !== 'local');
   if (type !== 'human') {
     pendingInviteFriend = null;
     updateInviteFriendSelectedLabel();
@@ -6244,6 +6275,12 @@ function startMatchFromModal() {
   pendingJoin = null;
   pendingBracketMatch = null;
   updateCamSettingsLock(S.game);
+
+  if (selectedMatchType === 'local') {
+    startLocalMatch();
+    return;
+  }
+
   if (isCamReady()) {
     closeModal('create-match-modal');
     enterMatch();
@@ -6252,6 +6289,34 @@ function startMatchFromModal() {
   camModalAutoProceed = true;
   toast('Enable your camera to start the match.');
   openCameraPanel(true);
+}
+
+function supportsLocalPlay(game) {
+  return isX01Game(game) || isCricketGame(game);
+}
+
+/** Same-device pass-and-play — no camera, WebRTC, or online opponent. */
+function startLocalMatch() {
+  if (!supportsLocalPlay(S.game)) {
+    toast('Play Local is available for X01 and Cricket/Tactics only for now.');
+    return;
+  }
+  closeModal('create-match-modal');
+  S.isLocal = true;
+  S.isBot = false;
+  S.isHost = true;
+  S.roomId = null;
+  S.hostSeat = 0;
+  S.guestSeat = 1;
+  S.mySeat = 0;
+  S.turn = 0;
+  const p1 = (S.user.username || 'Player 1').trim() || 'Player 1';
+  const p2 = 'Player 2';
+  S.localNames = [p1, p2];
+  S.opponentName = p2;
+  const gs = initGS(S.game);
+  startMatchUI(S.game, p2, false, gs, null);
+  toast('Local match — pass the device between turns.');
 }
 
 function attachLocalCamera() {
@@ -6494,7 +6559,12 @@ function setHalveItInputMode(mode) {
 
 function startMatchUI(game, opponentName, spectating = false, gameState = null, matchPreview = null) {
   resetChatUI();
-  setChatEnabled(!spectating);
+  setChatEnabled(!spectating && !S.isLocal);
+  // Online / bot matches clear any leftover local-play flags.
+  if (S.roomId) {
+    S.isLocal = false;
+    S.localNames = null;
+  }
   S.game = game;
   S.opponentName = opponentName || 'Opponent';
   x01UndoStack = [];
@@ -6537,7 +6607,13 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
 
   hideMatchPreviewOverlay();
   updateMatchUI();
-  if (!spectating) signalMatchUiReady();
+  if (!spectating) {
+    signalMatchUiReady();
+    if (!matchPreview) {
+      announceMatchStart();
+      maybeAnnounceX01Require();
+    }
+  }
 }
 
 /** Fill in missing game-state fields when the server sends an incomplete payload. */
@@ -6747,6 +6823,8 @@ function beginMatchAfterPreview() {
   hideStarterOverlays();
   updateMatchUI();
   signalMatchUiReady();
+  announceMatchStart();
+  maybeAnnounceX01Require();
 }
 
 function signalMatchUiReady() {
@@ -6774,6 +6852,9 @@ function resetMatchSeats() {
 
 /** Names ordered by match seat: [Player One / starter, Player Two]. */
 function seatPlayerNames() {
+  if (S.isLocal && Array.isArray(S.localNames) && S.localNames.length >= 2) {
+    return [S.localNames[0], S.localNames[1]];
+  }
   const host = S.isHost ? (S.user.username || 'You') : (S.opponentName || 'Opponent');
   const guest = S.isHost ? (S.opponentName || 'Opponent') : (S.user.username || 'You');
   return (S.hostSeat ?? 0) === 0 ? [host, guest] : [guest, host];
@@ -7611,21 +7692,23 @@ function submitX01() {
   else if (!res.opened && !gs.opened[p]) note = `Not open yet (${gs.startRule})`;
   else note = `${total} · ${gs.remaining[p]} left`;
 
-  const winner = res.matchOver ? (S.user.username) : null;
+  const winner = res.matchOver ? names[p] : null;
   const newGs = JSON.parse(JSON.stringify(gs));
-  wsSend({
-    type: 'submit_score',
-    delta: 0,
-    absoluteScore: gs.legs[p],
-    displayScore: display,
-    note,
-    gameState: newGs,
-    gameOver: res.matchOver,
-    winner,
-    highScore: Math.max(...gs.points),
-    x01Checkout: res.legWon ? startRem : undefined,
-    matchStats: { scores: [gs.legs[0], gs.legs[1]], time: Math.floor((Date.now() - S.stats.startTime) / 1000), bestRound: Math.max(...gs.points) }
-  });
+  if (!S.isLocal) {
+    wsSend({
+      type: 'submit_score',
+      delta: 0,
+      absoluteScore: gs.legs[p],
+      displayScore: display,
+      note,
+      gameState: newGs,
+      gameOver: res.matchOver,
+      winner,
+      highScore: Math.max(...gs.points),
+      x01Checkout: res.legWon ? startRem : undefined,
+      matchStats: { scores: [gs.legs[0], gs.legs[1]], time: Math.floor((Date.now() - S.stats.startTime) / 1000), bestRound: Math.max(...gs.points) }
+    });
+  }
 
   // Local optimistic update
   S.scores[p] = gs.legs[p];
@@ -7633,8 +7716,13 @@ function submitX01() {
     if (gs.nextTurn !== null && gs.nextTurn !== undefined) S.turn = gs.nextTurn;
     gs.turnEnded = false;
   }
+  if (S.isLocal) {
+    announceVisitScore(display);
+    maybeAnnounceX01Require();
+  }
   updateMatchUI();
   if (res.matchOver) {
+    if (S.isLocal) announceSpeak(`${winner} wins`);
     showGameOver(winner, [gs.legs[0], gs.legs[1]],
       { highScore: Math.max(...gs.points), time: Math.floor((Date.now() - S.stats.startTime) / 1000) });
   }
@@ -7647,12 +7735,14 @@ function undoX01() {
   S.gameState = JSON.parse(JSON.stringify(snap.gameState));
   S.scores = [...snap.scores];
   S.turn = snap.turn;
-  wsSend({
-    type: 'x01_undo',
-    gameState: S.gameState,
-    scores: S.scores,
-    turn: S.turn
-  });
+  if (!S.isLocal) {
+    wsSend({
+      type: 'x01_undo',
+      gameState: S.gameState,
+      scores: S.scores,
+      turn: S.turn
+    });
+  }
   updateMatchUI();
   toast('Last turn reverted.');
   syncX01VisitTimer();
@@ -7744,14 +7834,13 @@ function applyX01EditLocally(payload) {
 
 function commitX01Edit(payload, { toastMsg } = {}) {
   applyX01EditLocally(payload);
-  wsSend({ type: 'x01_edit', ...payload });
+  if (!S.isLocal) wsSend({ type: 'x01_edit', ...payload });
   if (toastMsg) toast(toastMsg);
 }
 
 function editX01Score(playerIdx) {
   if (!isX01Game(S.game)) return;
-  const myIdx = myPlayerIdx();
-  if (playerIdx !== myIdx) {
+  if (!S.isLocal && playerIdx !== myPlayerIdx()) {
     toast('You can only edit your own visits.');
     return;
   }
@@ -7760,11 +7849,12 @@ function editX01Score(playerIdx) {
     return;
   }
 
+  const editIdx = S.isLocal ? playerIdx : myPlayerIdx();
   const gs = S.gameState;
   const allVisits = x01FlattenVisits(gs);
   const ownVisits = allVisits
     .map((visit, flatIdx) => ({ ...visit, flatIdx }))
-    .filter(visit => visit.entry.p === myIdx);
+    .filter(visit => visit.entry.p === editIdx);
 
   if (!ownVisits.length) {
     toast('No visits to edit yet.');
@@ -7794,7 +7884,7 @@ function editX01Score(playerIdx) {
   if (total === selected.entry.v) return;
 
   const visitsForReplay = allVisits.map(visit => ({ p: visit.replay.p, v: visit.replay.v }));
-  visitsForReplay[selected.flatIdx] = { p: myIdx, v: total };
+  visitsForReplay[selected.flatIdx] = { p: editIdx, v: total };
   const names = x01PlayerNames();
   const replay = x01ReplayVisits(visitsForReplay, gs, names);
   if (!replay) {
@@ -7803,8 +7893,8 @@ function editX01Score(playerIdx) {
   }
 
   const payload = x01EditPayload(replay, names);
-  const grantsLegWin = (replay.gameState.legs?.[myIdx] || 0) > (gs.legs?.[myIdx] || 0);
-  const needsApproval = grantsLegWin && !S.isBot;
+  const grantsLegWin = (replay.gameState.legs?.[editIdx] || 0) > (gs.legs?.[editIdx] || 0);
+  const needsApproval = grantsLegWin && !S.isBot && !S.isLocal;
 
   if (needsApproval) {
     x01EditAwaitingApproval = true;
@@ -7813,7 +7903,7 @@ function editX01Score(playerIdx) {
       type: 'x01_edit_request',
       ...payload,
       summary: {
-        editorName: S.user?.username || names[myIdx],
+        editorName: S.user?.username || names[editIdx],
         fromScore: selected.entry.v,
         toScore: total,
         legNumber: selected.legIdx + 1,
@@ -8141,31 +8231,35 @@ function cktSubmitVisit() {
 
   const winner = res.matchOver ? names[res.winnerIdx] : null;
   const newGs = JSON.parse(JSON.stringify(gs));
-  wsSend({
-    type: 'submit_score',
-    delta: 0,
-    absoluteScore: gs.score[p],
-    displayScore: display,
-    note,
-    gameState: newGs,
-    gameOver: !!res.matchOver,
-    winner,
-    highScore: Math.max(gs.score[0], gs.score[1]),
-    matchStats: {
-      scores: [gs.legs?.[0] || 0, gs.legs?.[1] || 0],
-      time: Math.floor((Date.now() - S.stats.startTime) / 1000),
-      bestRound: res.points
-    }
-  });
+  if (!S.isLocal) {
+    wsSend({
+      type: 'submit_score',
+      delta: 0,
+      absoluteScore: gs.score[p],
+      displayScore: display,
+      note,
+      gameState: newGs,
+      gameOver: !!res.matchOver,
+      winner,
+      highScore: Math.max(gs.score[0], gs.score[1]),
+      matchStats: {
+        scores: [gs.legs?.[0] || 0, gs.legs?.[1] || 0],
+        time: Math.floor((Date.now() - S.stats.startTime) / 1000),
+        bestRound: res.points
+      }
+    });
+  }
 
   S.scores[p] = gs.score[p];
   if (gs.turnEnded) {
     if (gs.nextTurn !== null && gs.nextTurn !== undefined) S.turn = gs.nextTurn;
     gs.turnEnded = false;
   }
+  if (S.isLocal) announceVisitScore(display);
   updateMatchUI();
   if (res.legWon && !res.matchOver) toast('Leg won — next leg!');
   if (winner !== null) {
+    if (S.isLocal) announceSpeak(`${winner} wins`);
     showGameOver(winner, [gs.legs?.[0] || 0, gs.legs?.[1] || 0],
       { highScore: Math.max(gs.score[0], gs.score[1]), time: Math.floor((Date.now() - S.stats.startTime) / 1000) });
   }
@@ -8179,7 +8273,9 @@ function cktUndo() {
   S.gameState = JSON.parse(JSON.stringify(snap.gameState));
   S.scores = [...snap.scores];
   S.turn = snap.turn;
-  wsSend({ type: 'cricket_undo', gameState: S.gameState, scores: S.scores, turn: S.turn });
+  if (!S.isLocal) {
+    wsSend({ type: 'cricket_undo', gameState: S.gameState, scores: S.scores, turn: S.turn });
+  }
   updateMatchUI();
   toast('Last visit reverted.');
 }
@@ -9707,10 +9803,13 @@ function golfScoreCellClass(score) {
 }
 
 function isMyMatchTurn() {
+  if (S.isLocal) return true;
   return S.turn === myPlayerIdx();
 }
 
 function myPlayerIdx() {
+  // Local pass-and-play: whoever's turn it is enters the score on this device.
+  if (S.isLocal) return typeof S.turn === 'number' ? S.turn : 0;
   if (typeof S.mySeat === 'number') return S.mySeat;
   return S.isHost ? (S.hostSeat ?? 0) : (S.guestSeat ?? 1);
 }
@@ -10705,6 +10804,8 @@ function leaveMatch() {
   closePeerConnection();
   S.roomId = null;
   S.isHost = false;
+  S.isLocal = false;
+  S.localNames = null;
   resetChatUI();
   setChatEnabled(false);
   showPage('lobby');
@@ -11279,6 +11380,81 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
+
+// ═══════════════════════════════════════════════════════════
+//  ANNOUNCE (speechSynthesis) — mute preference in localStorage
+// ═══════════════════════════════════════════════════════════
+const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
+let announceMuted = (() => {
+  try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
+})();
+let lastX01RequireKey = '';
+
+function syncAnnounceNavBtn() {
+  const btn = document.getElementById('nav-announce-btn');
+  if (!btn) return;
+  btn.textContent = announceMuted ? '🔇 Muted' : '🔊 Announce';
+  btn.title = announceMuted
+    ? 'Unmute match announcements'
+    : 'Mute match announcements';
+  btn.setAttribute('aria-pressed', announceMuted ? 'true' : 'false');
+}
+
+function toggleAnnounceMute() {
+  announceMuted = !announceMuted;
+  try { localStorage.setItem(ANNOUNCE_MUTE_KEY, announceMuted ? '1' : '0'); } catch { /* ignore */ }
+  syncAnnounceNavBtn();
+  toast(announceMuted ? 'Announcements muted' : 'Announcements on');
+  if (!announceMuted) announceSpeak('Announcer on');
+}
+
+function announceSpeak(text) {
+  if (announceMuted || text == null || text === '') return;
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.rate = 1.05;
+    window.speechSynthesis.speak(u);
+  } catch { /* ignore TTS failures */ }
+}
+
+function announceMatchStart() {
+  const names = seatPlayerNames();
+  const game = S.game || 'Match';
+  const a = names[0] || 'Player 1';
+  const b = names[1] || 'Player 2';
+  announceSpeak(`${game}. ${a} versus ${b}.`);
+}
+
+function announceVisitScore(display) {
+  if (display == null || display === '') return;
+  const raw = String(display).trim();
+  if (!raw) return;
+  if (/^bust$/i.test(raw)) {
+    announceSpeak('bust');
+    return;
+  }
+  // Speak visit totals and cricket dart labels cleanly.
+  announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim());
+}
+
+function maybeAnnounceX01Require() {
+  if (!isX01Game(S.game)) return;
+  const gs = S.gameState;
+  if (!gs?.remaining) return;
+  const active = typeof S.turn === 'number' ? S.turn : 0;
+  const rem = gs.remaining[active];
+  if (!(rem > 0 && rem <= 170 && x01IsValidCheckout(rem, gs.finishRule || 'double-out'))) {
+    return;
+  }
+  const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${active}|${rem}`;
+  if (key === lastX01RequireKey) return;
+  lastX01RequireKey = key;
+  announceSpeak(`require ${rem}`);
+}
+
+syncAnnounceNavBtn();
 
 // ═══════════════════════════════════════════════════════════
 //  STATS TIMER
