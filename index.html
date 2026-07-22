@@ -1985,6 +1985,89 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .page-section-sub { font-size: 0.82rem; color: var(--muted); margin-bottom: 1.5rem; }
 
+/* Arena Directory (venue hub) */
+.guide-page { padding: 1.5rem 2rem 2.5rem; max-width: 1100px; margin: 0 auto; }
+.guide-hero { text-align: center; margin-bottom: 1.75rem; }
+.guide-hero h1 {
+  font-family: 'Cinzel Decorative', cursive; font-size: clamp(1.6rem, 3vw, 2.2rem);
+  background: linear-gradient(135deg, #c9a84c, #f0d080);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.guide-hero p { color: var(--silver-light); font-size: 0.9rem; margin-top: 0.35rem; }
+.guide-map {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 0.85rem 1rem;
+  align-items: stretch;
+  min-height: 420px;
+  padding: 1.25rem;
+  border: 1px solid rgba(201,168,76,0.28);
+  border-radius: 10px;
+  background:
+    radial-gradient(ellipse at center, rgba(201,168,76,0.12), transparent 55%),
+    linear-gradient(180deg, rgba(12,12,18,0.92), rgba(8,8,12,0.96));
+  box-shadow: inset 0 0 60px rgba(0,0,0,0.45);
+}
+.guide-zone {
+  appearance: none; border: 1px solid rgba(201,168,76,0.35);
+  background: rgba(20,20,28,0.85); color: var(--text);
+  border-radius: 8px; padding: 1rem 1.1rem; text-align: left; cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.guide-zone:hover, .guide-zone:focus-visible {
+  border-color: var(--gold); outline: none;
+  transform: translateY(-2px);
+  background: rgba(28,24,16,0.95);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 20px rgba(201,168,76,0.12);
+}
+.guide-zone-kicker {
+  font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: 0.12em;
+  color: var(--gold); text-transform: uppercase; margin-bottom: 0.35rem;
+}
+.guide-zone-title {
+  font-family: 'Cinzel', serif; font-size: 1.05rem; color: var(--gold-light); margin-bottom: 0.35rem;
+}
+.guide-zone-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.45; }
+.guide-zone.north { grid-column: 2; grid-row: 1; }
+.guide-zone.west { grid-column: 1; grid-row: 2; }
+.guide-zone.east { grid-column: 3; grid-row: 2; }
+.guide-zone.south { grid-column: 2; grid-row: 3; }
+.guide-center {
+  grid-column: 2; grid-row: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 1.25rem 1rem;
+  border: 1px solid rgba(201,168,76,0.55);
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 40%, rgba(201,168,76,0.22), rgba(10,10,14,0.95) 70%);
+  box-shadow: 0 0 40px rgba(201,168,76,0.15);
+  min-height: 160px;
+}
+.guide-center-label {
+  font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: 0.14em;
+  color: var(--gold); text-transform: uppercase;
+}
+.guide-center-title {
+  font-family: 'Cinzel Decorative', cursive; font-size: 1.15rem; color: var(--gold-light);
+  margin: 0.35rem 0 0.25rem;
+}
+.guide-center-sub { font-size: 0.75rem; color: var(--muted); max-width: 14rem; }
+.guide-tip {
+  margin-top: 1.25rem; text-align: center; font-size: 0.78rem; color: var(--muted);
+}
+.guide-actions { display: flex; justify-content: center; gap: 0.75rem; margin-top: 1.1rem; flex-wrap: wrap; }
+@media (max-width: 820px) {
+  .guide-map {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    min-height: 0;
+  }
+  .guide-zone.north, .guide-zone.west, .guide-zone.east, .guide-zone.south,
+  .guide-center { grid-column: 1; grid-row: auto; border-radius: 8px; }
+  .guide-center { min-height: 120px; }
+}
+
 .tournament-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
 .tournament-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
@@ -3440,9 +3523,10 @@ body.app-active .arena-bg { animation: none !important; }
     <div class="nav-logo" onclick="showPage('lobby')">Treble-Makers <span>Arena</span></div>
     <div class="nav-links">
       <div class="nav-link active" data-page="lobby" onclick="showPage('lobby')">Lobby</div>
+      <div class="nav-link" data-page="guide" onclick="showPage('guide')">Guide</div>
       <div class="nav-link" data-page="tournaments" onclick="showPage('tournaments')">Tournaments</div>
       <div class="nav-link" data-page="leaderboard" onclick="showPage('leaderboard')">Leaderboard</div>
-      <div class="nav-link" data-page="spectate" onclick="showPage('spectate')">Spectate</div>
+      <div class="nav-link" data-page="spectate" onclick="showPage('spectate')">Stands</div>
     </div>
     <div class="nav-right-items">
       <span class="nav-live-badge" id="nav-live">● 0 LIVE</span>
@@ -3897,13 +3981,55 @@ body.app-active .arena-bg { animation: none !important; }
       </div>
     </div>
 
-    <!-- ── SPECTATE PAGE ── -->
+    <!-- ── SPECTATE / STANDS PAGE ── -->
     <div class="page" id="page-spectate">
       <div style="padding:1.5rem 2rem">
-        <div class="page-section-title">Spectate</div>
-        <div class="page-section-sub">Watch live matches in real time.</div>
+        <div class="page-section-title">Spectator Stands</div>
+        <div class="page-section-sub">Watch live matches. Gallery reactions never interrupt play.</div>
         <div class="matches-grid" id="spectate-grid">
           <div class="empty-state"><div class="big-icon">👁</div><p>No live matches to spectate right now.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ARENA DIRECTORY / GUIDE ── -->
+    <div class="page" id="page-guide">
+      <div class="guide-page">
+        <div class="guide-hero">
+          <h1>Arena Directory</h1>
+          <p>You are on the Arena floor. Choose a destination.</p>
+        </div>
+        <div class="guide-map" aria-label="Arena venue map">
+          <button type="button" class="guide-zone north" onclick="goArenaZone('lobby')">
+            <div class="guide-zone-kicker">North</div>
+            <div class="guide-zone-title">Match Lobby</div>
+            <div class="guide-zone-desc">Create or join a live match. Enable your camera before you step to the oche.</div>
+          </button>
+          <button type="button" class="guide-zone west" onclick="goArenaZone('locker')">
+            <div class="guide-zone-kicker">West</div>
+            <div class="guide-zone-title">Locker Room</div>
+            <div class="guide-zone-desc">Profile, announcer voice, commentary pack, and preferred settings.</div>
+          </button>
+          <div class="guide-center" aria-hidden="true">
+            <div class="guide-center-label">You are here</div>
+            <div class="guide-center-title">Arena Floor</div>
+            <div class="guide-center-sub">Treble-Makers Arena · live cams · packs · stands</div>
+          </div>
+          <button type="button" class="guide-zone east" onclick="goArenaZone('stands')">
+            <div class="guide-zone-kicker">East</div>
+            <div class="guide-zone-title">Spectator Stands</div>
+            <div class="guide-zone-desc">Watch live matches and cheer from the gallery without interrupting play.</div>
+          </button>
+          <button type="button" class="guide-zone south" onclick="goArenaZone('tournaments')">
+            <div class="guide-zone-kicker">South</div>
+            <div class="guide-zone-title">Tournament Hall</div>
+            <div class="guide-zone-desc">Brackets, events, and competition nights.</div>
+          </button>
+        </div>
+        <p class="guide-tip">Tip: open this map anytime from <strong>Guide</strong> in the nav.</p>
+        <div class="guide-actions">
+          <button type="button" class="btn btn-gold" onclick="dismissArenaGuide(true)">Enter Match Lobby</button>
+          <button type="button" class="btn btn-sm" onclick="dismissArenaGuide(false)">Don't show on login</button>
         </div>
       </div>
     </div>
@@ -3911,8 +4037,8 @@ body.app-active .arena-bg { animation: none !important; }
     <!-- ── PROFILE PAGE ── -->
     <div class="page" id="page-profile">
       <div class="profile-page">
-        <div class="page-section-title">Player Profile</div>
-        <div class="page-section-sub">Your avatar and info appear in match previews and on your profile.</div>
+        <div class="page-section-title">Locker Room</div>
+        <div class="page-section-sub">Your avatar, info, and preferred announcer settings for the Arena.</div>
         <div class="profile-layout">
           <div class="profile-card">
             <div class="profile-avatar-wrap">
@@ -3981,11 +4107,18 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-setting-stack" id="pref-announce-voice-stack">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Announcer voice</span>
-                <span class="profile-setting-hint">Pick a system voice and commentary pack</span>
+                <span class="profile-setting-hint">Arena neural voices + commentary packs</span>
               </div>
               <div class="profile-setting-controls">
                 <label class="profile-setting-field-label" for="pref-announce-voice">Voice</label>
-                <select id="pref-announce-voice" onchange="onAnnounceVoiceChange()"></select>
+                <select id="pref-announce-voice" onchange="onAnnounceVoiceChange()">
+                  <option value="en-US-ChristopherNeural">Christopher (Arena)</option>
+                  <option value="en-US-DavisNeural">Davis (Mythic)</option>
+                  <option value="en-US-GuyNeural">Guy (Chaotic)</option>
+                  <option value="en-US-AndrewNeural">Andrew (Sarcasm)</option>
+                  <option value="en-US-BrandonNeural">Brandon (Dark)</option>
+                  <option value="en-US-AriaNeural">Aria (Female)</option>
+                </select>
                 <label class="profile-setting-field-label" for="pref-announce-pack">Pack</label>
                 <select id="pref-announce-pack" onchange="onAnnouncePackChange()">
                   <option value="bigMatchAnnouncer">Big Match</option>
@@ -3998,9 +4131,9 @@ body.app-active .arena-bg { animation: none !important; }
                 </div>
               </div>
               <p class="profile-setting-note">
-                System voices come from your browser/OS. Commentary packs call big scores,
-                momentum swings, checkouts, and wins. Official callers need licensed audio
-                and aren’t available here yet.
+                Voices are Arena neural callers (not browser/OS lists). Loki Hybrid switches
+                mood voices per moment. Requires Azure Speech on the server
+                (<code>AZURE_SPEECH_KEY</code> / <code>AZURE_SPEECH_REGION</code>).
               </p>
             </div>
           </div>
@@ -5526,9 +5659,10 @@ function enterApp(skipDoorAnimation) {
   wsSend({ type: 'get_leaderboard' });
   wsSend({ type: 'get_presence' });
   wsSend({ type: 'get_friends' });
-  showPage('lobby');
+  const openGuide = shouldShowArenaGuide();
+  showPage(openGuide ? 'guide' : 'lobby');
   showAppTickers();
-  syncAppTickersForPage('lobby');
+  syncAppTickersForPage(openGuide ? 'guide' : 'lobby');
   updatePresenceBar();
 
   if (S.user.mustChangePassword) {
@@ -5542,6 +5676,27 @@ function enterApp(skipDoorAnimation) {
 
   landing.classList.add('doors-revealing');
   setTimeout(finishEnterApp, ARENA_DOOR_OPEN_MS);
+}
+
+const ARENA_GUIDE_SKIP_KEY = 'tma-arena-guide-skip';
+
+function shouldShowArenaGuide() {
+  try { return localStorage.getItem(ARENA_GUIDE_SKIP_KEY) !== '1'; } catch { return true; }
+}
+
+function goArenaZone(zone) {
+  if (zone === 'lobby') showPage('lobby');
+  else if (zone === 'locker') showPage('profile');
+  else if (zone === 'stands') showPage('spectate');
+  else if (zone === 'tournaments') showPage('tournaments');
+}
+
+function dismissArenaGuide(goLobby) {
+  if (!goLobby) {
+    try { localStorage.setItem(ARENA_GUIDE_SKIP_KEY, '1'); } catch { /* ignore */ }
+    toast('Arena Guide hidden on login — open Guide anytime from the nav');
+  }
+  showPage('lobby');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5566,7 +5721,7 @@ function showPage(name) {
   updateConnStatusVisibility();
 }
 
-const ARENA_TICKER_PAGES = new Set(['lobby', 'tournaments', 'leaderboard', 'spectate', 'profile']);
+const ARENA_TICKER_PAGES = new Set(['lobby', 'guide', 'tournaments', 'leaderboard', 'spectate', 'profile']);
 
 function syncAppTickersForPage(pageName) {
   const app = document.getElementById('screen-app');
@@ -11501,7 +11656,7 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  ANNOUNCE (speechSynthesis) — mute / voice / commentary packs
+//  ANNOUNCE — Azure neural voices + commentary packs (PR #20+)
 // ═══════════════════════════════════════════════════════════
 const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
 const ANNOUNCE_VOICE_KEY = 'tma-announce-voice';
@@ -11509,11 +11664,29 @@ const ANNOUNCE_PACK_KEY = 'tma-announce-pack';
 // Legacy style key — migrated once to a commentary pack.
 const ANNOUNCE_STYLE_KEY = 'tma-announce-style';
 
+// Curated Arena voices (Azure Neural). Browser/OS Microsoft lists are not used.
+const ANNOUNCE_VOICES = [
+  { id: 'en-US-ChristopherNeural', label: 'Christopher (Arena)' },
+  { id: 'en-US-DavisNeural', label: 'Davis (Mythic)' },
+  { id: 'en-US-GuyNeural', label: 'Guy (Chaotic)' },
+  { id: 'en-US-AndrewNeural', label: 'Andrew (Sarcasm)' },
+  { id: 'en-US-BrandonNeural', label: 'Brandon (Dark)' },
+  { id: 'en-US-AriaNeural', label: 'Aria (Female)' },
+];
+const ANNOUNCE_VOICE_IDS = new Set(ANNOUNCE_VOICES.map(v => v.id));
+
 const ANNOUNCE_PACKS = {
   lokiHybrid: {
     label: 'Loki Hybrid',
     rate: 1.02,
     pitch: 0.88,
+    defaultVoice: 'en-US-GuyNeural',
+    eventVoices: {
+      BIG_SCORE: 'en-US-GuyNeural',
+      MOMENTUM_LOSS: 'en-US-AndrewNeural',
+      CHECKOUT_CHANCE: 'en-US-DavisNeural',
+      WIN: 'en-US-DavisNeural'
+    },
     bigScore: [
       "Chaos unleashed! A monstrous visit!",
       "Thunder cracks — the gods awaken!",
@@ -11624,6 +11797,7 @@ const ANNOUNCE_PACKS = {
     label: 'Big Match',
     rate: 0.95,
     pitch: 0.9,
+    defaultVoice: 'en-US-ChristopherNeural',
     bigScore: [
       "What a visit! That is world-class darts!",
       "Huge score! That changes everything!",
@@ -11734,6 +11908,7 @@ const ANNOUNCE_PACKS = {
     label: 'Arena Voice',
     rate: 1.0,
     pitch: 1.12,
+    defaultVoice: 'en-US-AriaNeural',
     bigScore: [
       "A powerful visit! The Arena feels it!",
       "Exceptional scoring — beautifully done!",
@@ -11846,18 +12021,25 @@ const ANNOUNCE_PACK_IDS = Object.keys(ANNOUNCE_PACKS);
 function migrateAnnouncePackId(raw) {
   if (raw === 'off') return 'off';
   if (ANNOUNCE_PACKS[raw]) return raw;
-  // Old delivery-style prefs → closest commentary pack.
   if (raw === 'oche' || raw === 'arena') return 'bigMatchAnnouncer';
   if (raw === 'rapid') return 'lokiHybrid';
   if (raw === 'calm') return 'femaleArenaAnnouncer';
   return 'bigMatchAnnouncer';
 }
 
+function migrateAnnounceVoiceId(raw) {
+  if (ANNOUNCE_VOICE_IDS.has(raw)) return raw;
+  // Legacy browser voiceURI / empty → pack default or Christopher.
+  return '';
+}
+
 let announceMuted = (() => {
   try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
 })();
-let announceVoiceURI = (() => {
-  try { return localStorage.getItem(ANNOUNCE_VOICE_KEY) || ''; } catch { return ''; }
+let announceVoiceId = (() => {
+  try {
+    return migrateAnnounceVoiceId(localStorage.getItem(ANNOUNCE_VOICE_KEY) || '');
+  } catch { return ''; }
 })();
 let announcePackId = (() => {
   try {
@@ -11870,8 +12052,11 @@ let announcePackId = (() => {
 })();
 let lastX01RequireKey = '';
 let lastAnnounceWinKey = '';
-let announceVoicesReady = false;
 let announceSpeakQueue = Promise.resolve();
+let announceAudio = null;
+let announceObjectUrl = null;
+let announceTtsConfigured = null; // null unknown, true/false after probe
+let announceTtsWarned = false;
 
 function getAnnouncePack() {
   if (announcePackId === 'off') return null;
@@ -11891,7 +12076,6 @@ function detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon } = {}) 
     if (score >= 140) return { type: 'BIG_SCORE' };
     if (score < 40) return { type: 'MOMENTUM_LOSS' };
   }
-  // Checkout lines are spoken on the thrower's turn via maybeAnnounceX01Require.
   return null;
 }
 
@@ -11906,76 +12090,83 @@ function getAnnounceCommentary(event, pack) {
   }
 }
 
-function listAnnounceVoices() {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return [];
+function resolveAnnounceVoiceId(eventType) {
+  const pack = getAnnouncePack();
+  if (pack?.eventVoices && eventType && pack.eventVoices[eventType]) {
+    return pack.eventVoices[eventType];
+  }
+  if (announceVoiceId && ANNOUNCE_VOICE_IDS.has(announceVoiceId)) return announceVoiceId;
+  if (pack?.defaultVoice && ANNOUNCE_VOICE_IDS.has(pack.defaultVoice)) return pack.defaultVoice;
+  return 'en-US-ChristopherNeural';
+}
+
+function stopAnnounceAudio() {
   try {
-    return window.speechSynthesis.getVoices() || [];
+    if (announceAudio) {
+      announceAudio.onended = null;
+      announceAudio.onerror = null;
+      announceAudio.pause();
+      announceAudio.src = '';
+    }
+  } catch { /* ignore */ }
+  announceAudio = null;
+  if (announceObjectUrl) {
+    try { URL.revokeObjectURL(announceObjectUrl); } catch { /* ignore */ }
+    announceObjectUrl = null;
+  }
+}
+
+async function probeAnnounceTts() {
+  if (announceTtsConfigured != null) return announceTtsConfigured;
+  try {
+    const res = await fetch('/api/tts-status', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    announceTtsConfigured = !!(res.ok && data.configured);
   } catch {
-    return [];
+    announceTtsConfigured = false;
   }
+  return announceTtsConfigured;
 }
 
-function preferredAnnounceVoices(voices) {
-  const list = Array.isArray(voices) ? [...voices] : [];
-  const score = (v) => {
-    const lang = String(v.lang || '').toLowerCase();
-    const name = String(v.name || '').toLowerCase();
-    let s = 0;
-    if (lang.startsWith('en')) s += 40;
-    if (lang.startsWith('en-gb') || lang.startsWith('en-uk')) s += 20;
-    if (lang.startsWith('en-us')) s += 10;
-    if (lang.startsWith('en-au') || lang.startsWith('en-ie')) s += 8;
-    if (/male|daniel|george|ravi|thomas|fred|alex|david|mark|james/.test(name)) s += 6;
-    if (v.localService) s += 4;
-    if (/google|microsoft|premium|enhanced|neural/.test(name)) s += 3;
-    return s;
-  };
-  list.sort((a, b) => score(b) - score(a) || String(a.name).localeCompare(String(b.name)));
-  return list;
-}
-
-function resolveAnnounceVoice() {
-  const voices = listAnnounceVoices();
-  if (!voices.length) return null;
-  if (announceVoiceURI) {
-    const match = voices.find(v => v.voiceURI === announceVoiceURI);
-    if (match) return match;
+async function fetchAnnounceAudio(text, voice) {
+  const res = await fetch('/api/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: String(text), voice }),
+  });
+  if (!res.ok) {
+    let msg = 'Voice service unavailable.';
+    try {
+      const data = await res.json();
+      if (data?.error) msg = data.error;
+    } catch { /* ignore */ }
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
   }
-  const ranked = preferredAnnounceVoices(voices);
-  return ranked[0] || voices[0] || null;
+  return res.arrayBuffer();
 }
 
 function populateAnnounceVoiceSelect() {
   const sel = document.getElementById('pref-announce-voice');
   if (!sel) return;
-  const voices = preferredAnnounceVoices(listAnnounceVoices());
-  const prev = announceVoiceURI || sel.value;
+  const prev = announceVoiceId || sel.value;
   sel.innerHTML = '';
-  if (!voices.length) {
+  ANNOUNCE_VOICES.forEach(v => {
     const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'Default system voice';
-    sel.appendChild(opt);
-    sel.disabled = true;
-    return;
-  }
-  sel.disabled = false;
-  voices.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v.voiceURI;
-    const lang = v.lang ? ` (${v.lang})` : '';
-    opt.textContent = `${v.name}${lang}`;
+    opt.value = v.id;
+    opt.textContent = v.label;
     sel.appendChild(opt);
   });
-  if (prev && [...sel.options].some(o => o.value === prev)) {
+  sel.disabled = false;
+  const pack = getAnnouncePack();
+  const fallback = pack?.defaultVoice || 'en-US-ChristopherNeural';
+  if (prev && ANNOUNCE_VOICE_IDS.has(prev)) {
     sel.value = prev;
-    announceVoiceURI = prev;
+    announceVoiceId = prev;
   } else {
-    const best = resolveAnnounceVoice();
-    if (best) {
-      sel.value = best.voiceURI;
-      if (!announceVoiceURI) announceVoiceURI = best.voiceURI;
-    }
+    sel.value = fallback;
+    announceVoiceId = fallback;
   }
 }
 
@@ -12005,7 +12196,7 @@ function syncAnnouncePrefsUI() {
 }
 
 function persistAnnounceVoice() {
-  try { localStorage.setItem(ANNOUNCE_VOICE_KEY, announceVoiceURI || ''); } catch { /* ignore */ }
+  try { localStorage.setItem(ANNOUNCE_VOICE_KEY, announceVoiceId || ''); } catch { /* ignore */ }
 }
 
 function persistAnnouncePack() {
@@ -12014,7 +12205,8 @@ function persistAnnouncePack() {
 
 function onAnnounceVoiceChange() {
   const sel = document.getElementById('pref-announce-voice');
-  announceVoiceURI = sel?.value || '';
+  const id = sel?.value || '';
+  announceVoiceId = ANNOUNCE_VOICE_IDS.has(id) ? id : 'en-US-ChristopherNeural';
   persistAnnounceVoice();
   if (!announceMuted) previewAnnounceVoice();
 }
@@ -12023,6 +12215,13 @@ function onAnnouncePackChange() {
   const sel = document.getElementById('pref-announce-pack');
   announcePackId = migrateAnnouncePackId(sel?.value || 'bigMatchAnnouncer');
   persistAnnouncePack();
+  const pack = getAnnouncePack();
+  if (pack?.defaultVoice && ANNOUNCE_VOICE_IDS.has(pack.defaultVoice)) {
+    announceVoiceId = pack.defaultVoice;
+    persistAnnounceVoice();
+    const voiceSel = document.getElementById('pref-announce-voice');
+    if (voiceSel) voiceSel.value = announceVoiceId;
+  }
   if (!announceMuted) previewAnnounceVoice();
 }
 
@@ -12031,29 +12230,50 @@ function toggleAnnounceMute() {
   try { localStorage.setItem(ANNOUNCE_MUTE_KEY, announceMuted ? '1' : '0'); } catch { /* ignore */ }
   syncAnnouncePrefToggle();
   toast(announceMuted ? 'Announcements muted' : 'Announcements on');
-  if (!announceMuted) announceSpeak('Announcer on');
+  if (announceMuted) stopAnnounceAudio();
+  else announceSpeak('Announcer on');
 }
 
-function announceSpeak(text, { force = false, cancel = true, enqueue = false } = {}) {
+function announceSpeak(text, { force = false, cancel = true, enqueue = false, eventType = null } = {}) {
   if ((!force && announceMuted) || text == null || text === '') return;
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  if (typeof window === 'undefined') return;
 
-  const speakNow = () => new Promise((resolve) => {
+  const speakNow = async () => {
+    const voice = resolveAnnounceVoiceId(eventType);
     try {
-      if (cancel) window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(String(text));
-      const pack = getAnnouncePack();
-      u.rate = pack?.rate ?? 1.05;
-      u.pitch = pack?.pitch ?? 1;
-      const voice = resolveAnnounceVoice();
-      if (voice) u.voice = voice;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
-      window.speechSynthesis.speak(u);
-    } catch {
-      resolve();
+      const configured = await probeAnnounceTts();
+      if (!configured) {
+        if (!announceTtsWarned) {
+          announceTtsWarned = true;
+          toast('Announcer voices need Azure Speech on the server');
+        }
+        return;
+      }
+      if (cancel) stopAnnounceAudio();
+      const buf = await fetchAnnounceAudio(text, voice);
+      if ((!force && announceMuted)) return;
+      const blob = new Blob([buf], { type: 'audio/mpeg' });
+      if (announceObjectUrl) {
+        try { URL.revokeObjectURL(announceObjectUrl); } catch { /* ignore */ }
+      }
+      announceObjectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(announceObjectUrl);
+      announceAudio = audio;
+      await new Promise((resolve) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => resolve();
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => resolve());
+        }
+      });
+    } catch (err) {
+      if (err?.status === 503 && !announceTtsWarned) {
+        announceTtsWarned = true;
+        toast(err.message || 'Announcer voices not configured');
+      }
     }
-  });
+  };
 
   if (enqueue) {
     announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
@@ -12065,11 +12285,11 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false } =
 function previewAnnounceVoice() {
   const pack = getAnnouncePack();
   const wasMuted = announceMuted;
-  const label = pack?.label || 'Scores only';
   const sample = pack
-    ? announceRandomLine(pack.bigScore) || `One hundred and eighty. ${label}.`
+    ? announceRandomLine(pack.bigScore) || 'Welcome to Treble-Makers Arena!'
     : 'One hundred and eighty. Scores only.';
-  announceSpeak(sample, { force: true });
+  const eventType = pack ? 'BIG_SCORE' : null;
+  announceSpeak(sample, { force: true, eventType });
   if (wasMuted) toast('Preview only — announcements still muted');
 }
 
@@ -12104,7 +12324,7 @@ function announceVisitScore(display, opts = {}) {
   const raw = String(display).trim();
   if (!raw) return;
   if (/^bust$/i.test(raw)) {
-    announceSpeak('bust');
+    announceSpeak('bust', { eventType: 'MOMENTUM_LOSS' });
     announceVisitCommentary({
       visit: 0,
       bust: true,
@@ -12115,7 +12335,6 @@ function announceVisitScore(display, opts = {}) {
     });
     return;
   }
-  // Speak visit totals and cricket dart labels cleanly.
   announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim());
   announceVisitCommentary({
     visit: opts.visit != null ? opts.visit : parseAnnounceVisitTotal(raw),
@@ -12137,7 +12356,7 @@ function announceVisitCommentary({ visit, remaining, bust, legWon, matchWon, win
   }
   if (!pack) return;
   const line = getAnnounceCommentary(event, pack);
-  if (line) announceSpeak(line, { cancel: false, enqueue: true });
+  if (line) announceSpeak(line, { cancel: false, enqueue: true, eventType: event.type });
 }
 
 function announceMatchWin(winner, { forceLine = false } = {}) {
@@ -12148,11 +12367,11 @@ function announceMatchWin(winner, { forceLine = false } = {}) {
   if (pack) {
     const line = getAnnounceCommentary({ type: 'WIN' }, pack);
     if (line) {
-      announceSpeak(line, { cancel: false, enqueue: true });
+      announceSpeak(line, { cancel: false, enqueue: true, eventType: 'WIN' });
       return;
     }
   }
-  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true });
+  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true, eventType: 'WIN' });
 }
 
 function maybeAnnounceX01Require() {
@@ -12169,15 +12388,14 @@ function maybeAnnounceX01Require() {
   lastX01RequireKey = key;
 
   const pack = getAnnouncePack();
-  // Pack checkout lines cover finishes of 40 or less; keep classic "require" above that.
   if (pack && rem <= 40) {
     const line = getAnnounceCommentary({ type: 'CHECKOUT_CHANCE' }, pack);
     if (line) {
-      announceSpeak(line, { cancel: false, enqueue: true });
+      announceSpeak(line, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
       return;
     }
   }
-  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true });
+  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
 }
 
 function announceFromScoreUpdate(msg) {
@@ -12198,7 +12416,6 @@ function announceFromScoreUpdate(msg) {
     if (last?.entry) {
       visit = last.entry.v;
       if (last.entry.bust) {
-        // Remaining unchanged on bust — use current seat remaining.
         remaining = S.gameState.remaining?.[last.entry.p];
       } else if (matchWon || legWon || (!last.isCurrentLeg && last.entry.v != null)) {
         remaining = 0;
@@ -12221,19 +12438,13 @@ function announceFromScoreUpdate(msg) {
 
 function initAnnounceVoiceList() {
   populateAnnounceVoiceSelect();
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const markReady = () => {
-    announceVoicesReady = true;
-    populateAnnounceVoiceSelect();
-  };
-  // Chrome loads voices asynchronously.
-  if (listAnnounceVoices().length) markReady();
-  window.speechSynthesis.onvoiceschanged = markReady;
+  probeAnnounceTts();
 }
 
 syncAnnouncePrefsUI();
 initAnnounceVoiceList();
 persistAnnouncePack();
+persistAnnounceVoice();
 
 // ═══════════════════════════════════════════════════════════
 //  STATS TIMER
