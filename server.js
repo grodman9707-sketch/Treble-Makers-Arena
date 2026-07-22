@@ -4267,6 +4267,7 @@ app.use(helmet({
       styleSrcElem: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:'],
+      mediaSrc: ["'self'", 'blob:'],
       connectSrc: ["'self'", 'ws:', 'wss:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -4279,6 +4280,7 @@ app.use(helmet({
 
 // gzip responses (HTML/CSS/JS/JSON) before they hit the wire.
 app.use(compression());
+app.use(express.json({ limit: '16kb' }));
 
 // Health check for uptime monitors / load balancers. Cheap + never cached.
 app.get('/healthz', (req, res) => {
@@ -4306,6 +4308,74 @@ const apiLimiter = rateLimit({
   message: { ok: false, error: 'Too many requests — please slow down.' },
 });
 app.use('/api/', apiLimiter);
+
+// Curated Azure Neural voices for Arena announcer packs (allowlist).
+const AZURE_TTS_VOICES = new Set([
+  'en-US-ChristopherNeural',
+  'en-US-DavisNeural',
+  'en-US-GuyNeural',
+  'en-US-AndrewNeural',
+  'en-US-BrandonNeural',
+  'en-US-AriaNeural',
+]);
+const AZURE_SPEECH_KEY = (process.env.AZURE_SPEECH_KEY || process.env.AZURE_KEY || '').trim();
+const AZURE_SPEECH_REGION = (process.env.AZURE_SPEECH_REGION || process.env.AZURE_REGION || '').trim();
+
+app.get('/api/tts-status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    configured: !!(AZURE_SPEECH_KEY && AZURE_SPEECH_REGION),
+    voices: [...AZURE_TTS_VOICES],
+  });
+});
+
+app.post('/api/tts', async (req, res) => {
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 400) : '';
+    const voice = typeof req.body?.voice === 'string' ? req.body.voice.trim() : '';
+    if (!text) return res.status(400).json({ ok: false, error: 'Missing text.' });
+    if (!AZURE_TTS_VOICES.has(voice)) {
+      return res.status(400).json({ ok: false, error: 'Voice not allowed.' });
+    }
+    if (!AZURE_SPEECH_KEY || !AZURE_SPEECH_REGION) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Announcer voices are not configured (set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION).',
+      });
+    }
+
+    const escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+    const ssml = `<speak version="1.0" xml:lang="en-US"><voice name="${voice}">${escaped}</voice></speak>`;
+    const url = `https://${AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': AZURE_SPEECH_KEY,
+        'Content-Type': 'application/ssml+xml',
+        'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
+      },
+      body: ssml,
+    });
+    if (!upstream.ok) {
+      const detail = await upstream.text().catch(() => '');
+      log('warn', 'Azure TTS failed:', upstream.status, detail.slice(0, 200));
+      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+    }
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.send(buf);
+  } catch (err) {
+    log('error', 'TTS proxy failed:', err.message);
+    res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+  }
+});
 
 app.get('/api/wdl-standings', async (req, res) => {
   try {
