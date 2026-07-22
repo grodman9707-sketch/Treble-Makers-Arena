@@ -2468,7 +2468,12 @@ body.app-active .arena-bg { animation: none !important; }
   border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s;
 }
 .username-link:hover { color: var(--gold-light); border-bottom-color: rgba(201,168,76,0.55); }
-.profile-page { padding: 1.5rem 2rem 2.5rem; max-width: 1100px; }
+.profile-page {
+  padding: 1.5rem 2rem 2.5rem;
+  max-width: 1100px;
+  /* Tall enough that Log Out sits below the fold and requires a scroll. */
+  min-height: calc(100vh + 12rem);
+}
 .profile-layout {
   display: grid; grid-template-columns: minmax(260px, 320px) 1fr minmax(220px, 280px); gap: 1.25rem; margin-top: 1.25rem;
 }
@@ -2542,11 +2547,12 @@ body.app-active .arena-bg { animation: none !important; }
 .pref-toggle[aria-checked="true"] .pref-toggle-knob {
   transform: translateX(20px); background: var(--gold-light);
 }
-.app-footer {
-  flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end;
-  gap: 0.75rem; padding: 0.65rem 1.5rem;
-  background: var(--deep); border-top: 1px solid var(--border);
-  position: sticky; bottom: 0; z-index: 95;
+.profile-logout-section {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  justify-content: flex-end;
 }
 .profile-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; margin-bottom: 1rem; }
 .profile-avatar {
@@ -3966,16 +3972,16 @@ body.app-active .arena-bg { animation: none !important; }
     <div class="page" id="page-leaderboard">
       <div class="leaderboard-page">
         <div class="page-section-title">Leaderboard</div>
-        <div class="page-section-sub">Top players on the WDL Treble-Makers Arena platform.</div>
+        <div class="page-section-sub">Top players ranked by most wins. Trophies count tournament titles.</div>
         <table class="lb-table">
           <thead>
             <tr>
               <th>#</th><th>Player</th><th>Wins</th><th>Losses</th>
-              <th>Games</th><th>High Score</th><th>Tournaments Won</th>
+              <th>Games</th><th>Trophies</th>
             </tr>
           </thead>
           <tbody id="lb-tbody">
-            <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">Loading...</td></tr>
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -4139,13 +4145,13 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
           </div>
         </div>
+        <div class="profile-logout-section">
+          <button type="button" class="btn btn-sm" onclick="doLogout()">Log Out</button>
+        </div>
       </div>
     </div>
 
   </div>
-  <footer class="app-footer">
-    <button type="button" class="btn btn-sm" onclick="doLogout()">Log Out</button>
-  </footer>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -11602,8 +11608,9 @@ function viewTournament(id) {
 // ═══════════════════════════════════════════════════════════
 function renderLeaderboard(data) {
   const tb = document.getElementById('lb-tbody');
-  if (!data?.length) { tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">No players yet</td></tr>'; return; }
+  if (!data?.length) { tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem">No players yet</td></tr>'; return; }
   const rankClass = ['top1','top2','top3'];
+  // Ranked by most wins (server sort). Trophies = tournament titles won.
   tb.innerHTML = data.map((p, i) => `
     <tr>
       <td><span class="lb-rank ${rankClass[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span></td>
@@ -11611,7 +11618,6 @@ function renderLeaderboard(data) {
       <td><span class="lb-num" style="color:var(--green-bright)">${p.wins||0}</span></td>
       <td><span class="lb-num">${p.losses||0}</span></td>
       <td><span class="lb-num">${p.gamesPlayed||0}</span></td>
-      <td><span class="lb-num" style="color:var(--gold-light)">${p.highScore||0}</span></td>
       <td><span class="lb-num" style="color:var(--gold)">${p.tournamentsWon||0}</span></td>
     </tr>
   `).join('');
