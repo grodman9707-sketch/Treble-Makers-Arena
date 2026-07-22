@@ -2244,7 +2244,8 @@ async function handleMessage(wsId, msg) {
       client.roomId = msg.roomId;
       send(wsId, { type: 'spectating', roomId: room.id, game: room.config.game,
         hostName: room.config.hostName, guestName: room.config.guestName,
-        scores: room.scores, history: room.history, turn: room.turn });
+        scores: room.scores, history: room.history, turn: room.turn,
+        gameState: room.gameState || null });
       break;
     }
 
