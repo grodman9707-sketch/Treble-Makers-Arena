@@ -3943,7 +3943,7 @@ body.app-active .arena-bg { animation: none !important; }
               <div id="bot-avatar" class="bot-avatar hidden">
                 <div class="bot-avatar-icon">🤖</div>
                 <div class="bot-avatar-name">Digital Dart Bot</div>
-                <div class="bot-avatar-skill" id="bot-skill-label">Skill: Easy</div>
+                <div class="bot-avatar-skill" id="bot-skill-label">Level 3 · ~44 avg</div>
               </div>
               <div class="cam-label opp" id="cam-label-opp">OPP</div>
               <div class="cam-score-box opp" id="cam-score-opp-wrap">
@@ -4389,12 +4389,18 @@ body.app-active .arena-bg { animation: none !important; }
           <div id="invite-friend-selected" class="presence-row-meta" style="margin-top:0.45rem"></div>
         </div>
         <div class="form-group hidden" id="bot-skill-row">
-          <label>Bot Skill</label>
+          <label>Bot Level</label>
           <select id="bot-skill" onchange="selectBotSkill(this)">
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-            <option value="adaptive">Adaptive</option>
+            <option value="1">Level 1 — ~30 avg · 10% checkout</option>
+            <option value="2">Level 2 — ~37 avg · 14% checkout</option>
+            <option value="3" selected>Level 3 — ~44 avg · 18% checkout</option>
+            <option value="4">Level 4 — ~52 avg · 22% checkout</option>
+            <option value="5">Level 5 — ~59 avg · 26% checkout</option>
+            <option value="6">Level 6 — ~66 avg · 29% checkout</option>
+            <option value="7">Level 7 — ~73 avg · 33% checkout</option>
+            <option value="8">Level 8 — ~81 avg · 37% checkout</option>
+            <option value="9">Level 9 — ~88 avg · 41% checkout</option>
+            <option value="10">Level 10 — ~95 avg · 45% checkout</option>
           </select>
         </div>
       </div>
@@ -5151,8 +5157,8 @@ function handleWS(msg) {
     case 'bot_room_started':
       S.roomId = msg.roomId; S.isHost = true; S.game = msg.game;
       resetMatchSeats();
-      const skillMatch = (msg.opponentName || '').match(/\((easy|medium|hard|adaptive)\)/i);
-      S.botSkill = skillMatch ? skillMatch[1].toLowerCase() : (selectedBotSkill || 'easy');
+      const skillMatch = (msg.opponentName || '').match(/\((?:level\s*)?(\d{1,2}|easy|medium|hard|adaptive)\)/i);
+      S.botSkill = skillMatch ? normalizeBotLevel(skillMatch[1]) : normalizeBotLevel(selectedBotSkill);
       attachLocalCamera();
       startMatchUI(msg.game, msg.opponentName, false, msg.gameState, msg.matchPreview);
       toast(msg.tournamentName
@@ -6265,7 +6271,29 @@ function renderSpectate() {
 // ═══════════════════════════════════════════════════════════
 let selectedGame = 'Halve-It';
 let selectedMatchType = 'human';
-let selectedBotSkill = 'easy';
+let selectedBotSkill = '3';
+
+const LEGACY_BOT_SKILL_LEVEL = { easy: 2, medium: 5, hard: 8, adaptive: 6 };
+
+function normalizeBotLevel(skill) {
+  if (typeof skill === 'number' && Number.isFinite(skill)) {
+    return Math.min(10, Math.max(1, Math.round(skill)));
+  }
+  const s = String(skill || '').trim().toLowerCase();
+  if (LEGACY_BOT_SKILL_LEVEL[s]) return LEGACY_BOT_SKILL_LEVEL[s];
+  const m = s.match(/^(?:level\s*)?(\d{1,2})$/);
+  if (m) return Math.min(10, Math.max(1, parseInt(m[1], 10)));
+  return 3;
+}
+
+function botLevelAvg(level) {
+  return Math.round(30 + (normalizeBotLevel(level) - 1) * (95 - 30) / 9);
+}
+
+function formatBotSkillLabel(skill) {
+  const level = normalizeBotLevel(skill);
+  return `Level ${level} · ~${botLevelAvg(level)} avg`;
+}
 let camModalAutoProceed = false;
 
 function updateCamNavButton() {
@@ -6736,8 +6764,8 @@ function attachLocalCamera() {
 }
 
 function createBotMatch() {
-  S.botSkill = selectedBotSkill;
-  wsSend({ type: 'create_bot_room', game: S.game, botSkill: selectedBotSkill, ...(S.matchVariation || {}) });
+  S.botSkill = normalizeBotLevel(selectedBotSkill);
+  wsSend({ type: 'create_bot_room', game: S.game, botSkill: S.botSkill, ...(S.matchVariation || {}) });
 }
 
 function joinRoom(roomId, game, hostName) {
@@ -9972,7 +10000,7 @@ function updateMatchUI() {
     botAvatar.classList.toggle('hidden', !showBot);
     document.getElementById('cam-placeholder-opp').classList.toggle('hidden', showBot);
     document.getElementById('video-remote').style.display = showBot ? 'none' : 'block';
-    if (botSkillLabel) botSkillLabel.textContent = `Skill: ${S.botSkill ? S.botSkill.charAt(0).toUpperCase() + S.botSkill.slice(1) : 'Adaptive'}`;
+    if (botSkillLabel) botSkillLabel.textContent = formatBotSkillLabel(S.botSkill);
   }
 
   // History (hidden for Halve-It / Golf / Football)
@@ -11662,7 +11690,7 @@ function rematch() {
 // ═══════════════════════════════════════════════════════════
 function openCreateTournament() { openModal('create-tournament-modal'); onTGameChange(); }
 
-const TOURNAMENT_TEST_BOTS = ['Bot (Easy)', 'Bot (Medium)', 'Bot (Hard)', 'Bot (Adaptive)'];
+const TOURNAMENT_TEST_BOTS = ['Bot (Level 2)', 'Bot (Level 5)', 'Bot (Level 8)', 'Bot (Level 10)'];
 
 function openAdminPanel() {
   if (!S.user.admin) { toast('Admin only.'); return; }
@@ -12773,8 +12801,9 @@ function announceVisitScore(display, opts = {}) {
   if (display == null || display === '') return;
   const raw = String(display).trim();
   if (!raw) return;
+  // Enqueue so player + bot visits are both spoken (bot is also paced server-side).
   if (/^bust$/i.test(raw)) {
-    announceSpeak('bust', { eventType: 'MOMENTUM_LOSS' });
+    announceSpeak('bust', { cancel: false, enqueue: true, eventType: 'MOMENTUM_LOSS' });
     announceVisitCommentary({
       visit: 0,
       bust: true,
@@ -12785,7 +12814,7 @@ function announceVisitScore(display, opts = {}) {
     });
     return;
   }
-  announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim());
+  announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(), { cancel: false, enqueue: true });
   announceVisitCommentary({
     visit: opts.visit != null ? opts.visit : parseAnnounceVisitTotal(raw),
     remaining: opts.remaining,

@@ -682,14 +682,51 @@ function sanitizeAvatarDataUrl(raw) {
   return raw;
 }
 
-function botPreviewStats(skill) {
-  const table = {
-    easy: { threeDartAvg: 42, highestCheckout: 80, oneEighties: 0 },
-    medium: { threeDartAvg: 58, highestCheckout: 100, oneEighties: 1 },
-    hard: { threeDartAvg: 72, highestCheckout: 132, oneEighties: 3 },
-    adaptive: { threeDartAvg: 65, highestCheckout: 120, oneEighties: 2 },
+// Bot skill is Level 1–10 (legacy easy/medium/hard/adaptive still accepted).
+// L1 = 30 avg / 10% checkout → L10 = 95 avg / 45% checkout.
+const LEGACY_BOT_SKILL_LEVEL = { easy: 2, medium: 5, hard: 8, adaptive: 6 };
+const BOT_MOVE_DELAY_MS = 4500;   // after a human visit — let announcer finish
+const BOT_CHAIN_DELAY_MS = 3200;  // consecutive bot throws (keepTurn)
+const BOT_RETRY_DELAY_MS = 2000;
+
+function normalizeBotLevel(skill) {
+  if (typeof skill === 'number' && Number.isFinite(skill)) {
+    return Math.min(10, Math.max(1, Math.round(skill)));
+  }
+  const s = String(skill || '').trim().toLowerCase();
+  if (LEGACY_BOT_SKILL_LEVEL[s]) return LEGACY_BOT_SKILL_LEVEL[s];
+  const m = s.match(/^(?:level\s*)?(\d{1,2})$/);
+  if (m) return Math.min(10, Math.max(1, parseInt(m[1], 10)));
+  return 3;
+}
+
+function botLevelLerp(level, lo, hi) {
+  const t = (normalizeBotLevel(level) - 1) / 9;
+  return lo + t * (hi - lo);
+}
+
+function botLevelProfile(skill) {
+  const level = normalizeBotLevel(skill);
+  return {
+    level,
+    threeDartAvg: Math.round(botLevelLerp(level, 30, 95)),
+    checkoutPct: botLevelLerp(level, 0.10, 0.45),
+    difficulty: botLevelLerp(level, 0.30, 0.90),
+    hitChance: botLevelLerp(level, 0.35, 0.85),
+    tripleChance: botLevelLerp(level, 0.05, 0.30),
+    highestCheckout: Math.round(botLevelLerp(level, 40, 170)),
+    oneEighties: Math.round(botLevelLerp(level, 0, 5)),
+    label: `Level ${level}`,
   };
-  return table[skill] || table.easy;
+}
+
+function botPreviewStats(skill) {
+  const p = botLevelProfile(skill);
+  return {
+    threeDartAvg: p.threeDartAvg,
+    highestCheckout: p.highestCheckout,
+    oneEighties: p.oneEighties,
+  };
 }
 
 function playerPreviewProfile(username) {
@@ -2186,9 +2223,10 @@ async function handleMessage(wsId, msg) {
       if (!canPlayGame(msg.game, client.username)) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
+      const botLevel = normalizeBotLevel(msg.botSkill);
       const room = createRoom(wsId, {
         game: msg.game, hostName: client.username,
-        guestName: `Bot (${msg.botSkill || 'easy'})`, bot: true, botSkill: msg.botSkill || 'easy',
+        guestName: `Bot (Level ${botLevel})`, bot: true, botSkill: botLevel,
         variation: msg.variation || null, startRule: msg.startRule || null,
         finishRule: msg.finishRule || null, x01Base: msg.x01Base || null,
         legs: msg.legs || null,
@@ -3100,7 +3138,10 @@ function handleDisconnect(wsId) {
 // ─────────────────────────────────────────────
 //  BOT AI
 // ─────────────────────────────────────────────
-function scheduleBotMove(roomId, attempt = 0) {
+function scheduleBotMove(roomId, attempt = 0, delayMs = null) {
+  const wait = delayMs != null
+    ? delayMs
+    : (attempt === 0 ? BOT_MOVE_DELAY_MS : BOT_RETRY_DELAY_MS);
   setTimeout(() => {
     const room = rooms.get(roomId);
     const bSeat = room ? botSeat(room) : -1;
@@ -3117,7 +3158,7 @@ function scheduleBotMove(roomId, attempt = 0) {
         scheduleBotMove(roomId, attempt + 1);
       }
     }
-  }, attempt === 0 ? 1000 : 600);
+  }, wait);
 }
 
 function botTakeTurn(room) {
@@ -3160,13 +3201,14 @@ function botTakeTurn(room) {
       recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, move.winner);
     }
   } else if (room.turn === B && room.status === 'active') {
-    scheduleBotMove(room.id);
+    scheduleBotMove(room.id, 0, BOT_CHAIN_DELAY_MS);
   }
 }
 
 function computeBotMove(room) {
   const gs = room.gameState || {};
-  const skill = room.config.botSkill || 'easy';
+  const skill = room.config.botSkill;
+  const profile = botLevelProfile(skill);
   const rand = () => Math.random();
   const chooseTarget = (targetValue) => {
     if (typeof targetValue === 'number') return targetValue;
@@ -3175,7 +3217,7 @@ function computeBotMove(room) {
     if (targetValue === 'Bull') return 25;
     return 20;
   };
-  const difficulty = { easy: 0.45, medium: 0.65, hard: 0.85, adaptive: 0.75 }[skill] || 0.55;
+  const difficulty = profile.difficulty;
   let move = { delta: 0, absoluteScore: undefined, displayScore: 'MISS', note: 'Miss', gameState: gs, gameOver: false, winner: '', keepTurn: false };
   const game = room.config.game;
   const B = botSeat(room);
@@ -3187,8 +3229,8 @@ function computeBotMove(room) {
     const p = B;
     if (!gs.remaining) Object.assign(gs, initX01State(room.config, game));
     const rem = gs.remaining[p];
-    const avg = { easy: 38, medium: 58, hard: 84, adaptive: 70 }[skill] || 45;
-    const coAttempt = { easy: 0.18, medium: 0.34, hard: 0.6, adaptive: 0.45 }[skill] || 0.2;
+    const avg = profile.threeDartAvg;
+    const coAttempt = profile.checkoutPct;
 
     let total;
     if (!gs.opened[p]) {
@@ -3231,8 +3273,8 @@ function computeBotMove(room) {
     const p = B;
     room.gameState = ensureCricketState(gs, room.config, game);
     const state = room.gameState;
-    const hitChance = { easy: 0.45, medium: 0.62, hard: 0.8, adaptive: 0.72 }[skill] || 0.5;
-    const tripleChance = { easy: 0.07, medium: 0.15, hard: 0.28, adaptive: 0.2 }[skill] || 0.1;
+    const hitChance = profile.hitChance;
+    const tripleChance = profile.tripleChance;
     const doubleChance = 0.2;
     const darts = [];
     for (let i = 0; i < 3; i++) {
@@ -3539,8 +3581,8 @@ function computeBotMove(room) {
       move.gameState = gs;
     } else {
       const rem = progress.remaining || 0;
-      const avg = { easy: 38, medium: 58, hard: 84, adaptive: 70 }[skill] || 45;
-      const coAttempt = { easy: 0.18, medium: 0.34, hard: 0.6, adaptive: 0.45 }[skill] || 0.2;
+      const avg = profile.threeDartAvg;
+      const coAttempt = profile.checkoutPct;
       let total;
       let visitDarts = GC_DARTS_PER_TURN;
       if (rem > 0 && rem <= 180 && x01IsValidCheckout(rem, 'double-out') && rand() < coAttempt) {
@@ -3656,7 +3698,7 @@ function computeBotMove(room) {
     }
     move.gameState = gs;
   } else if (game === 'High Score') {
-    const score = Math.max(0, Math.min(180, Math.round((rand() * 140 + 20) * (skill === 'easy' ? 0.75 : skill === 'medium' ? 0.9 : 1))));
+    const score = Math.max(0, Math.min(180, Math.round(profile.threeDartAvg + (rand() * 50 - 25))));
     move.delta = score;
     move.displayScore = score;
     move.note = `BOT scored ${score}`;
@@ -3788,7 +3830,7 @@ function finalizeGolfHole(darts, target) {
   return { scores, best, holeScore: Math.max(0, best - (hatTrick ? 1 : 0)), hatTrick };
 }
 
-const TOURNAMENT_TEST_BOTS = ['Bot (Easy)', 'Bot (Medium)', 'Bot (Hard)', 'Bot (Adaptive)'];
+const TOURNAMENT_TEST_BOTS = ['Bot (Level 2)', 'Bot (Level 5)', 'Bot (Level 8)', 'Bot (Level 10)'];
 
 function ensureTournamentPlayers(t) {
   if (!Array.isArray(t.players)) t.players = [];
@@ -3812,8 +3854,8 @@ function isBotPlayer(name) {
 }
 
 function botSkillFromName(name) {
-  const m = (name || '').match(/\((easy|medium|hard|adaptive)\)/i);
-  return m ? m[1].toLowerCase() : 'easy';
+  const m = (name || '').match(/\((?:level\s*)?(\d{1,2}|easy|medium|hard|adaptive)\)/i);
+  return m ? normalizeBotLevel(m[1]) : 3;
 }
 
 function findBracketMatch(t, matchId) {
