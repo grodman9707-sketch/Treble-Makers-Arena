@@ -2473,6 +2473,8 @@ body.app-active .arena-bg { animation: none !important; }
   max-width: 1100px;
   /* Tall enough that Log Out sits below the fold and requires a scroll. */
   min-height: calc(100vh + 12rem);
+  display: flex;
+  flex-direction: column;
 }
 .profile-layout {
   display: grid; grid-template-columns: minmax(260px, 320px) 1fr minmax(220px, 280px); gap: 1.25rem; margin-top: 1.25rem;
@@ -2548,7 +2550,7 @@ body.app-active .arena-bg { animation: none !important; }
   transform: translateX(20px); background: var(--gold-light);
 }
 .profile-logout-section {
-  margin-top: 2.5rem;
+  margin-top: auto;
   padding-top: 1.5rem;
   border-top: 1px solid rgba(255,255,255,0.08);
   display: flex;
@@ -11193,6 +11195,8 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   setStat('ps-wins', String(s.wins || 0));
   setStat('ps-losses', String(s.losses || 0));
   setStat('ps-games', String(s.gamesPlayed || 0));
+  const logoutSection = document.querySelector('.profile-logout-section');
+  if (logoutSection) logoutSection.classList.toggle('hidden', !!opts.readOnly);
   syncAnnouncePrefsUI();
 }
 
