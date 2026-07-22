@@ -2835,7 +2835,109 @@ body.app-active .arena-bg { animation: none !important; }
   font-variant-numeric: tabular-nums; min-width: 3ch; overflow: hidden;
 }
 .x01-card.active .x01-remaining { color: #fff; }
+.x01-checkout-guide {
+  min-height: 1.15rem; margin: -0.25rem 0 0.45rem;
+  font-family: 'Orbitron', monospace; font-size: 0.68rem; letter-spacing: 0.04em;
+  color: var(--gold); opacity: 0.92; line-height: 1.25;
+}
+.x01-card.active .x01-checkout-guide { color: #f0d080; }
+.x01-checkout-guide.empty { opacity: 0; }
+.x01-pressure-row {
+  display: flex; align-items: center; gap: 0.4rem; margin: 0.15rem 0 0.35rem;
+  font-size: 0.62rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.x01-pressure-bar {
+  flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden;
+}
+.x01-pressure-fill {
+  height: 100%; width: 0%; border-radius: 3px;
+  background: linear-gradient(90deg, #6dbf82, #c9a84c, #e85d5d);
+  transition: width 0.35s ease;
+}
 .x01-stat-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; font-size: 0.74rem; padding: 0.22rem 0; border-top: 1px solid rgba(255,255,255,0.08); color: var(--muted); }
+
+/* Arena FX / broadcast */
+#page-match.arena-fx-pulse {
+  animation: arenaGoldWash 1.1s ease-out;
+}
+@keyframes arenaGoldWash {
+  0% { box-shadow: inset 0 0 0 rgba(201,168,76,0); }
+  35% { box-shadow: inset 0 0 80px rgba(201,168,76,0.28); }
+  100% { box-shadow: inset 0 0 0 rgba(201,168,76,0); }
+}
+.arena-broadcast-strip {
+  position: absolute; left: 50%; top: 0.55rem; transform: translateX(-50%);
+  z-index: 40; display: flex; gap: 0.55rem; flex-wrap: wrap; justify-content: center;
+  max-width: min(920px, 94vw); pointer-events: none;
+}
+.arena-broadcast-chip {
+  font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: 0.08em;
+  padding: 0.28rem 0.55rem; border-radius: 4px;
+  background: rgba(8,8,12,0.82); border: 1px solid rgba(201,168,76,0.35);
+  color: var(--silver-light); text-transform: uppercase;
+}
+.arena-broadcast-chip.hot {
+  border-color: var(--gold); color: var(--gold-light);
+  box-shadow: 0 0 16px rgba(201,168,76,0.25);
+}
+.arena-bumper {
+  position: fixed; inset: 0; z-index: 360; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.45); pointer-events: none; opacity: 0; transition: opacity 0.2s;
+}
+.arena-bumper.show { opacity: 1; }
+.arena-bumper-card {
+  min-width: min(420px, 88vw); text-align: center; padding: 1.4rem 1.6rem;
+  border: 1px solid rgba(201,168,76,0.55); border-radius: 10px;
+  background: linear-gradient(160deg, rgba(28,24,14,0.96), rgba(8,8,12,0.96));
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55), 0 0 40px rgba(201,168,76,0.18);
+  transform: scale(0.92); transition: transform 0.25s ease;
+}
+.arena-bumper.show .arena-bumper-card { transform: scale(1); }
+.arena-bumper-kicker {
+  font-family: 'Orbitron', monospace; font-size: 0.7rem; letter-spacing: 0.16em;
+  color: var(--gold); text-transform: uppercase; margin-bottom: 0.45rem;
+}
+.arena-bumper-title {
+  font-family: 'Cinzel Decorative', cursive; font-size: clamp(1.6rem, 4vw, 2.4rem);
+  color: var(--gold-light); line-height: 1.1;
+}
+.arena-bumper-sub { margin-top: 0.5rem; color: var(--silver-light); font-size: 0.9rem; }
+.arena-warmup {
+  position: fixed; inset: 0; z-index: 350; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.arena-warmup.show { opacity: 1; pointer-events: auto; }
+.arena-warmup-num {
+  font-family: 'Orbitron', monospace; font-size: clamp(4rem, 18vw, 8rem); font-weight: 800;
+  color: var(--gold-light); text-shadow: 0 0 40px rgba(201,168,76,0.45);
+}
+.arena-changeover {
+  position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%);
+  z-index: 38; font-family: 'Cinzel', serif; letter-spacing: 0.12em; text-transform: uppercase;
+  font-size: 0.85rem; color: var(--gold-light); background: rgba(8,8,12,0.8);
+  border: 1px solid rgba(201,168,76,0.35); padding: 0.4rem 0.85rem; border-radius: 4px;
+  opacity: 0; transition: opacity 0.25s; pointer-events: none;
+}
+.arena-changeover.show { opacity: 1; }
+#page-match.stage-pip .x01-cam-frame,
+#page-match.stage-pip .ckt-cam-frame {
+  box-shadow: 0 0 0 2px rgba(201,168,76,0.55), 0 12px 40px rgba(0,0,0,0.45);
+}
+#page-match.spectating .x01-input-wrap,
+#page-match.spectating #ckt-pad,
+#page-match.spectating #number-pad,
+#page-match.spectating #score-input {
+  opacity: 0.35; pointer-events: none;
+}
+.go-handshake {
+  font-family: 'Cinzel', serif; color: var(--gold-light); letter-spacing: 0.08em;
+  margin: 0.35rem 0 0.75rem; font-size: 0.95rem;
+}
+.go-broadcast-summary {
+  margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(201,168,76,0.25);
+  font-family: 'Orbitron', monospace; font-size: 0.72rem; color: var(--silver-light);
+  letter-spacing: 0.04em; line-height: 1.55;
+}
 .x01-card.active .x01-stat-row { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.18); }
 .x01-stat-row b {
   color: var(--silver-light); font-family: 'Orbitron', monospace;
@@ -3683,6 +3785,8 @@ body.app-active .arena-bg { animation: none !important; }
       </div>
 
       <!-- X01 dartcounter-style layout (shown only for X01 family) -->
+      <div id="arena-broadcast-strip" class="arena-broadcast-strip hidden" aria-live="polite"></div>
+      <div id="arena-changeover" class="arena-changeover" aria-live="polite">To the oche</div>
       <div id="x01-layout" class="x01-layout hidden">
         <div class="x01-topbar">
           <button class="x01-icon-btn" onclick="leaveMatch()" title="Leave match">⟵</button>
@@ -4136,6 +4240,24 @@ body.app-active .arena-bg { animation: none !important; }
                 Until then, the browser speaks as a fallback so matches stay audible.
                 Loki Hybrid still switches mood lines per moment.
               </p>
+            </div>
+            <div class="profile-setting-row">
+              <div class="profile-setting-meta">
+                <span class="profile-setting-label">Crowd reactions</span>
+                <span class="profile-setting-hint">Cheers and murmurs on big moments</span>
+              </div>
+              <button type="button" class="pref-toggle" id="pref-crowd-toggle"
+                role="switch" aria-checked="true" aria-label="Crowd reactions"
+                onclick="toggleCrowdFx()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
+            </div>
+            <div class="profile-setting-row">
+              <div class="profile-setting-meta">
+                <span class="profile-setting-label">Ambient bed</span>
+                <span class="profile-setting-hint">Soft arena murmur during matches</span>
+              </div>
+              <button type="button" class="pref-toggle" id="pref-ambient-toggle"
+                role="switch" aria-checked="false" aria-label="Ambient bed"
+                onclick="toggleAmbientFx()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
             </div>
           </div>
         </div>
@@ -4604,11 +4726,24 @@ body.app-active .arena-bg { animation: none !important; }
   </div>
 </div>
 
+<!-- Arena FX overlays -->
+<div class="arena-bumper" id="arena-bumper" aria-hidden="true">
+  <div class="arena-bumper-card">
+    <div class="arena-bumper-kicker" id="arena-bumper-kicker">ARENA</div>
+    <div class="arena-bumper-title" id="arena-bumper-title">HUGE SCORE</div>
+    <div class="arena-bumper-sub" id="arena-bumper-sub"></div>
+  </div>
+</div>
+<div class="arena-warmup" id="arena-warmup" aria-hidden="true">
+  <div class="arena-warmup-num" id="arena-warmup-num">3</div>
+</div>
+
 <!-- Game Over Overlay -->
 <div class="overlay" id="gameover-overlay">
   <div class="overlay-box">
     <div class="gameover-title" id="go-title">GAME<br>OVER</div>
     <div class="gameover-winner" id="go-winner"></div>
+    <div class="go-handshake" id="go-handshake">Good game — shake hands at the oche.</div>
     <div class="gameover-stats" id="go-stats"></div>
     <div id="go-actions" style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-bottom:0.65rem"></div>
     <div style="display:flex;gap:0.75rem;justify-content:center">
@@ -4721,6 +4856,7 @@ const S = {
   onlineFriends: [],
   isLocal: false,
   localNames: null,
+  isSpectating: false,
 };
 
 const GAME_RULES = {
@@ -5137,7 +5273,11 @@ function handleWS(msg) {
     case 'webrtc_ice': handleRTCIce(msg); break;
     case 'spectating':
       S.game = msg.game;
-      startMatchUI(msg.game, msg.hostName, true);
+      S.roomId = msg.roomId || S.roomId;
+      S.scores = Array.isArray(msg.scores) ? msg.scores.slice(0, 2) : [0, 0];
+      S.turn = typeof msg.turn === 'number' ? msg.turn : 0;
+      if (Array.isArray(msg.history)) S.history = msg.history.slice();
+      startMatchUI(msg.game, msg.guestName ? `${msg.hostName} vs ${msg.guestName}` : msg.hostName, true, msg.gameState || null);
       break;
     case 'starter_method':
     case 'bull_throw':
@@ -6817,6 +6957,8 @@ function setHalveItInputMode(mode) {
 function startMatchUI(game, opponentName, spectating = false, gameState = null, matchPreview = null) {
   resetChatUI();
   setChatEnabled(!spectating && !S.isLocal);
+  applySpectatingMode(spectating);
+  resetMatchDrama();
   // Online / bot matches clear any leftover local-play flags.
   if (S.roomId) {
     S.isLocal = false;
@@ -6840,7 +6982,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   if (game === 'Golf Checkouts') {
     S.turn = gcSkipWaitingTurn(S.turn, S.gameState);
   }
-  attachLocalCamera();
+  if (!spectating) attachLocalCamera();
 
   document.getElementById('mh-game').textContent = game;
   document.getElementById('sb-name-you').textContent = (S.user.username || 'You').toUpperCase();
@@ -6867,9 +7009,15 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   if (!spectating) {
     signalMatchUiReady();
     if (!matchPreview) {
-      announceMatchStart();
-      maybeAnnounceX01Require();
+      playCrowdBurst('cheer');
+      runWarmupCountdown(() => {
+        announceMatchStart();
+        maybeAnnounceX01Require();
+        startAmbientBed();
+      });
     }
+  } else {
+    startAmbientBed();
   }
 }
 
@@ -7080,8 +7228,19 @@ function beginMatchAfterPreview() {
   hideStarterOverlays();
   updateMatchUI();
   signalMatchUiReady();
-  announceMatchStart();
-  maybeAnnounceX01Require();
+  // Walk-on sting + warm-up countdown before first dart.
+  playCrowdBurst('cheer');
+  pulseArenaLighting();
+  showArenaBumper('WALK-ON', {
+    kicker: S.game || 'MATCH',
+    sub: `${(S.user?.username || 'Player')} vs ${(S.opponentName || 'Opponent')}`,
+    ms: 1600
+  });
+  runWarmupCountdown(() => {
+    announceMatchStart();
+    maybeAnnounceX01Require();
+    startAmbientBed();
+  });
 }
 
 function signalMatchUiReady() {
@@ -7822,6 +7981,183 @@ function initX01State(cfg, game) {
     turnEnded: false,
     nextTurn: null
   };
+}
+
+
+// Standard double-out checkout routes (rem 2–170, bogeys omitted).
+const X01_CHECKOUT_ROUTES = {
+  2: 'D1',
+  3: 'S1 D1',
+  4: 'D2',
+  5: 'S1 D2',
+  6: 'D3',
+  7: 'S1 D3',
+  8: 'D4',
+  9: 'S1 D4',
+  10: 'D5',
+  11: 'S1 D5',
+  12: 'D6',
+  13: 'S1 D6',
+  14: 'D7',
+  15: 'S1 D7',
+  16: 'D8',
+  17: 'S1 D8',
+  18: 'D9',
+  19: 'S1 D9',
+  20: 'D10',
+  21: 'S1 D10',
+  22: 'D11',
+  23: 'S1 D11',
+  24: 'D12',
+  25: 'S1 D12',
+  26: 'D13',
+  27: 'S1 D13',
+  28: 'D14',
+  29: 'S1 D14',
+  30: 'D15',
+  31: 'S1 D15',
+  32: 'D16',
+  33: 'S1 D16',
+  34: 'D17',
+  35: 'S1 D17',
+  36: 'D18',
+  37: 'S1 D18',
+  38: 'D19',
+  39: 'S1 D19',
+  40: 'D20',
+  41: 'S9 D16',
+  42: 'S10 D16',
+  43: 'S11 D16',
+  44: 'S12 D16',
+  45: 'S13 D16',
+  46: 'S14 D16',
+  47: 'S15 D16',
+  48: 'S16 D16',
+  49: 'S9 D20',
+  50: 'Bull / S10 D20',
+  51: 'S11 D20',
+  52: 'S12 D20',
+  53: 'S13 D20',
+  54: 'S14 D20',
+  55: 'S15 D20',
+  56: 'T16 D4',
+  57: 'S17 D20',
+  58: 'S18 D20',
+  59: 'S19 D20',
+  60: 'S20 D20',
+  61: 'T15 D8',
+  62: 'T10 D16',
+  63: 'T13 D12',
+  64: 'T16 D8',
+  65: 'T19 D4',
+  66: 'T10 D18',
+  67: 'T17 D8',
+  68: 'T20 D4',
+  69: 'T19 D6',
+  70: 'T18 D8',
+  71: 'T13 D16',
+  72: 'T16 D12',
+  73: 'T19 D8',
+  74: 'T14 D16',
+  75: 'T17 D12',
+  76: 'T20 D8',
+  77: 'T19 D10',
+  78: 'T18 D12',
+  79: 'T13 D20',
+  80: 'T20 D10',
+  81: 'T19 D12',
+  82: 'Bull D16',
+  83: 'T17 D16',
+  84: 'T20 D12',
+  85: 'T15 D20',
+  86: 'T18 D16',
+  87: 'T17 D18',
+  88: 'T20 D14',
+  89: 'T19 D16',
+  90: 'T18 D18',
+  91: 'T17 D20',
+  92: 'T20 D16',
+  93: 'T19 D18',
+  94: 'T18 D20',
+  95: 'T19 D19',
+  96: 'T20 D18',
+  97: 'T19 D20',
+  98: 'T20 D19',
+  99: 'T19 S10 D16',
+  100: 'T20 D20',
+  101: 'T20 T9 D7',
+  102: 'T20 T10 D6',
+  103: 'T19 T10 D8',
+  104: 'T20 T12 D4',
+  105: 'T20 T13 D3',
+  106: 'T20 T14 D4',
+  107: 'T19 T10 D10',
+  108: 'T20 T16 D8',
+  109: 'T20 T9 D11',
+  110: 'T20 T10 D10',
+  111: 'T20 T11 D9',
+  112: 'T20 T12 D8',
+  113: 'T20 T13 D7',
+  114: 'T20 T14 D6',
+  115: 'T20 T15 D5',
+  116: 'T20 T16 D4',
+  117: 'T20 T17 D3',
+  118: 'T20 T18 D2',
+  119: 'T19 T12 D13',
+  120: 'T20 S20 D20',
+  121: 'T20 T11 D14',
+  122: 'T18 T18 D7',
+  123: 'T19 T16 D9',
+  124: 'T20 T16 D8',
+  125: 'T20 T15 D10',
+  126: 'T19 T19 D6',
+  127: 'T20 T17 D8',
+  128: 'T18 T14 D16',
+  129: 'T19 T16 D12',
+  130: 'T20 T18 D8',
+  131: 'T20 T13 D16',
+  132: 'T20 T16 D12',
+  133: 'T20 T19 D8',
+  134: 'T20 T14 D16',
+  135: 'T20 T17 D12',
+  136: 'T20 T20 D8',
+  137: 'T20 T19 D10',
+  138: 'T20 T18 D12',
+  139: 'T20 T13 D20',
+  140: 'T20 T20 D10',
+  141: 'T20 T19 D12',
+  142: 'T20 T14 D20',
+  143: 'T20 T17 D16',
+  144: 'T20 T20 D12',
+  145: 'T20 T15 D20',
+  146: 'T20 T18 D16',
+  147: 'T20 T17 D18',
+  148: 'T20 T20 D14',
+  149: 'T20 T19 D16',
+  150: 'T20 T18 D18',
+  151: 'T20 T17 D20',
+  152: 'T20 T20 D16',
+  153: 'T20 T19 D18',
+  154: 'T20 T18 D20',
+  155: 'T20 T19 D19',
+  156: 'T20 T20 D18',
+  157: 'T20 T19 D20',
+  158: 'T20 T20 D19',
+  160: 'T20 T20 D20',
+  161: 'T20 T17 Bull',
+  164: 'T20 T18 Bull',
+  167: 'T20 T19 Bull',
+  170: 'T20 T20 Bull'
+};
+
+function x01CheckoutGuide(rem, finishRule) {
+  const r = Number(rem);
+  if (!Number.isFinite(r) || r < 2 || r > 170) return '';
+  if (finishRule === 'straight-out') {
+    if (r <= 180) return r <= 60 ? `Finish ${r}` : `Path to ${r}`;
+  }
+  if (!x01IsValidCheckout(r, finishRule || 'double-out')) return 'No checkout';
+  return X01_CHECKOUT_ROUTES[r] || '';
 }
 
 // A checkout is theoretically reachable in one 3-dart visit under the finish rule.
@@ -9772,6 +10108,12 @@ function renderX01Match() {
   gid('x01-turn-line').textContent = `${(names[active] || 'Player').toUpperCase()}'S TURN TO THROW!`;
   gid('x01-game-label').textContent = `${gs.base} · ${x01RuleLabel(gs.startRule, 'in')} / ${x01RuleLabel(gs.finishRule, 'out')}`;
 
+  // Changeover cue when thrower flips.
+  if (lastArenaTurn != null && lastArenaTurn !== active) {
+    showChangeoverCue(names[active]);
+  }
+  lastArenaTurn = active;
+
   // Player cards — targeted in-place updates (no innerHTML churn each turn).
   renderX01Cards(gs, names, active);
 
@@ -9824,9 +10166,14 @@ function buildX01Cards(names) {
           </div>
         </div>
         <div class="x01-remaining"></div>
+        <div class="x01-checkout-guide empty"></div>
+        <div class="x01-pressure-row"><span>Pressure</span><div class="x01-pressure-bar"><div class="x01-pressure-fill"></div></div></div>
         <div class="x01-stat-row"><span>3-dart avg.</span><b class="x01-f-avg"></b></div>
+        <div class="x01-stat-row"><span>First 9</span><b class="x01-f-first9"></b></div>
+        <div class="x01-stat-row"><span>Checkout %</span><b class="x01-f-co"></b></div>
         <div class="x01-stat-row"><span>Last score</span><b class="x01-f-last"></b></div>
         <div class="x01-stat-row"><span>Darts thrown</span><b class="x01-f-darts"></b></div>
+        <div class="x01-stat-row"><span>Highest visit</span><b class="x01-f-high"></b></div>
       </div>`;
   }).join('');
   x01CardRefs = [0, 1].map(p => {
@@ -9836,9 +10183,14 @@ function buildX01Cards(names) {
       legs: card.querySelector('.x01-legs'),
       edit: card.querySelector('.x01-edit-score-btn'),
       remaining: card.querySelector('.x01-remaining'),
+      checkout: card.querySelector('.x01-checkout-guide'),
+      pressure: card.querySelector('.x01-pressure-fill'),
       avg: card.querySelector('.x01-f-avg'),
+      first9: card.querySelector('.x01-f-first9'),
+      co: card.querySelector('.x01-f-co'),
       last: card.querySelector('.x01-f-last'),
       darts: card.querySelector('.x01-f-darts'),
+      high: card.querySelector('.x01-f-high'),
     };
   });
 }
@@ -9858,16 +10210,31 @@ function renderX01Cards(gs, names, active) {
     const avg = x01Avg(gs, p);
     const last = gs.lastScore?.[p] ?? '–';
     const darts = gs.dartsThrown?.[p] || 0;
+    const stats = x01LiveDramaStats(gs, p);
     const canEdit = p === myPlayerIdx()
       && !x01EditAwaitingApproval
       && (gs.legLog || []).some(leg => (leg || []).some(entry => entry.p === p));
     if (r.legs.textContent != legs) r.legs.textContent = legs;
     if (r.edit) r.edit.disabled = !canEdit;
     if (r.remaining.textContent != rem) r.remaining.textContent = rem;
+    const guide = rem <= 170 ? x01CheckoutGuide(rem, gs.finishRule || 'double-out') : '';
+    if (r.checkout) {
+      const g = guide || '';
+      if (r.checkout.textContent !== g) r.checkout.textContent = g;
+      r.checkout.classList.toggle('empty', !g);
+    }
+    if (r.pressure) {
+      const pct = Math.max(0, Math.min(100, stats.pressure));
+      r.pressure.style.width = `${pct}%`;
+    }
     if (r.avg.textContent != avg) r.avg.textContent = avg;
+    if (r.first9 && r.first9.textContent != stats.first9) r.first9.textContent = stats.first9;
+    if (r.co && r.co.textContent != stats.checkoutPct) r.co.textContent = stats.checkoutPct;
     if (r.last.textContent != last) r.last.textContent = last;
     if (r.darts.textContent != darts) r.darts.textContent = darts;
+    if (r.high && r.high.textContent != stats.highest) r.high.textContent = stats.highest;
   }
+  updateArenaBroadcastStrip(gs, names, active);
 }
 
 let x01HistRendered = []; // entries already rendered, per leg index
@@ -10071,6 +10438,7 @@ function golfScoreCellClass(score) {
 }
 
 function isMyMatchTurn() {
+  if (S.isSpectating) return false;
   if (S.isLocal) return true;
   return S.turn === myPlayerIdx();
 }
@@ -11031,22 +11399,31 @@ function showMatchEndedNotice() {
 
 function showGameOver(winner, scores, stats, extra) {
   if (winner) announceMatchWin(winner);
+  playCrowdBurst('win');
+  pulseArenaLighting();
+  stopAmbientBed();
   const title = document.getElementById('go-title');
   if (title) title.innerHTML = 'GAME<br>OVER';
   const rematchBtn = document.getElementById('go-rematch-btn');
-  if (rematchBtn) rematchBtn.style.display = '';
+  if (rematchBtn) rematchBtn.style.display = S.isSpectating ? 'none' : '';
   document.getElementById('go-winner').textContent = `🎯 ${winner} wins!`;
+  const hs = document.getElementById('go-handshake');
+  if (hs) hs.textContent = S.isSpectating
+    ? 'Match complete — thanks for watching from the stands.'
+    : 'Good game — shake hands at the oche.';
   const elapsed = stats?.time || 0;
   const mins = Math.floor(elapsed/60), secs = elapsed%60;
   // scores are seat-ordered [Player One, Player Two], not you/opponent.
   const me = myPlayerIdx();
   const youScore = scores?.[me] ?? 0;
   const oppScore = scores?.[1 - me] ?? 0;
+  const summary = buildBroadcastSummary(S.gameState);
   document.getElementById('go-stats').innerHTML = `
     <div class="go-stat"><div class="go-stat-label">Your Score</div><div class="go-stat-val">${youScore}</div></div>
     <div class="go-stat"><div class="go-stat-label">Opponent</div><div class="go-stat-val">${oppScore}</div></div>
     <div class="go-stat"><div class="go-stat-label">Best Score</div><div class="go-stat-val">${stats?.highScore||0}</div></div>
     <div class="go-stat"><div class="go-stat-label">Match Time</div><div class="go-stat-val">${mins}:${String(secs).padStart(2,'0')}</div></div>
+    <div class="go-broadcast-summary">${escapeX01(summary)}</div>
     ${extra?.tournamentName ? `<div style="grid-column:1/-1;text-align:center;margin-top:0.5rem;font-size:0.75rem;color:var(--gold)">🏆 ${extra.tournamentName}</div>` : ''}
   `;
   S.lastTournamentId = extra?.tournamentId || null;
@@ -11064,6 +11441,12 @@ function leaveMatch() {
   clearStarterFlow();
   pendingMatchPreview = null;
   stopX01VisitTimer();
+  stopAmbientBed();
+  applySpectatingMode(false);
+  document.getElementById('arena-broadcast-strip')?.classList.add('hidden');
+  document.getElementById('arena-bumper')?.classList.remove('show');
+  document.getElementById('arena-warmup')?.classList.remove('show');
+  document.getElementById('arena-changeover')?.classList.remove('show');
   x01EditAwaitingApproval = false;
   x01EditApprovalPromptOpen = false;
   closeModal('x01-edit-approve-modal');
@@ -11188,6 +11571,7 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   setStat('ps-losses', String(s.losses || 0));
   setStat('ps-games', String(s.gamesPlayed || 0));
   syncAnnouncePrefsUI();
+  syncCrowdAmbientToggles();
 }
 
 function onProfileAvatarSelected(event) {
@@ -12406,6 +12790,8 @@ function announceVisitCommentary({ visit, remaining, bust, legWon, matchWon, win
   const pack = getAnnouncePack();
   const event = detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon });
   if (!event) return;
+  noteDramaFromVisit({ visit, bust, legWon, matchWon });
+  triggerArenaMoment(event, { visit, bust, legWon, matchWon, winner });
   if (event.type === 'WIN') {
     announceMatchWin(winner, { forceLine: true });
     return;
@@ -12447,10 +12833,12 @@ function maybeAnnounceX01Require() {
   if (pack && rem <= 40) {
     const line = getAnnounceCommentary({ type: 'CHECKOUT_CHANCE' }, pack);
     if (line) {
+      triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
       announceSpeak(line, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
       return;
     }
   }
+  triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
   announceSpeak(`require ${rem}`, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
 }
 
@@ -12501,6 +12889,300 @@ syncAnnouncePrefsUI();
 initAnnounceVoiceList();
 persistAnnouncePack();
 persistAnnounceVoice();
+
+
+// ═══════════════════════════════════════════════════════════
+//  ARENA FX — crowd SFX, lighting, broadcast, rituals, stats
+// ═══════════════════════════════════════════════════════════
+const CROWD_FX_KEY = 'tma-crowd-fx';
+const AMBIENT_FX_KEY = 'tma-ambient-fx';
+let crowdFxOn = (() => { try { return localStorage.getItem(CROWD_FX_KEY) !== '0'; } catch { return true; } })();
+let ambientFxOn = (() => { try { return localStorage.getItem(AMBIENT_FX_KEY) === '1'; } catch { return false; } })();
+let arenaAudioCtx = null;
+let ambientNodes = null;
+let arenaBumperTimer = null;
+let arenaWarmupTimer = null;
+let arenaChangeoverTimer = null;
+let lastArenaTurn = null;
+let matchDrama = { oneEighties: 0, highestVisit: 0, checkoutsHit: 0, checkoutsAttempted: 0 };
+
+function ensureArenaAudio() {
+  if (arenaAudioCtx) return arenaAudioCtx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  arenaAudioCtx = new AC();
+  return arenaAudioCtx;
+}
+
+function syncCrowdAmbientToggles() {
+  const crowd = document.getElementById('pref-crowd-toggle');
+  if (crowd) {
+    crowd.setAttribute('aria-checked', crowdFxOn ? 'true' : 'false');
+  }
+  const amb = document.getElementById('pref-ambient-toggle');
+  if (amb) {
+    amb.setAttribute('aria-checked', ambientFxOn ? 'true' : 'false');
+  }
+}
+
+function toggleCrowdFx() {
+  crowdFxOn = !crowdFxOn;
+  try { localStorage.setItem(CROWD_FX_KEY, crowdFxOn ? '1' : '0'); } catch { /* ignore */ }
+  syncCrowdAmbientToggles();
+  toast(crowdFxOn ? 'Crowd reactions on' : 'Crowd reactions off');
+  if (crowdFxOn) playCrowdBurst('cheer');
+}
+
+function toggleAmbientFx() {
+  ambientFxOn = !ambientFxOn;
+  try { localStorage.setItem(AMBIENT_FX_KEY, ambientFxOn ? '1' : '0'); } catch { /* ignore */ }
+  syncCrowdAmbientToggles();
+  toast(ambientFxOn ? 'Ambient bed on' : 'Ambient bed off');
+  if (ambientFxOn && document.getElementById('page-match')?.classList.contains('active')) startAmbientBed();
+  else stopAmbientBed();
+}
+
+function playTone(freq, dur, type = 'sine', gain = 0.04, when = 0) {
+  const ctx = ensureArenaAudio();
+  if (!ctx) return;
+  try {
+    if (ctx.state === 'suspended') ctx.resume();
+    const t0 = ctx.currentTime + when;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  } catch { /* ignore */ }
+}
+
+function playCrowdBurst(kind) {
+  if (!crowdFxOn || PREFERS_REDUCED_MOTION) return;
+  const ctx = ensureArenaAudio();
+  if (!ctx) return;
+  try {
+    if (ctx.state === 'suspended') ctx.resume();
+    // Layered noise-ish bursts via detuned oscillators (no sample assets).
+    if (kind === 'cheer' || kind === 'win' || kind === 'big') {
+      for (let i = 0; i < 6; i++) playTone(180 + i * 70 + Math.random() * 40, 0.35 + Math.random() * 0.25, 'sawtooth', 0.012, i * 0.03);
+      for (let i = 0; i < 4; i++) playTone(420 + i * 110, 0.2, 'triangle', 0.02, 0.05 + i * 0.04);
+    } else if (kind === 'boo' || kind === 'bust') {
+      for (let i = 0; i < 5; i++) playTone(140 - i * 12, 0.4, 'square', 0.01, i * 0.05);
+    } else if (kind === 'checkout') {
+      playTone(523, 0.18, 'triangle', 0.03);
+      playTone(659, 0.22, 'triangle', 0.028, 0.12);
+      playTone(784, 0.3, 'sine', 0.025, 0.24);
+    } else {
+      playTone(220, 0.25, 'triangle', 0.015);
+    }
+  } catch { /* ignore */ }
+}
+
+function startAmbientBed() {
+  if (!ambientFxOn) return;
+  const ctx = ensureArenaAudio();
+  if (!ctx || ambientNodes) return;
+  try {
+    if (ctx.state === 'suspended') ctx.resume();
+    const osc = ctx.createOscillator();
+    const lfo = ctx.createOscillator();
+    const g = ctx.createGain();
+    const lfoGain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = 55;
+    lfo.frequency.value = 0.15;
+    lfoGain.gain.value = 8;
+    g.gain.value = 0.012;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(); lfo.start();
+    ambientNodes = { osc, lfo, g };
+  } catch { /* ignore */ }
+}
+
+function stopAmbientBed() {
+  if (!ambientNodes) return;
+  try {
+    ambientNodes.osc.stop();
+    ambientNodes.lfo.stop();
+  } catch { /* ignore */ }
+  ambientNodes = null;
+}
+
+function pulseArenaLighting() {
+  if (PREFERS_REDUCED_MOTION) return;
+  const page = document.getElementById('page-match');
+  if (!page) return;
+  page.classList.remove('arena-fx-pulse');
+  void page.offsetWidth;
+  page.classList.add('arena-fx-pulse');
+  setTimeout(() => page.classList.remove('arena-fx-pulse'), 1200);
+}
+
+function showArenaBumper(title, { kicker = 'ARENA', sub = '', ms = 2200 } = {}) {
+  const el = document.getElementById('arena-bumper');
+  if (!el) return;
+  document.getElementById('arena-bumper-kicker').textContent = kicker;
+  document.getElementById('arena-bumper-title').textContent = title;
+  document.getElementById('arena-bumper-sub').textContent = sub || '';
+  el.classList.add('show');
+  clearTimeout(arenaBumperTimer);
+  arenaBumperTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function runWarmupCountdown(done) {
+  const el = document.getElementById('arena-warmup');
+  const num = document.getElementById('arena-warmup-num');
+  if (!el || !num || PREFERS_REDUCED_MOTION) {
+    if (typeof done === 'function') done();
+    return;
+  }
+  let n = 3;
+  el.classList.add('show');
+  num.textContent = String(n);
+  playTone(440, 0.12, 'sine', 0.04);
+  clearInterval(arenaWarmupTimer);
+  arenaWarmupTimer = setInterval(() => {
+    n -= 1;
+    if (n <= 0) {
+      clearInterval(arenaWarmupTimer);
+      num.textContent = 'THROW';
+      playTone(660, 0.18, 'sine', 0.05);
+      setTimeout(() => {
+        el.classList.remove('show');
+        if (typeof done === 'function') done();
+      }, 450);
+      return;
+    }
+    num.textContent = String(n);
+    playTone(400 + n * 40, 0.1, 'sine', 0.035);
+  }, 700);
+}
+
+function showChangeoverCue(name) {
+  const el = document.getElementById('arena-changeover');
+  if (!el) return;
+  el.textContent = name ? `To the oche — ${name}` : 'To the oche';
+  el.classList.add('show');
+  clearTimeout(arenaChangeoverTimer);
+  arenaChangeoverTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function x01LiveDramaStats(gs, p) {
+  const visits = [];
+  (gs?.legLog || []).forEach(leg => {
+    (leg || []).forEach(e => { if (e.p === p && !e.bust) visits.push(e.v); });
+  });
+  const first3 = visits.slice(0, 3);
+  const first9 = first3.length
+    ? (first3.reduce((a, b) => a + b, 0) / first3.length).toFixed(1)
+    : '–';
+  const highest = visits.length ? Math.max(...visits) : 0;
+  // Approximate checkout%: finishes when rem was a valid checkout at start of visit.
+  // Without historical rem, use legs won vs visits with lastScore patterns — use darts heuristic.
+  const legs = gs.legs?.[p] || 0;
+  const attempts = Math.max(legs, Math.floor((gs.dartsThrown?.[p] || 0) / 9));
+  const checkoutPct = attempts > 0 ? `${Math.round((legs / attempts) * 100)}%` : '–';
+  const rem = gs.remaining?.[p] ?? gs.base;
+  const oppLegs = gs.legs?.[1 - p] || 0;
+  let pressure = 20;
+  if (oppLegs > legs) pressure += 25 * (oppLegs - legs);
+  if (rem > 0 && rem <= 170 && x01IsValidCheckout(rem, gs.finishRule || 'double-out')) pressure += 30;
+  if (visits.length >= 2 && visits[visits.length - 1] < 40) pressure += 15;
+  if (visits.length >= 2 && visits[visits.length - 1] >= 140) pressure = Math.max(10, pressure - 20);
+  return { first9, highest: highest || '–', checkoutPct, pressure: Math.max(5, Math.min(100, pressure)) };
+}
+
+function updateArenaBroadcastStrip(gs, names, active) {
+  const strip = document.getElementById('arena-broadcast-strip');
+  if (!strip || !gs) return;
+  const rem = gs.remaining?.[active] ?? '–';
+  const avg = x01Avg(gs, active);
+  const legs = `${gs.legs?.[0] || 0}–${gs.legs?.[1] || 0}`;
+  const onFinish = Number(rem) > 0 && Number(rem) <= 170 && x01IsValidCheckout(Number(rem), gs.finishRule || 'double-out');
+  strip.classList.remove('hidden');
+  strip.innerHTML = `
+    <span class="arena-broadcast-chip">${escapeX01(names?.[active] || 'Thrower')}</span>
+    <span class="arena-broadcast-chip">Rem ${rem}</span>
+    <span class="arena-broadcast-chip">Avg ${avg}</span>
+    <span class="arena-broadcast-chip">Legs ${legs}</span>
+    ${onFinish ? '<span class="arena-broadcast-chip hot">On a finish</span>' : ''}
+  `;
+}
+
+function resetMatchDrama() {
+  matchDrama = { oneEighties: 0, highestVisit: 0, checkoutsHit: 0, checkoutsAttempted: 0 };
+  lastArenaTurn = null;
+}
+
+function noteDramaFromVisit({ visit, bust, legWon, matchWon }) {
+  const v = Number(visit);
+  if (Number.isFinite(v)) {
+    if (v > matchDrama.highestVisit) matchDrama.highestVisit = v;
+    if (v >= 180) matchDrama.oneEighties += 1;
+  }
+  if (legWon || matchWon) matchDrama.checkoutsHit += 1;
+}
+
+function triggerArenaMoment(event, meta = {}) {
+  if (!event) return;
+  const visit = meta.visit;
+  const label = Number.isFinite(Number(visit)) ? String(visit) : '';
+  if (event.type === 'BIG_SCORE') {
+    playCrowdBurst(Number(visit) >= 180 ? 'big' : 'cheer');
+    pulseArenaLighting();
+    showArenaBumper(Number(visit) >= 180 ? 'ONE HUNDRED AND EIGHTY' : 'HUGE SCORE', {
+      kicker: 'REPLAY',
+      sub: label ? `Visit ${label}` : '',
+      ms: 2300
+    });
+  } else if (event.type === 'MOMENTUM_LOSS') {
+    playCrowdBurst(meta.bust ? 'bust' : 'boo');
+  } else if (event.type === 'CHECKOUT_CHANCE') {
+    playCrowdBurst('checkout');
+    pulseArenaLighting();
+  } else if (event.type === 'WIN') {
+    playCrowdBurst('win');
+    pulseArenaLighting();
+    showArenaBumper(meta.matchWon || meta.legWon ? 'MATCH DART' : 'LEG WIN', {
+      kicker: 'FINISH',
+      sub: meta.winner ? `${meta.winner}` : '',
+      ms: 2600
+    });
+  }
+}
+
+function buildBroadcastSummary(gs) {
+  if (!isX01Game(S.game) || !gs) {
+    return `Best visit: ${matchDrama.highestVisit || S.stats?.highScore || 0} · 180s: ${matchDrama.oneEighties}`;
+  }
+  const a0 = x01Avg(gs, 0);
+  const a1 = x01Avg(gs, 1);
+  const names = x01PlayerNames();
+  return [
+    `180s: ${matchDrama.oneEighties}`,
+    `Best visit: ${matchDrama.highestVisit || 0}`,
+    `${names[0]} avg ${a0}`,
+    `${names[1]} avg ${a1}`,
+    `Legs ${gs.legs?.[0] || 0}–${gs.legs?.[1] || 0}`,
+  ].join(' · ');
+}
+
+function applySpectatingMode(on) {
+  S.isSpectating = !!on;
+  const page = document.getElementById('page-match');
+  page?.classList.toggle('spectating', !!on);
+  page?.classList.toggle('stage-pip', !!on);
+}
+
+syncCrowdAmbientToggles();
+
 
 // ═══════════════════════════════════════════════════════════
 //  STATS TIMER
