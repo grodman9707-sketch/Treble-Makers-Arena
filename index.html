@@ -3981,25 +3981,26 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-setting-stack" id="pref-announce-voice-stack">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Announcer voice</span>
-                <span class="profile-setting-hint">Pick a system voice and delivery style</span>
+                <span class="profile-setting-hint">Pick a system voice and commentary pack</span>
               </div>
               <div class="profile-setting-controls">
                 <label class="profile-setting-field-label" for="pref-announce-voice">Voice</label>
                 <select id="pref-announce-voice" onchange="onAnnounceVoiceChange()"></select>
-                <label class="profile-setting-field-label" for="pref-announce-style">Style</label>
-                <select id="pref-announce-style" onchange="onAnnounceStyleChange()">
-                  <option value="arena">Arena Classic</option>
-                  <option value="oche">Oche Caller</option>
-                  <option value="rapid">Rapid Fire</option>
-                  <option value="calm">Calm Desk</option>
+                <label class="profile-setting-field-label" for="pref-announce-pack">Pack</label>
+                <select id="pref-announce-pack" onchange="onAnnouncePackChange()">
+                  <option value="bigMatchAnnouncer">Big Match</option>
+                  <option value="lokiHybrid">Loki Hybrid</option>
+                  <option value="femaleArenaAnnouncer">Arena Voice</option>
+                  <option value="off">Scores only</option>
                 </select>
                 <div class="profile-setting-actions">
                   <button type="button" class="btn btn-sm" onclick="previewAnnounceVoice()">Preview</button>
                 </div>
               </div>
               <p class="profile-setting-note">
-                Voices come from your browser/OS. Official darts callers (Russ Bray, Owen Binks, etc.)
-                need licensed audio and aren’t available here yet.
+                System voices come from your browser/OS. Commentary packs call big scores,
+                momentum swings, checkouts, and wins. Official callers need licensed audio
+                and aren’t available here yet.
               </p>
             </div>
           </div>
@@ -4922,12 +4923,7 @@ function handleWS(msg) {
         x01EditApprovalPromptOpen = false;
         closeModal('x01-edit-approve-modal');
       }
-      if (msg.history?.[0]?.score != null) {
-        announceVisitScore(msg.history[0].score);
-      } else if (msg.displayScore != null) {
-        announceVisitScore(msg.displayScore);
-      }
-      maybeAnnounceX01Require();
+      announceFromScoreUpdate(msg);
       updateMatchUI();
       break;
     case 'x01_edit_pending':
@@ -7822,12 +7818,18 @@ function submitX01() {
     gs.turnEnded = false;
   }
   if (S.isLocal) {
-    announceVisitScore(display);
-    maybeAnnounceX01Require();
+    announceVisitScore(display, {
+      visit: total,
+      remaining: (res.legWon || res.matchOver) ? 0 : gs.remaining[p],
+      bust: !!res.bust,
+      legWon: !!res.legWon,
+      matchWon: !!res.matchOver,
+      winner
+    });
+    if (!res.matchOver) maybeAnnounceX01Require();
   }
   updateMatchUI();
   if (res.matchOver) {
-    if (S.isLocal) announceSpeak(`${winner} wins`);
     showGameOver(winner, [gs.legs[0], gs.legs[1]],
       { highScore: Math.max(...gs.points), time: Math.floor((Date.now() - S.stats.startTime) / 1000) });
   }
@@ -8360,11 +8362,16 @@ function cktSubmitVisit() {
     if (gs.nextTurn !== null && gs.nextTurn !== undefined) S.turn = gs.nextTurn;
     gs.turnEnded = false;
   }
-  if (S.isLocal) announceVisitScore(display);
+  if (S.isLocal) {
+    announceVisitScore(display, {
+      legWon: !!res.legWon,
+      matchWon: !!res.matchOver,
+      winner
+    });
+  }
   updateMatchUI();
   if (res.legWon && !res.matchOver) toast('Leg won — next leg!');
   if (winner !== null) {
-    if (S.isLocal) announceSpeak(`${winner} wins`);
     showGameOver(winner, [gs.legs?.[0] || 0, gs.legs?.[1] || 0],
       { highScore: Math.max(gs.score[0], gs.score[1]), time: Math.floor((Date.now() - S.stats.startTime) / 1000) });
   }
@@ -10867,6 +10874,7 @@ function showMatchEndedNotice() {
 }
 
 function showGameOver(winner, scores, stats, extra) {
+  if (winner) announceMatchWin(winner);
   const title = document.getElementById('go-title');
   if (title) title.innerHTML = 'GAME<br>OVER';
   const rematchBtn = document.getElementById('go-rematch-btn');
@@ -11493,17 +11501,357 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  ANNOUNCE (speechSynthesis) — mute / voice prefs in localStorage
+//  ANNOUNCE (speechSynthesis) — mute / voice / commentary packs
 // ═══════════════════════════════════════════════════════════
 const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
 const ANNOUNCE_VOICE_KEY = 'tma-announce-voice';
+const ANNOUNCE_PACK_KEY = 'tma-announce-pack';
+// Legacy style key — migrated once to a commentary pack.
 const ANNOUNCE_STYLE_KEY = 'tma-announce-style';
-const ANNOUNCE_STYLES = {
-  arena: { label: 'Arena Classic', rate: 1.05, pitch: 1 },
-  oche: { label: 'Oche Caller', rate: 0.92, pitch: 0.85 },
-  rapid: { label: 'Rapid Fire', rate: 1.22, pitch: 1.05 },
-  calm: { label: 'Calm Desk', rate: 0.95, pitch: 1.1 },
+
+const ANNOUNCE_PACKS = {
+  lokiHybrid: {
+    label: 'Loki Hybrid',
+    rate: 1.02,
+    pitch: 0.88,
+    bigScore: [
+      "Chaos unleashed! A monstrous visit!",
+      "Thunder cracks — the gods awaken!",
+      "A surge of power shakes the Arena!",
+      "The runes flare with raw fury!",
+      "A strike worthy of ancient legends!",
+      "Power tears through the board!",
+      "The Arena shudders under that score!",
+      "Mischief explodes in a storm of steel!",
+      "That visit carves a mark into destiny!",
+      "The gods lean forward in approval.",
+      "A roar of numbers — pure devastation!",
+      "The board sings with that impact!",
+      "A visit forged in fire and shadow!",
+      "The trickster laughs — that was brutal!",
+      "A thunderous answer to doubt!",
+      "The realms echo with that score!",
+      "A hammer blow to the opponent's hopes!",
+      "Runes ignite — the Arena is alive!",
+      "A surge of chaos, perfectly aimed!",
+      "That visit rewrites the story of this leg!",
+      "The crowd of unseen spirits erupts!",
+      "A storm of points crashes down!",
+      "The gods whisper: again.",
+      "A visit that bends fate itself!"
+    ],
+    momentumLoss: [
+      "The trickster smiles… momentum fades.",
+      "A stumble — fate twists sharply.",
+      "Weakness whispers through the Arena.",
+      "The gods turn their gaze away.",
+      "Mischief coils around this misstep.",
+      "The storm calms — too calm.",
+      "Power drains from the thrower's hand.",
+      "The runes dim, sensing doubt.",
+      "Chaos pauses, watching the slip.",
+      "The Arena grows colder after that visit.",
+      "A crack appears in their resolve.",
+      "The spirits murmur — not impressed.",
+      "Momentum bleeds out onto the floor.",
+      "The tide of battle shifts away.",
+      "A misstep in the dance of destiny.",
+      "The trickster tilts the scales the other way.",
+      "The board feels that hesitation.",
+      "A soft visit in a hard moment.",
+      "The gods arch an eyebrow at that.",
+      "The Arena sighs — pressure mounts.",
+      "A lull in the storm — dangerous.",
+      "Chaos waits for a stronger offering.",
+      "The runes flicker, uncertain.",
+      "The path to glory grows steeper."
+    ],
+    checkout: [
+      "Destiny calls… a finish glimmers.",
+      "The runes align — the end is near.",
+      "A chance to end the battle right here.",
+      "The Arena holds its breath…",
+      "Power gathers behind this moment.",
+      "One throw to carve fate in stone.",
+      "The gods watch this visit closely.",
+      "Chaos circles, hungry for an ending.",
+      "The board waits for the killing blow.",
+      "A finish hangs in the air like thunder.",
+      "This dart could seal the saga.",
+      "Runes burn brighter — the moment is ripe.",
+      "The trickster whispers: take it.",
+      "A single dart to silence doubt.",
+      "The Arena narrows to this one throw.",
+      "Every breath in the realms pauses.",
+      "The path to victory stands open.",
+      "A finish glows at the edge of vision.",
+      "This is a blade poised above destiny.",
+      "The gods lean in, eyes fixed.",
+      "Chaos demands a decisive strike.",
+      "The board begs for a final number.",
+      "This moment weighs more than all before.",
+      "A chance to write legend in one motion."
+    ],
+    win: [
+      "Victory claimed! The Arena roars!",
+      "Triumph ascends in thunder!",
+      "The final blow lands — glory is theirs!",
+      "The gods salute this conquest!",
+      "Chaos bows to the victor!",
+      "A saga ends in blazing triumph!",
+      "The runes glow with satisfaction.",
+      "The Arena echoes with their name.",
+      "Fate kneels before that final dart.",
+      "The storm breaks into radiant victory.",
+      "The trickster smirks — well played.",
+      "A legend is etched into the board.",
+      "The realms remember this finish.",
+      "Glory crashes down like a wave.",
+      "The last dart sings of dominance.",
+      "The gods raise a toast to this win.",
+      "Chaos retreats, beaten for now.",
+      "The Arena stands in awe of that ending.",
+      "A crown of numbers rests upon them.",
+      "The match ends in mythic fashion.",
+      "The runes whisper: champion.",
+      "The story closes on a perfect note.",
+      "Victory burns bright in the dark.",
+      "This win will echo through future battles."
+    ]
+  },
+
+  bigMatchAnnouncer: {
+    label: 'Big Match',
+    rate: 0.95,
+    pitch: 0.9,
+    bigScore: [
+      "What a visit! That is world-class darts!",
+      "Huge score! That changes everything!",
+      "A massive hit — the crowd erupts!",
+      "That is exceptional scoring!",
+      "A brilliant visit under pressure!",
+      "That's a huge moment in this leg!",
+      "Superb scoring — exactly what was needed.",
+      "They pile on the pressure with that visit.",
+      "That's a statement score right there.",
+      "Top-tier darts — fantastic visit.",
+      "They answer the pressure in style.",
+      "That visit could turn the match around.",
+      "Outstanding scoring — right back in it.",
+      "That's a hammer blow to the opponent.",
+      "They've found their scoring power now.",
+      "That's a visit the crowd will remember.",
+      "They load the board with points again.",
+      "Relentless scoring — this is quality.",
+      "Firing on all cylinders now.",
+      "That's a professional response to pressure.",
+      "They punish every mistake with visits like that.",
+      "That's the kind of scoring champions produce.",
+      "They're building a serious platform here.",
+      "That visit sends a clear message."
+    ],
+    momentumLoss: [
+      "That's a slip — pressure now shifts.",
+      "Momentum swings toward the other player.",
+      "A costly visit… they'll want that back.",
+      "That opens the door for their opponent.",
+      "A dip in scoring at the worst moment.",
+      "They've lost a bit of rhythm there.",
+      "That visit invites pressure.",
+      "They'll be disappointed with that outcome.",
+      "The scoring has dropped off at a key time.",
+      "That could be a turning point — in the wrong direction.",
+      "They've given their opponent a chance to breathe.",
+      "That's not the visit they were looking for.",
+      "The momentum they had is fading.",
+      "They're struggling to maintain the pace.",
+      "That visit hands the initiative over.",
+      "They'll need to reset after that.",
+      "The match tempo is slipping away.",
+      "That's a missed opportunity to press on.",
+      "They've opened the door for a comeback.",
+      "That visit may haunt them later.",
+      "They've let the pressure ease off their opponent.",
+      "That's a soft visit in a hard moment.",
+      "They'll know that wasn't good enough.",
+      "The crowd senses a shift in momentum."
+    ],
+    checkout: [
+      "Checkout opportunity here — can they take it?",
+      "This is a crucial moment in the match.",
+      "A chance to close the leg right now.",
+      "Pressure rising — finish required.",
+      "This could be the turning point.",
+      "They're lining up a key finish.",
+      "This is a massive dart in the context of the match.",
+      "They have a real chance to steal the leg.",
+      "This is where champions show their nerve.",
+      "They've got a look at the finish — big moment.",
+      "The match could swing on this checkout.",
+      "They step up with a chance to end it.",
+      "This is a test of composure and precision.",
+      "They're eyeing up the winning combination.",
+      "One clean visit could seal the leg.",
+      "This is a high-pressure checkout.",
+      "They know how important this finish is.",
+      "The crowd leans in for this moment.",
+      "They've got the opportunity — can they deliver?",
+      "This dart could change everything.",
+      "They're on a finish — tension is building.",
+      "This is a pivotal checkout attempt.",
+      "They're within striking distance of the leg.",
+      "This is where the match can be decided."
+    ],
+    win: [
+      "Game, shot, and the match!",
+      "A brilliant finish to seal the victory!",
+      "That's the winning dart — superb performance!",
+      "Match won in style!",
+      "A commanding victory from start to finish!",
+      "They take the match with authority.",
+      "That's a well-deserved win.",
+      "They close it out with real class.",
+      "A strong performance from the very first dart.",
+      "They've been the better player and it shows.",
+      "They wrap up the match with a clinical finish.",
+      "That's a professional job done.",
+      "They've earned every bit of that victory.",
+      "A decisive result in a high-quality match.",
+      "They finish the contest in emphatic fashion.",
+      "That's a statement win.",
+      "They've shown real composure to get over the line.",
+      "The match ends with a superb checkout.",
+      "They walk away the clear winner.",
+      "That's a big win in this Arena.",
+      "They've proven their quality on this stage.",
+      "A memorable victory tonight.",
+      "They seal the match with a dart of pure precision.",
+      "That's the perfect way to end a great match."
+    ]
+  },
+
+  femaleArenaAnnouncer: {
+    label: 'Arena Voice',
+    rate: 1.0,
+    pitch: 1.12,
+    bigScore: [
+      "A powerful visit! The Arena feels it!",
+      "Exceptional scoring — beautifully done!",
+      "A commanding hit — momentum rises!",
+      "Precision and power in perfect harmony!",
+      "That is a statement visit!",
+      "A huge score under pressure.",
+      "That visit sends a clear message.",
+      "Beautifully struck — that's top-level scoring.",
+      "Loading the board with points again.",
+      "A strong visit that shifts the balance.",
+      "Finding a rhythm now.",
+      "That's a brilliant response to the situation.",
+      "Answering the pressure with pure quality.",
+      "That visit could reshape this leg.",
+      "Building a serious platform here.",
+      "A confident, controlled scoring visit.",
+      "Showing real scoring power.",
+      "That's the kind of visit champions produce.",
+      "Turning up the heat on the opponent.",
+      "The Arena comes alive after that score.",
+      "Asserting control with visits like that.",
+      "That's a big moment in this match.",
+      "Right back in the contest with that.",
+      "A visit that demands respect."
+    ],
+    momentumLoss: [
+      "A dip in rhythm — pressure builds.",
+      "Momentum slips away… can they recover?",
+      "That visit opens the door for their opponent.",
+      "A costly moment — tension rises.",
+      "They'll want that visit back.",
+      "Scoring drops at a difficult time.",
+      "That's not the visit needed there.",
+      "The match tilts slightly away.",
+      "The opponent has room to breathe.",
+      "That's a missed chance to keep control.",
+      "Momentum has slowed noticeably.",
+      "Frustration after that outcome.",
+      "The Arena feels the shift in energy.",
+      "A bit of scoring edge lost there.",
+      "That visit invites pressure from the other side.",
+      "Time to reset and refocus.",
+      "The match tempo is slipping from their grasp.",
+      "That's a softer visit in a hard moment.",
+      "The door opens to a possible comeback.",
+      "The pressure now leans their way.",
+      "That wasn't enough.",
+      "The crowd senses a change in momentum.",
+      "The initiative slips slightly.",
+      "That visit may prove costly later."
+    ],
+    checkout: [
+      "A finish is within reach… focus now.",
+      "This is a pivotal moment — can they take it?",
+      "The match could turn right here.",
+      "A chance to close the leg in style.",
+      "Pressure peaks — finish required.",
+      "Stepping up with a chance to win the leg.",
+      "This is a huge moment.",
+      "Lining up a key checkout.",
+      "One composed visit could seal it.",
+      "The opportunity is there — can they deliver?",
+      "The Arena holds its breath for this finish.",
+      "Eyeing the winning combination.",
+      "This checkout could define the match.",
+      "They know how important this moment is.",
+      "A successful finish here changes everything.",
+      "On a finish — tension rises.",
+      "This is a test of nerve and precision.",
+      "Standing on the edge of victory.",
+      "This dart could close the leg.",
+      "Within striking distance of the win.",
+      "This is a critical checkout attempt.",
+      "Poised to end the leg.",
+      "The match hangs on this opportunity.",
+      "Seize control with this finish."
+    ],
+    win: [
+      "Victory secured — an outstanding performance!",
+      "The match is claimed with style!",
+      "A decisive finish — beautifully executed!",
+      "Match won — a brilliant display!",
+      "A powerful victory from start to finish!",
+      "They take the win with real authority.",
+      "That's a well-earned triumph.",
+      "Closing out the match with confidence.",
+      "A superb performance throughout.",
+      "Quality proven on this stage.",
+      "The Arena celebrates this victory.",
+      "The match ends with a clinical checkout.",
+      "That's a memorable win.",
+      "The stronger player, and it shows.",
+      "A commanding result in a high-pressure match.",
+      "Finishing the contest in style.",
+      "Composure under pressure has paid off.",
+      "The match ends with a beautiful final dart.",
+      "Walking away the clear winner.",
+      "This victory will stand out in the Arena's history.",
+      "Every point of that win was earned.",
+      "A fitting end to a strong performance.",
+      "Sealing the match with precision and poise.",
+      "That's the perfect conclusion tonight."
+    ]
+  }
 };
+
+const ANNOUNCE_PACK_IDS = Object.keys(ANNOUNCE_PACKS);
+
+function migrateAnnouncePackId(raw) {
+  if (raw === 'off') return 'off';
+  if (ANNOUNCE_PACKS[raw]) return raw;
+  // Old delivery-style prefs → closest commentary pack.
+  if (raw === 'oche' || raw === 'arena') return 'bigMatchAnnouncer';
+  if (raw === 'rapid') return 'lokiHybrid';
+  if (raw === 'calm') return 'femaleArenaAnnouncer';
+  return 'bigMatchAnnouncer';
+}
 
 let announceMuted = (() => {
   try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
@@ -11511,17 +11859,51 @@ let announceMuted = (() => {
 let announceVoiceURI = (() => {
   try { return localStorage.getItem(ANNOUNCE_VOICE_KEY) || ''; } catch { return ''; }
 })();
-let announceStyleId = (() => {
+let announcePackId = (() => {
   try {
-    const id = localStorage.getItem(ANNOUNCE_STYLE_KEY) || 'arena';
-    return ANNOUNCE_STYLES[id] ? id : 'arena';
-  } catch { return 'arena'; }
+    const pack = localStorage.getItem(ANNOUNCE_PACK_KEY);
+    if (pack != null) return migrateAnnouncePackId(pack);
+    const legacy = localStorage.getItem(ANNOUNCE_STYLE_KEY);
+    if (legacy != null) return migrateAnnouncePackId(legacy);
+    return 'bigMatchAnnouncer';
+  } catch { return 'bigMatchAnnouncer'; }
 })();
 let lastX01RequireKey = '';
+let lastAnnounceWinKey = '';
 let announceVoicesReady = false;
+let announceSpeakQueue = Promise.resolve();
 
-function getAnnounceStyle() {
-  return ANNOUNCE_STYLES[announceStyleId] || ANNOUNCE_STYLES.arena;
+function getAnnouncePack() {
+  if (announcePackId === 'off') return null;
+  return ANNOUNCE_PACKS[announcePackId] || ANNOUNCE_PACKS.bigMatchAnnouncer;
+}
+
+function announceRandomLine(lines) {
+  if (!Array.isArray(lines) || !lines.length) return '';
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+function detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon } = {}) {
+  if (matchWon || legWon || remaining === 0) return { type: 'WIN' };
+  if (bust) return { type: 'MOMENTUM_LOSS' };
+  const score = Number(visit);
+  if (Number.isFinite(score)) {
+    if (score >= 140) return { type: 'BIG_SCORE' };
+    if (score < 40) return { type: 'MOMENTUM_LOSS' };
+  }
+  // Checkout lines are spoken on the thrower's turn via maybeAnnounceX01Require.
+  return null;
+}
+
+function getAnnounceCommentary(event, pack) {
+  if (!event || !pack) return '';
+  switch (event.type) {
+    case 'BIG_SCORE': return announceRandomLine(pack.bigScore);
+    case 'MOMENTUM_LOSS': return announceRandomLine(pack.momentumLoss);
+    case 'CHECKOUT_CHANCE': return announceRandomLine(pack.checkout);
+    case 'WIN': return announceRandomLine(pack.win);
+    default: return '';
+  }
 }
 
 function listAnnounceVoices() {
@@ -11597,11 +11979,13 @@ function populateAnnounceVoiceSelect() {
   }
 }
 
-function syncAnnounceStyleSelect() {
-  const sel = document.getElementById('pref-announce-style');
+function syncAnnouncePackSelect() {
+  const sel = document.getElementById('pref-announce-pack');
   if (!sel) return;
-  if (![...sel.options].some(o => o.value === announceStyleId)) announceStyleId = 'arena';
-  sel.value = announceStyleId;
+  const ok = announcePackId === 'off' || ANNOUNCE_PACKS[announcePackId];
+  if (!ok) announcePackId = 'bigMatchAnnouncer';
+  if (![...sel.options].some(o => o.value === announcePackId)) announcePackId = 'bigMatchAnnouncer';
+  sel.value = announcePackId;
 }
 
 function syncAnnouncePrefToggle() {
@@ -11617,15 +12001,15 @@ function syncAnnouncePrefToggle() {
 function syncAnnouncePrefsUI() {
   syncAnnouncePrefToggle();
   populateAnnounceVoiceSelect();
-  syncAnnounceStyleSelect();
+  syncAnnouncePackSelect();
 }
 
 function persistAnnounceVoice() {
   try { localStorage.setItem(ANNOUNCE_VOICE_KEY, announceVoiceURI || ''); } catch { /* ignore */ }
 }
 
-function persistAnnounceStyle() {
-  try { localStorage.setItem(ANNOUNCE_STYLE_KEY, announceStyleId); } catch { /* ignore */ }
+function persistAnnouncePack() {
+  try { localStorage.setItem(ANNOUNCE_PACK_KEY, announcePackId); } catch { /* ignore */ }
 }
 
 function onAnnounceVoiceChange() {
@@ -11635,11 +12019,10 @@ function onAnnounceVoiceChange() {
   if (!announceMuted) previewAnnounceVoice();
 }
 
-function onAnnounceStyleChange() {
-  const sel = document.getElementById('pref-announce-style');
-  const id = sel?.value || 'arena';
-  announceStyleId = ANNOUNCE_STYLES[id] ? id : 'arena';
-  persistAnnounceStyle();
+function onAnnouncePackChange() {
+  const sel = document.getElementById('pref-announce-pack');
+  announcePackId = migrateAnnouncePackId(sel?.value || 'bigMatchAnnouncer');
+  persistAnnouncePack();
   if (!announceMuted) previewAnnounceVoice();
 }
 
@@ -11651,26 +12034,42 @@ function toggleAnnounceMute() {
   if (!announceMuted) announceSpeak('Announcer on');
 }
 
-function announceSpeak(text, { force = false } = {}) {
+function announceSpeak(text, { force = false, cancel = true, enqueue = false } = {}) {
   if ((!force && announceMuted) || text == null || text === '') return;
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  try {
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(String(text));
-    const style = getAnnounceStyle();
-    u.rate = style.rate;
-    u.pitch = style.pitch;
-    const voice = resolveAnnounceVoice();
-    if (voice) u.voice = voice;
-    window.speechSynthesis.speak(u);
-  } catch { /* ignore TTS failures */ }
+
+  const speakNow = () => new Promise((resolve) => {
+    try {
+      if (cancel) window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(String(text));
+      const pack = getAnnouncePack();
+      u.rate = pack?.rate ?? 1.05;
+      u.pitch = pack?.pitch ?? 1;
+      const voice = resolveAnnounceVoice();
+      if (voice) u.voice = voice;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      window.speechSynthesis.speak(u);
+    } catch {
+      resolve();
+    }
+  });
+
+  if (enqueue) {
+    announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
+    return;
+  }
+  announceSpeakQueue = speakNow();
 }
 
 function previewAnnounceVoice() {
-  const style = getAnnounceStyle();
+  const pack = getAnnouncePack();
   const wasMuted = announceMuted;
-  // Preview always speaks even if muted so players can audition voices.
-  announceSpeak(`One hundred and eighty. ${style.label}.`, { force: true });
+  const label = pack?.label || 'Scores only';
+  const sample = pack
+    ? announceRandomLine(pack.bigScore) || `One hundred and eighty. ${label}.`
+    : 'One hundred and eighty. Scores only.';
+  announceSpeak(sample, { force: true });
   if (wasMuted) toast('Preview only — announcements still muted');
 }
 
@@ -11682,16 +12081,78 @@ function announceMatchStart() {
   announceSpeak(`${game}. ${a} versus ${b}.`);
 }
 
-function announceVisitScore(display) {
+function parseAnnounceVisitTotal(display) {
+  if (display == null) return NaN;
+  if (typeof display === 'number') return display;
+  const raw = String(display).trim();
+  if (!raw || /^bust$/i.test(raw)) return NaN;
+  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  return NaN;
+}
+
+function x01LastVisitEntry(gs) {
+  const logs = gs?.legLog || [];
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const leg = logs[i];
+    if (leg && leg.length) return { entry: leg[leg.length - 1], legIdx: i, isCurrentLeg: i === logs.length - 1 };
+  }
+  return null;
+}
+
+function announceVisitScore(display, opts = {}) {
   if (display == null || display === '') return;
   const raw = String(display).trim();
   if (!raw) return;
   if (/^bust$/i.test(raw)) {
     announceSpeak('bust');
+    announceVisitCommentary({
+      visit: 0,
+      bust: true,
+      remaining: opts.remaining,
+      legWon: !!opts.legWon,
+      matchWon: !!opts.matchWon,
+      winner: opts.winner
+    });
     return;
   }
   // Speak visit totals and cricket dart labels cleanly.
   announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim());
+  announceVisitCommentary({
+    visit: opts.visit != null ? opts.visit : parseAnnounceVisitTotal(raw),
+    remaining: opts.remaining,
+    bust: !!opts.bust,
+    legWon: !!opts.legWon,
+    matchWon: !!opts.matchWon,
+    winner: opts.winner
+  });
+}
+
+function announceVisitCommentary({ visit, remaining, bust, legWon, matchWon, winner } = {}) {
+  const pack = getAnnouncePack();
+  const event = detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon });
+  if (!event) return;
+  if (event.type === 'WIN') {
+    announceMatchWin(winner, { forceLine: true });
+    return;
+  }
+  if (!pack) return;
+  const line = getAnnounceCommentary(event, pack);
+  if (line) announceSpeak(line, { cancel: false, enqueue: true });
+}
+
+function announceMatchWin(winner, { forceLine = false } = {}) {
+  const pack = getAnnouncePack();
+  const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
+  if (!forceLine && key === lastAnnounceWinKey) return;
+  lastAnnounceWinKey = key;
+  if (pack) {
+    const line = getAnnounceCommentary({ type: 'WIN' }, pack);
+    if (line) {
+      announceSpeak(line, { cancel: false, enqueue: true });
+      return;
+    }
+  }
+  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true });
 }
 
 function maybeAnnounceX01Require() {
@@ -11706,7 +12167,56 @@ function maybeAnnounceX01Require() {
   const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${active}|${rem}`;
   if (key === lastX01RequireKey) return;
   lastX01RequireKey = key;
-  announceSpeak(`require ${rem}`);
+
+  const pack = getAnnouncePack();
+  // Pack checkout lines cover finishes of 40 or less; keep classic "require" above that.
+  if (pack && rem <= 40) {
+    const line = getAnnounceCommentary({ type: 'CHECKOUT_CHANCE' }, pack);
+    if (line) {
+      announceSpeak(line, { cancel: false, enqueue: true });
+      return;
+    }
+  }
+  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true });
+}
+
+function announceFromScoreUpdate(msg) {
+  const display = msg.history?.[0]?.score != null ? msg.history[0].score : msg.displayScore;
+  if (display == null) {
+    maybeAnnounceX01Require();
+    return;
+  }
+  const note = String(msg.history?.[0]?.note || '');
+  const matchWon = /wins the match/i.test(note);
+  const legWon = /wins leg/i.test(note);
+  const bust = /^bust$/i.test(String(display).trim()) || /bust/i.test(note);
+  let visit = parseAnnounceVisitTotal(display);
+  let remaining;
+
+  if (isX01Game(S.game) && S.gameState) {
+    const last = x01LastVisitEntry(S.gameState);
+    if (last?.entry) {
+      visit = last.entry.v;
+      if (last.entry.bust) {
+        // Remaining unchanged on bust — use current seat remaining.
+        remaining = S.gameState.remaining?.[last.entry.p];
+      } else if (matchWon || legWon || (!last.isCurrentLeg && last.entry.v != null)) {
+        remaining = 0;
+      } else {
+        remaining = S.gameState.remaining?.[last.entry.p];
+      }
+    }
+  }
+
+  announceVisitScore(display, {
+    visit,
+    remaining,
+    bust,
+    legWon,
+    matchWon,
+    winner: matchWon ? (msg.history?.[0]?.player || null) : null
+  });
+  if (!matchWon) maybeAnnounceX01Require();
 }
 
 function initAnnounceVoiceList() {
@@ -11723,6 +12233,7 @@ function initAnnounceVoiceList() {
 
 syncAnnouncePrefsUI();
 initAnnounceVoiceList();
+persistAnnouncePack();
 
 // ═══════════════════════════════════════════════════════════
 //  STATS TIMER
