@@ -629,7 +629,26 @@ function ensureUserStats(user) {
 }
 
 function defaultUserProfile() {
-  return { country: '', league: '', equipment: '', avatarUrl: '' };
+  return {
+    country: '',
+    league: '',
+    equipment: '',
+    avatarUrl: '',
+    walkoutId: '',          // '' = none (default); wo01–wo24
+    standsOptIn: '0',       // '1' = allow Stands gallery reactions
+  };
+}
+
+const WALKOUT_IDS = new Set(Array.from({ length: 24 }, (_, i) => `wo${String(i + 1).padStart(2, '0')}`));
+
+function sanitizeWalkoutId(raw) {
+  const id = String(raw == null ? '' : raw).trim();
+  if (!id) return '';
+  return WALKOUT_IDS.has(id) ? id : '';
+}
+
+function sanitizeStandsOptIn(raw) {
+  return raw === true || raw === 1 || raw === '1' ? '1' : '0';
 }
 
 function ensureUserProfile(user) {
@@ -651,6 +670,8 @@ function publicProfilePayload(user, { includeEmail = false } = {}) {
       league: profile.league,
       equipment: profile.equipment,
       avatarUrl: profile.avatarUrl,
+      walkoutId: sanitizeWalkoutId(profile.walkoutId),
+      standsOptIn: sanitizeStandsOptIn(profile.standsOptIn),
     },
     stats: {
       wins: stats.wins || 0,
@@ -738,6 +759,8 @@ function playerPreviewProfile(username) {
       isBot: true,
       avatar: '🤖',
       avatarUrl: '',
+      walkoutId: '',
+      standsOptIn: false,
       threeDartAvg: botStats.threeDartAvg,
       highestCheckout: botStats.highestCheckout,
       oneEighties: botStats.oneEighties,
@@ -755,6 +778,8 @@ function playerPreviewProfile(username) {
     country: profile.country || '',
     league: profile.league || '',
     equipment: profile.equipment || '',
+    walkoutId: sanitizeWalkoutId(profile.walkoutId),
+    standsOptIn: sanitizeStandsOptIn(profile.standsOptIn) === '1',
     threeDartAvg: s.threeDartAvg || 0,
     highestCheckout: s.highestCheckout || 0,
     oneEighties: s.oneEighties || 0,
@@ -762,11 +787,32 @@ function playerPreviewProfile(username) {
   };
 }
 
-function buildMatchPreview(game, hostName, guestName) {
-  return {
-    game,
-    players: [playerPreviewProfile(hostName), playerPreviewProfile(guestName)],
-  };
+function buildMatchPreview(game, hostName, guestName, room = null) {
+  const players = [playerPreviewProfile(hostName), playerPreviewProfile(guestName)];
+  if (room?.config) {
+    if (room.config.hostWalkoutId != null && players[0]) {
+      players[0].walkoutId = sanitizeWalkoutId(room.config.hostWalkoutId);
+    }
+    if (room.config.guestWalkoutId != null && players[1]) {
+      players[1].walkoutId = sanitizeWalkoutId(room.config.guestWalkoutId);
+    }
+    if (typeof room.config.hostStandsOptIn === 'boolean' && players[0]) {
+      players[0].standsOptIn = room.config.hostStandsOptIn;
+    }
+    if (typeof room.config.guestStandsOptIn === 'boolean' && players[1]) {
+      players[1].standsOptIn = room.config.guestStandsOptIn;
+    }
+  }
+  return { game, players };
+}
+
+function roomStandsOptInMap(room) {
+  const host = room?.config?.hostName;
+  const guest = room?.config?.guestName;
+  const map = {};
+  if (host) map[host] = !!room.config.hostStandsOptIn;
+  if (guest) map[guest] = !!room.config.guestStandsOptIn;
+  return map;
 }
 
 // Per-visit career stats (3DA, 180s, high checkout) are accrued into the room as
@@ -2185,6 +2231,9 @@ async function handleMessage(wsId, msg) {
       if (!canPlayGame(msg.game, client.username)) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
+      const hostProfile = ensureUserProfile(db.users[client.username]);
+      const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
+      const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
       const room = createRoom(wsId, {
         game: msg.game, hostName: client.username,
         guestName: null, tournamentId: msg.tournamentId || null,
@@ -2193,7 +2242,11 @@ async function handleMessage(wsId, msg) {
         legs: msg.legs || null,
         visitTimerSeconds: parseInt(msg.visitTimerSeconds, 10) || 0,
         golfCourse: msg.golfCourse || 'B',
-        capEnabled: msg.capEnabled !== false
+        capEnabled: msg.capEnabled !== false,
+        hostWalkoutId: hostWalkout,
+        guestWalkoutId: '',
+        hostStandsOptIn: hostStands,
+        guestStandsOptIn: false,
       });
       client.roomId = room.id;
       send(wsId, { type: 'room_created', roomId: room.id, game: msg.game });
@@ -2224,6 +2277,9 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
       const botLevel = normalizeBotLevel(msg.botSkill);
+      const hostProfile = ensureUserProfile(db.users[client.username]);
+      const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
+      const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
       const room = createRoom(wsId, {
         game: msg.game, hostName: client.username,
         guestName: `Bot (Level ${botLevel})`, bot: true, botSkill: botLevel,
@@ -2232,14 +2288,18 @@ async function handleMessage(wsId, msg) {
         legs: msg.legs || null,
         visitTimerSeconds: parseInt(msg.visitTimerSeconds, 10) || 0,
         golfCourse: msg.golfCourse || 'B',
-        capEnabled: msg.capEnabled !== false
+        capEnabled: msg.capEnabled !== false,
+        hostWalkoutId: hostWalkout,
+        guestWalkoutId: '',
+        hostStandsOptIn: hostStands,
+        guestStandsOptIn: false,
       });
       room.gameState = initGameState(msg.game, room.config);
       client.roomId = room.id;
       send(wsId, {
         type: 'bot_room_started', roomId: room.id, game: msg.game,
         opponentName: room.config.guestName, gameState: room.gameState,
-        matchPreview: buildMatchPreview(msg.game, room.config.hostName, room.config.guestName),
+        matchPreview: buildMatchPreview(msg.game, room.config.hostName, room.config.guestName, room),
       });
       break;
     }
@@ -2251,13 +2311,16 @@ async function handleMessage(wsId, msg) {
       if (!canPlayGame(room.config.game, client.username)) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
+      const guestProfile = ensureUserProfile(db.users[client.username]);
       room.guestWsId = wsId;
       room.status = 'active';
       room.config.guestName = client.username;
+      room.config.guestWalkoutId = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : guestProfile.walkoutId);
+      room.config.guestStandsOptIn = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : guestProfile.standsOptIn) === '1';
       room.gameState = initGameState(room.config.game, room.config);
       room.lastActivity = Date.now();
       client.roomId = room.id;
-      const matchPreview = buildMatchPreview(room.config.game, room.config.hostName, room.config.guestName);
+      const matchPreview = buildMatchPreview(room.config.game, room.config.hostName, room.config.guestName, room);
       // Notify both players
       send(room.hostWsId, {
         type: 'opponent_joined', opponentName: client.username, roomId: room.id,
@@ -2283,7 +2346,37 @@ async function handleMessage(wsId, msg) {
       send(wsId, { type: 'spectating', roomId: room.id, game: room.config.game,
         hostName: room.config.hostName, guestName: room.config.guestName,
         scores: room.scores, history: room.history, turn: room.turn,
-        gameState: room.gameState || null });
+        gameState: room.gameState || null,
+        standsOptIn: roomStandsOptInMap(room) });
+      break;
+    }
+
+    case 'gallery_reaction': {
+      const room = rooms.get(msg.roomId || client.roomId);
+      if (!room || room.status !== 'active') return;
+      const spectSet = spectators.get(room.id);
+      if (!spectSet?.has(wsId)) {
+        return send(wsId, { type: 'error', message: 'Only spectators in the stands can send gallery reactions.' });
+      }
+      const allowed = ['cheer', 'fire', 'clap', 'wow', 'bull'];
+      const reaction = allowed.includes(msg.reaction) ? msg.reaction : null;
+      if (!reaction) return;
+      const optIn = roomStandsOptInMap(room);
+      if (!optIn[room.config.hostName] && !optIn[room.config.guestName]) {
+        return send(wsId, { type: 'error', message: 'Players have not opted into Stands interactions.' });
+      }
+      const payload = {
+        type: 'gallery_reaction',
+        roomId: room.id,
+        reaction,
+        from: client.username || 'Fan',
+        ts: Date.now(),
+        standsOptIn: optIn,
+      };
+      // Deliver to players (clients filter by their own opt-in) + other spectators.
+      if (room.hostWsId) send(room.hostWsId, payload);
+      if (room.guestWsId) send(room.guestWsId, payload);
+      spectSet.forEach(sid => send(sid, payload));
       break;
     }
 
@@ -2404,6 +2497,12 @@ async function handleMessage(wsId, msg) {
       profile.country = scrub(msg.country, 40);
       profile.league = scrub(msg.league, 60);
       profile.equipment = scrub(msg.equipment, 120);
+      if (Object.prototype.hasOwnProperty.call(msg, 'walkoutId')) {
+        profile.walkoutId = sanitizeWalkoutId(msg.walkoutId);
+      }
+      if (Object.prototype.hasOwnProperty.call(msg, 'standsOptIn')) {
+        profile.standsOptIn = sanitizeStandsOptIn(msg.standsOptIn);
+      }
       if (Object.prototype.hasOwnProperty.call(msg, 'avatarUrl')) {
         const avatar = sanitizeAvatarDataUrl(msg.avatarUrl);
         if (avatar === null) {
@@ -2862,6 +2961,7 @@ async function handleMessage(wsId, msg) {
       if (!isBotPlayer(opponent)) {
         return send(wsId, { type: 'error', message: 'Human vs human bracket matches are not available during soft launch — use bots or play from the lobby.' });
       }
+      const hostProfile = ensureUserProfile(db.users[user]);
       const room = createRoom(wsId, {
         game: t.game,
         hostName: user,
@@ -2874,7 +2974,11 @@ async function handleMessage(wsId, msg) {
         startRule: t.startRule || null,
         finishRule: t.finishRule || null,
         x01Base: t.x01Base || null,
-        legs: t.legs || null
+        legs: t.legs || null,
+        hostWalkoutId: sanitizeWalkoutId(hostProfile.walkoutId),
+        guestWalkoutId: '',
+        hostStandsOptIn: sanitizeStandsOptIn(hostProfile.standsOptIn) === '1',
+        guestStandsOptIn: false,
       });
       room.gameState = initGameState(t.game, room.config);
       client.roomId = room.id;
@@ -2889,7 +2993,7 @@ async function handleMessage(wsId, msg) {
         tournamentId: t.id,
         bracketMatchId: match.id,
         tournamentName: t.name,
-        matchPreview: buildMatchPreview(t.game, user, opponent),
+        matchPreview: buildMatchPreview(t.game, user, opponent, room),
       });
       break;
     }
