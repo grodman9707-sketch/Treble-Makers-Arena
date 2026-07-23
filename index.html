@@ -2937,6 +2937,61 @@ body.app-active .arena-bg { animation: none !important; }
 #page-match.spectating #score-input {
   opacity: 0.35; pointer-events: none;
 }
+.gallery-reaction-bar {
+  position: fixed; left: 50%; bottom: 1.1rem; transform: translateX(-50%);
+  z-index: 120; display: none; gap: 0.45rem; flex-wrap: wrap; justify-content: center;
+  padding: 0.45rem 0.65rem; border-radius: 999px;
+  background: rgba(8,8,12,0.88); border: 1px solid rgba(201,168,76,0.4);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+}
+#page-match.spectating .gallery-reaction-bar { display: flex; }
+.gallery-reaction-bar.disabled { opacity: 0.55; }
+.gallery-reaction-bar .gr-btn {
+  border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.45);
+  color: var(--text); border-radius: 999px; padding: 0.35rem 0.7rem;
+  font-size: 0.85rem; cursor: pointer; font-family: 'Exo 2', sans-serif;
+}
+.gallery-reaction-bar .gr-btn:hover:not(:disabled) {
+  border-color: rgba(201,168,76,0.55); color: var(--gold-light);
+}
+.gallery-reaction-bar .gr-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.gallery-reaction-hint {
+  width: 100%; text-align: center; font-size: 0.65rem; color: var(--muted);
+  letter-spacing: 0.06em; text-transform: uppercase; font-family: 'Cinzel', serif;
+}
+.gallery-reaction-fx {
+  position: fixed; left: 50%; top: 22%; transform: translateX(-50%);
+  z-index: 130; pointer-events: none; font-size: clamp(1.6rem, 4vw, 2.4rem);
+  text-shadow: 0 4px 18px rgba(0,0,0,0.7); opacity: 0;
+  animation: galleryPop 1.6s ease-out forwards;
+}
+@keyframes galleryPop {
+  0% { opacity: 0; transform: translateX(-50%) translateY(12px) scale(0.85); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-28px) scale(1); }
+}
+.walkout-picker {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 0.4rem; margin-top: 0.55rem; max-height: 180px; overflow-y: auto;
+}
+.walkout-chip {
+  border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.45);
+  color: var(--silver-light); border-radius: 6px; padding: 0.4rem 0.45rem;
+  font-size: 0.68rem; text-align: left; cursor: pointer; font-family: 'Exo 2', sans-serif;
+}
+.walkout-chip.active {
+  border-color: rgba(201,168,76,0.7); color: var(--gold-light);
+  background: rgba(201,168,76,0.12);
+}
+.walkout-chip .wo-name { display: block; font-weight: 600; }
+.walkout-chip .wo-id { display: block; opacity: 0.65; font-size: 0.58rem; margin-top: 0.15rem; }
+.profile-setting-controls.walkout-hear {
+  display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.45rem;
+}
+.profile-setting-controls.walkout-hear select {
+  flex: 1; min-width: 140px; background: var(--black); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0.4rem 0.5rem;
+}
 .go-handshake {
   font-family: 'Cinzel', serif; color: var(--gold-light); letter-spacing: 0.08em;
   margin: 0.35rem 0 0.75rem; font-size: 0.95rem;
@@ -3794,6 +3849,14 @@ body.app-active .arena-bg { animation: none !important; }
 
       <!-- X01 dartcounter-style layout (shown only for X01 family) -->
       <div id="arena-broadcast-strip" class="arena-broadcast-strip hidden" aria-live="polite"></div>
+      <div id="gallery-reaction-bar" class="gallery-reaction-bar" aria-label="Gallery reactions">
+        <div class="gallery-reaction-hint" id="gallery-reaction-hint">Send a cheer — only opted-in players hear it</div>
+        <button type="button" class="gr-btn" data-reaction="cheer" onclick="sendGalleryReaction('cheer')">🙌 Cheer</button>
+        <button type="button" class="gr-btn" data-reaction="clap" onclick="sendGalleryReaction('clap')">👏 Clap</button>
+        <button type="button" class="gr-btn" data-reaction="fire" onclick="sendGalleryReaction('fire')">🔥 Fire</button>
+        <button type="button" class="gr-btn" data-reaction="wow" onclick="sendGalleryReaction('wow')">😮 Wow</button>
+        <button type="button" class="gr-btn" data-reaction="bull" onclick="sendGalleryReaction('bull')">🎯 Bull</button>
+      </div>
       <div id="arena-changeover" class="arena-changeover" aria-live="polite">To the oche</div>
       <div id="x01-layout" class="x01-layout hidden">
         <div class="x01-topbar">
@@ -4097,7 +4160,7 @@ body.app-active .arena-bg { animation: none !important; }
     <div class="page" id="page-spectate">
       <div style="padding:1.5rem 2rem">
         <div class="page-section-title">Spectator Stands</div>
-        <div class="page-section-sub">Watch live matches. Gallery reactions never interrupt play.</div>
+        <div class="page-section-sub">Watch live matches. Gallery reactions only reach players who opted in — never interrupt scoring.</div>
         <div class="matches-grid" id="spectate-grid">
           <div class="empty-state"><div class="big-icon">👁</div><p>No live matches to spectate right now.</p></div>
         </div>
@@ -4130,7 +4193,7 @@ body.app-active .arena-bg { animation: none !important; }
           <button type="button" class="guide-zone east" onclick="goArenaZone('stands')">
             <div class="guide-zone-kicker">East</div>
             <div class="guide-zone-title">Spectator Stands</div>
-            <div class="guide-zone-desc">Watch live matches and cheer from the gallery without interrupting play.</div>
+            <div class="guide-zone-desc">Watch live matches and cheer from the gallery — only reaches players who opted in.</div>
           </button>
           <button type="button" class="guide-zone south" onclick="goArenaZone('tournaments')">
             <div class="guide-zone-kicker">South</div>
@@ -4266,6 +4329,30 @@ body.app-active .arena-bg { animation: none !important; }
               <button type="button" class="pref-toggle" id="pref-ambient-toggle"
                 role="switch" aria-checked="false" aria-label="Ambient bed"
                 onclick="toggleAmbientFx()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
+            </div>
+            <div class="profile-setting-row">
+              <div class="profile-setting-meta">
+                <span class="profile-setting-label">Stands interactions</span>
+                <span class="profile-setting-hint">Opt in so gallery cheers can reach you (never interrupts scoring)</span>
+              </div>
+              <button type="button" class="pref-toggle" id="pref-stands-optin-toggle"
+                role="switch" aria-checked="false" aria-label="Stands interactions"
+                onclick="toggleStandsOptIn()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
+            </div>
+            <div class="profile-setting-stack" id="pref-walkout-stack">
+              <div class="profile-setting-meta">
+                <span class="profile-setting-label">Walk-out music</span>
+                <span class="profile-setting-hint">5s arena sting during match preview &amp; announcement. Default: none.</span>
+              </div>
+              <div class="profile-setting-controls walkout-hear">
+                <label class="profile-setting-field-label" for="pref-walkout-hear">Hear</label>
+                <select id="pref-walkout-hear" onchange="onWalkoutHearChange()">
+                  <option value="mine">Only hear mine</option>
+                  <option value="both">Hear both</option>
+                </select>
+                <button type="button" class="btn btn-sm" onclick="previewSelectedWalkout()">Preview</button>
+              </div>
+              <div class="walkout-picker" id="walkout-picker" aria-label="Walk-out music snippets"></div>
             </div>
           </div>
         </div>
@@ -4871,6 +4958,7 @@ const S = {
   isLocal: false,
   localNames: null,
   isSpectating: false,
+  standsOptInMap: {},
 };
 
 const GAME_RULES = {
@@ -5089,6 +5177,12 @@ function handleWS(msg) {
         profile: msg.profile || {},
         mustChangePassword: !!msg.mustChangePassword,
       };
+      if (typeof msg.profile?.walkoutId === 'string') {
+        setWalkoutId(msg.profile.walkoutId, { persistProfile: false, quiet: true });
+      }
+      if (msg.profile?.standsOptIn != null) {
+        setStandsOptIn(msg.profile.standsOptIn === '1' || msg.profile.standsOptIn === true, { persistProfile: false, quiet: true });
+      }
       if (msg.token) {
         sessionToken = msg.token;
         if (pendingRemember || getRememberedSession()?.username === msg.username) {
@@ -5291,7 +5385,11 @@ function handleWS(msg) {
       S.scores = Array.isArray(msg.scores) ? msg.scores.slice(0, 2) : [0, 0];
       S.turn = typeof msg.turn === 'number' ? msg.turn : 0;
       if (Array.isArray(msg.history)) S.history = msg.history.slice();
+      S.standsOptInMap = msg.standsOptIn && typeof msg.standsOptIn === 'object' ? msg.standsOptIn : {};
       startMatchUI(msg.game, msg.guestName ? `${msg.hostName} vs ${msg.guestName}` : msg.hostName, true, msg.gameState || null);
+      break;
+    case 'gallery_reaction':
+      handleGalleryReaction(msg);
       break;
     case 'starter_method':
     case 'bull_throw':
@@ -5312,7 +5410,10 @@ function handleWS(msg) {
         if (typeof msg.email === 'string') S.user.email = msg.email;
       }
       renderProfilePage(msg.profile, msg.stats, { email: msg.email });
-      if (msg.saved) toast('Profile saved.');
+      if (msg.saved) {
+        if (quietProfileSave) quietProfileSave = false;
+        else toast('Profile saved.');
+      }
       break;
     case 'profile_error':
       toast(msg.message || 'Could not save profile.');
@@ -6612,12 +6713,16 @@ function enterMatch() {
     });
     pendingBracketMatch = null;
   } else if (pendingJoin) {
-    wsSend({ type: 'join_room', roomId: pendingJoin.roomId });
+    wsSend({
+      type: 'join_room',
+      roomId: pendingJoin.roomId,
+      ...arenaPresencePrefsPayload(),
+    });
     pendingJoin = null;
   } else if (selectedMatchType === 'bot') {
     createBotMatch();
   } else {
-    wsSend({ type: 'create_room', game: S.game, ...S.matchVariation });
+    wsSend({ type: 'create_room', game: S.game, ...S.matchVariation, ...arenaPresencePrefsPayload() });
     showPage('lobby');
     if (pendingInviteFriend) {
       toast(`Match created! Inviting ${pendingInviteFriend}…`);
@@ -6765,7 +6870,13 @@ function attachLocalCamera() {
 
 function createBotMatch() {
   S.botSkill = normalizeBotLevel(selectedBotSkill);
-  wsSend({ type: 'create_bot_room', game: S.game, botSkill: S.botSkill, ...(S.matchVariation || {}) });
+  wsSend({
+    type: 'create_bot_room',
+    game: S.game,
+    botSkill: S.botSkill,
+    ...(S.matchVariation || {}),
+    ...arenaPresencePrefsPayload(),
+  });
 }
 
 function joinRoom(roomId, game, hostName) {
@@ -7032,11 +7143,12 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   showPage('match');
   clearStarterFlow();
 
+  matchIntroAnnounced = false;
   if (!spectating && matchPreview?.players?.length >= 2) {
     hideAllMatchLayouts();
-    pendingMatchPreview = matchPreview;
+    pendingMatchPreview = enrichPreviewWithLocalPrefs(matchPreview);
     // Host chooses who throws first (You / Opponent / Bot). Starter becomes Player One.
-    showMatchPreviewOverlay(matchPreview, { awaitStarter: true });
+    showMatchPreviewOverlay(pendingMatchPreview, { awaitStarter: true });
     return;
   }
 
@@ -7047,12 +7159,13 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
     if (!matchPreview) {
       playCrowdBurst('cheer');
       runWarmupCountdown(() => {
-        announceMatchStart();
+        runMatchIntroAnnounce(null);
         maybeAnnounceX01Require();
         startAmbientBed();
       });
     }
   } else {
+    updateGalleryReactionBar();
     startAmbientBed();
   }
 }
@@ -7242,6 +7355,9 @@ function showMatchPreviewOverlay(preview, opts = {}) {
 
   overlay.classList.remove('hidden');
 
+  // Announce the match (and walk-outs) during the preview card, not only after it.
+  runMatchIntroAnnounce(preview);
+
   if (!awaitStarter) {
     matchPreviewTimer = setTimeout(() => {
       matchPreviewTimer = null;
@@ -7264,7 +7380,7 @@ function beginMatchAfterPreview() {
   hideStarterOverlays();
   updateMatchUI();
   signalMatchUiReady();
-  // Walk-on sting + warm-up countdown before first dart.
+  // Warm-up countdown before first dart (intro announce already ran on preview).
   playCrowdBurst('cheer');
   pulseArenaLighting();
   showArenaBumper('WALK-ON', {
@@ -7273,7 +7389,8 @@ function beginMatchAfterPreview() {
     ms: 1600
   });
   runWarmupCountdown(() => {
-    announceMatchStart();
+    if (!matchIntroAnnounced) runMatchIntroAnnounce(pendingMatchPreview);
+    else announceSpeak('Game on.', { cancel: false, enqueue: true });
     maybeAnnounceX01Require();
     startAmbientBed();
   });
@@ -11608,8 +11725,13 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   setStat('ps-games', String(s.gamesPlayed || 0));
   const logoutSection = document.querySelector('.profile-logout-section');
   if (logoutSection) logoutSection.classList.toggle('hidden', !!opts.readOnly);
+  if (!opts.readOnly) {
+    if (typeof p.walkoutId === 'string') setWalkoutId(p.walkoutId, { persistProfile: false });
+    if (p.standsOptIn != null) setStandsOptIn(p.standsOptIn === '1' || p.standsOptIn === true, { persistProfile: false });
+  }
   syncAnnouncePrefsUI();
   syncCrowdAmbientToggles();
+  syncStandsWalkoutPrefsUI();
 }
 
 function onProfileAvatarSelected(event) {
@@ -11671,9 +11793,18 @@ function saveProfile(event) {
     country: document.getElementById('profile-country')?.value || '',
     league: document.getElementById('profile-league')?.value || '',
     equipment: document.getElementById('profile-equipment')?.value || '',
+    walkoutId: getWalkoutId(),
+    standsOptIn: getStandsOptIn() ? '1' : '0',
   };
   if (pendingProfileAvatar !== null) {
     payload.avatarUrl = pendingProfileAvatar;
+  }
+  if (S.user) {
+    S.user.profile = {
+      ...(S.user.profile || {}),
+      walkoutId: payload.walkoutId,
+      standsOptIn: payload.standsOptIn,
+    };
   }
   wsSend(payload);
   pendingProfileAvatar = null;
@@ -12771,9 +12902,12 @@ function previewAnnounceVoice() {
   if (wasMuted) toast('Preview only — announcements still muted');
 }
 
-function announceMatchStart() {
-  const names = seatPlayerNames();
-  const game = S.game || 'Match';
+function announceMatchStart(preview = null) {
+  const game = S.game || preview?.game || 'Match';
+  const fromPreview = preview?.players?.length >= 2
+    ? [preview.players[0]?.username, preview.players[1]?.username]
+    : null;
+  const names = fromPreview || seatPlayerNames();
   const a = names[0] || 'Player 1';
   const b = names[1] || 'Player 2';
   announceSpeak(`${game}. ${a} versus ${b}.`);
@@ -12929,6 +13063,286 @@ initAnnounceVoiceList();
 persistAnnouncePack();
 persistAnnounceVoice();
 
+
+// ═══════════════════════════════════════════════════════════
+//  STANDS OPT-IN + WALK-OUT MUSIC + MATCH INTRO
+// ═══════════════════════════════════════════════════════════
+const STANDS_OPTIN_KEY = 'tma-stands-optin';
+const WALKOUT_ID_KEY = 'tma-walkout-id';
+const WALKOUT_HEAR_KEY = 'tma-walkout-hear';
+let standsOptInOn = (() => { try { return localStorage.getItem(STANDS_OPTIN_KEY) === '1'; } catch { return false; } })();
+let walkoutIdSelected = (() => { try { return localStorage.getItem(WALKOUT_ID_KEY) || ''; } catch { return ''; } })();
+let walkoutHearMode = (() => {
+  try {
+    const v = localStorage.getItem(WALKOUT_HEAR_KEY);
+    return v === 'both' ? 'both' : 'mine';
+  } catch { return 'mine'; }
+})();
+let matchIntroAnnounced = false;
+let walkoutPlayToken = 0;
+let quietProfileSave = false;
+
+// 24 synthesized ~5s walk-out stings (no external audio files required).
+const WALKOUT_CATALOG = [
+  { id: 'wo01', name: 'Oche Thunder', key: 0 },
+  { id: 'wo02', name: 'Treble March', key: 2 },
+  { id: 'wo03', name: 'Bullseye Brass', key: 4 },
+  { id: 'wo04', name: 'Checkout Call', key: 5 },
+  { id: 'wo05', name: 'Arena Pulse', key: 7 },
+  { id: 'wo06', name: 'Double Top', key: 9 },
+  { id: 'wo07', name: 'Nine-Darter', key: 11 },
+  { id: 'wo08', name: 'Lazy Fire', key: 0 },
+  { id: 'wo09', name: 'WDL Rise', key: 2 },
+  { id: 'wo10', name: 'Silver Flight', key: 3 },
+  { id: 'wo11', name: 'Gold Rush', key: 5 },
+  { id: 'wo12', name: 'Backboard Beat', key: 7 },
+  { id: 'wo13', name: 'Shanghai Strut', key: 8 },
+  { id: 'wo14', name: 'Cricket Crowd', key: 10 },
+  { id: 'wo15', name: 'Halve-It Hook', key: 0 },
+  { id: 'wo16', name: 'Power Visit', key: 1 },
+  { id: 'wo17', name: 'Leg Breaker', key: 3 },
+  { id: 'wo18', name: 'Set Closer', key: 4 },
+  { id: 'wo19', name: 'Trophy Walk', key: 6 },
+  { id: 'wo20', name: 'Neon Oche', key: 8 },
+  { id: 'wo21', name: 'Midnight Match', key: 9 },
+  { id: 'wo22', name: 'Crowd Surge', key: 11 },
+  { id: 'wo23', name: 'Final Dart', key: 2 },
+  { id: 'wo24', name: 'Champ Entrance', key: 5 },
+];
+const WALKOUT_BY_ID = Object.fromEntries(WALKOUT_CATALOG.map(w => [w.id, w]));
+
+function getWalkoutId() {
+  return WALKOUT_BY_ID[walkoutIdSelected] ? walkoutIdSelected : '';
+}
+
+function getStandsOptIn() {
+  return !!standsOptInOn;
+}
+
+function getWalkoutHearMode() {
+  return walkoutHearMode === 'both' ? 'both' : 'mine';
+}
+
+function arenaPresencePrefsPayload() {
+  return {
+    walkoutId: getWalkoutId(),
+    standsOptIn: getStandsOptIn() ? '1' : '0',
+  };
+}
+
+function persistArenaPresencePrefs() {
+  if (!S.user?.username || isGuestUser()) return;
+  quietProfileSave = true;
+  wsSend({
+    type: 'update_profile',
+    walkoutId: getWalkoutId(),
+    standsOptIn: getStandsOptIn() ? '1' : '0',
+  });
+}
+
+function setWalkoutId(id, { persistProfile = true, quiet = false } = {}) {
+  walkoutIdSelected = WALKOUT_BY_ID[id] ? id : '';
+  try { localStorage.setItem(WALKOUT_ID_KEY, walkoutIdSelected); } catch { /* ignore */ }
+  if (S.user?.profile) S.user.profile.walkoutId = walkoutIdSelected;
+  syncStandsWalkoutPrefsUI();
+  if (persistProfile) persistArenaPresencePrefs();
+  if (!quiet && walkoutIdSelected) toast(`Walk-out: ${WALKOUT_BY_ID[walkoutIdSelected].name}`);
+  else if (!quiet && !walkoutIdSelected) toast('Walk-out music cleared');
+}
+
+function setStandsOptIn(on, { persistProfile = true, quiet = false } = {}) {
+  standsOptInOn = !!on;
+  try { localStorage.setItem(STANDS_OPTIN_KEY, standsOptInOn ? '1' : '0'); } catch { /* ignore */ }
+  if (S.user?.profile) S.user.profile.standsOptIn = standsOptInOn ? '1' : '0';
+  syncStandsWalkoutPrefsUI();
+  if (persistProfile) persistArenaPresencePrefs();
+  if (!quiet) toast(standsOptInOn ? 'Stands interactions on' : 'Stands interactions off');
+}
+
+function toggleStandsOptIn() {
+  setStandsOptIn(!standsOptInOn);
+}
+
+function onWalkoutHearChange() {
+  const el = document.getElementById('pref-walkout-hear');
+  walkoutHearMode = el?.value === 'both' ? 'both' : 'mine';
+  try { localStorage.setItem(WALKOUT_HEAR_KEY, walkoutHearMode); } catch { /* ignore */ }
+  toast(walkoutHearMode === 'both' ? 'Will hear both walk-outs' : 'Will hear only your walk-out');
+}
+
+function syncStandsWalkoutPrefsUI() {
+  const stands = document.getElementById('pref-stands-optin-toggle');
+  if (stands) stands.setAttribute('aria-checked', standsOptInOn ? 'true' : 'false');
+  const hear = document.getElementById('pref-walkout-hear');
+  if (hear) hear.value = getWalkoutHearMode();
+  const picker = document.getElementById('walkout-picker');
+  if (!picker) return;
+  const noneActive = !getWalkoutId();
+  picker.innerHTML = `
+    <button type="button" class="walkout-chip${noneActive ? ' active' : ''}" onclick="setWalkoutId('')">
+      <span class="wo-name">None</span>
+      <span class="wo-id">Default — silent</span>
+    </button>
+    ${WALKOUT_CATALOG.map(w => `
+      <button type="button" class="walkout-chip${walkoutIdSelected === w.id ? ' active' : ''}" onclick="setWalkoutId('${w.id}')">
+        <span class="wo-name">${w.name}</span>
+        <span class="wo-id">${w.id} · ~5s</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+function previewSelectedWalkout() {
+  const id = getWalkoutId();
+  if (!id) { toast('Pick a walk-out snippet first.'); return; }
+  playWalkoutSting(id);
+}
+
+function enrichPreviewWithLocalPrefs(preview) {
+  const copy = preview && typeof preview === 'object'
+    ? { ...preview, players: (preview.players || []).map(p => ({ ...p })) }
+    : { game: S.game, players: [] };
+  for (const p of copy.players) {
+    if (p.username === S.user?.username) {
+      p.walkoutId = getWalkoutId() || p.walkoutId || '';
+      p.standsOptIn = getStandsOptIn();
+    }
+  }
+  return copy;
+}
+
+function runMatchIntroAnnounce(preview) {
+  if (matchIntroAnnounced) return;
+  matchIntroAnnounced = true;
+  const src = preview || pendingMatchPreview;
+  const players = src?.players || [];
+  playWalkoutSequence(players).finally(() => {
+    announceMatchStart(src);
+  });
+}
+
+function playWalkoutSequence(players) {
+  const hearBoth = getWalkoutHearMode() === 'both';
+  const me = S.user?.username;
+  const ordered = [];
+  for (const p of players || []) {
+    const id = sanitizeClientWalkoutId(p.walkoutId);
+    if (!id) continue;
+    if (!hearBoth && p.username !== me) continue;
+    ordered.push({ username: p.username, id });
+  }
+  // "Only mine" with no selection → silence (default).
+  if (!ordered.length) return Promise.resolve();
+  let chain = Promise.resolve();
+  for (const item of ordered) {
+    chain = chain.then(() => playWalkoutSting(item.id));
+  }
+  return chain;
+}
+
+function sanitizeClientWalkoutId(id) {
+  return WALKOUT_BY_ID[id] ? id : '';
+}
+
+function playWalkoutSting(id) {
+  const entry = WALKOUT_BY_ID[id];
+  if (!entry) return Promise.resolve();
+  const ctx = ensureArenaAudio();
+  if (!ctx) return Promise.resolve();
+  const token = ++walkoutPlayToken;
+  try {
+    if (ctx.state === 'suspended') ctx.resume();
+  } catch { /* ignore */ }
+
+  // ~5s melodic entrance: fanfare motif unique per key offset.
+  const root = 196 * Math.pow(2, (entry.key % 12) / 12); // ~G3 family
+  const scale = [0, 2, 4, 5, 7, 9, 11, 12];
+  const pattern = [0, 2, 4, 7, 4, 7, 9, 12, 7, 12];
+  const t0 = ctx.currentTime + 0.02;
+  const dur = 5.0;
+  pattern.forEach((deg, i) => {
+    const freq = root * Math.pow(2, scale[deg % scale.length] / 12);
+    const when = (i / pattern.length) * 3.6;
+    playTone(freq, 0.28, i % 2 ? 'triangle' : 'sawtooth', 0.03, when);
+    playTone(freq * 2, 0.18, 'sine', 0.012, when + 0.05);
+  });
+  // Sustained pad under the motif
+  playTone(root / 2, dur - 0.3, 'sine', 0.018, 0);
+  playTone(root, 0.5, 'triangle', 0.025, 4.2);
+  playTone(root * 1.5, 0.45, 'sine', 0.02, 4.35);
+  return new Promise(resolve => {
+    setTimeout(() => {
+      if (token === walkoutPlayToken) resolve();
+      else resolve();
+    }, Math.ceil(dur * 1000));
+  });
+}
+
+function updateGalleryReactionBar() {
+  const bar = document.getElementById('gallery-reaction-bar');
+  const hint = document.getElementById('gallery-reaction-hint');
+  if (!bar) return;
+  if (!S.isSpectating) {
+    bar.classList.add('disabled');
+    return;
+  }
+  const map = S.standsOptInMap || {};
+  const any = Object.values(map).some(Boolean);
+  bar.classList.toggle('disabled', !any);
+  bar.querySelectorAll('.gr-btn').forEach(btn => { btn.disabled = !any; });
+  if (hint) {
+    hint.textContent = any
+      ? 'Send a cheer — only opted-in players receive it'
+      : 'Players have not opted into Stands interactions';
+  }
+}
+
+function sendGalleryReaction(reaction) {
+  if (!S.isSpectating || !S.roomId) return;
+  const map = S.standsOptInMap || {};
+  if (!Object.values(map).some(Boolean)) {
+    toast('Players have not opted into Stands interactions.');
+    return;
+  }
+  wsSend({ type: 'gallery_reaction', roomId: S.roomId, reaction });
+  // Local feedback for the fan immediately.
+  showGalleryReactionFx({ reaction, from: 'You' });
+}
+
+function handleGalleryReaction(msg) {
+  if (!msg?.reaction) return;
+  if (S.isSpectating) {
+    if (msg.from && msg.from !== S.user?.username) showGalleryReactionFx(msg);
+    if (msg.standsOptIn) S.standsOptInMap = msg.standsOptIn;
+    updateGalleryReactionBar();
+    return;
+  }
+  // Players only receive FX if they opted in.
+  if (!getStandsOptIn()) return;
+  showGalleryReactionFx(msg);
+  if (msg.reaction === 'cheer' || msg.reaction === 'fire' || msg.reaction === 'bull') {
+    playCrowdBurst('cheer');
+  } else if (msg.reaction === 'wow') {
+    playCrowdBurst('big');
+  } else {
+    playCrowdBurst('checkout');
+  }
+}
+
+function showGalleryReactionFx(msg) {
+  const labels = {
+    cheer: '🙌',
+    clap: '👏',
+    fire: '🔥',
+    wow: '😮',
+    bull: '🎯',
+  };
+  const el = document.createElement('div');
+  el.className = 'gallery-reaction-fx';
+  el.textContent = `${labels[msg.reaction] || '🙌'} ${msg.from || 'Fan'}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1700);
+}
 
 // ═══════════════════════════════════════════════════════════
 //  ARENA FX — crowd SFX, lighting, broadcast, rituals, stats
@@ -13218,9 +13632,11 @@ function applySpectatingMode(on) {
   const page = document.getElementById('page-match');
   page?.classList.toggle('spectating', !!on);
   page?.classList.toggle('stage-pip', !!on);
+  updateGalleryReactionBar();
 }
 
 syncCrowdAmbientToggles();
+syncStandsWalkoutPrefsUI();
 
 
 // ═══════════════════════════════════════════════════════════
