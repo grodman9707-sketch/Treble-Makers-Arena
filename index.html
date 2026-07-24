@@ -545,6 +545,12 @@ body.app-active .arena-bg { animation: none !important; }
 .app-content { flex: 1; position: relative; z-index: 1; }
 .page { display: none; }
 .page.active { display: block; }
+#page-match.active {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(100vh - 54px);
+}
 
 /* ════════════════════════════════════════════
    ██ LOBBY PAGE
