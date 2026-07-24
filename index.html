@@ -4342,7 +4342,7 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-setting-stack" id="pref-walkout-stack">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Walk-out music</span>
-                <span class="profile-setting-hint">5s arena sting during match preview &amp; announcement. Default: none.</span>
+                <span class="profile-setting-hint">~12–15s arena clip during match preview &amp; announcement. Default: none.</span>
               </div>
               <div class="profile-setting-controls walkout-hear">
                 <label class="profile-setting-field-label" for="pref-walkout-hear">Hear</label>
@@ -7144,6 +7144,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   clearStarterFlow();
 
   matchIntroAnnounced = false;
+  matchIntroPromise = Promise.resolve();
   if (!spectating && matchPreview?.players?.length >= 2) {
     hideAllMatchLayouts();
     pendingMatchPreview = enrichPreviewWithLocalPrefs(matchPreview);
@@ -7159,9 +7160,10 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
     if (!matchPreview) {
       playCrowdBurst('cheer');
       runWarmupCountdown(() => {
-        runMatchIntroAnnounce(null);
-        maybeAnnounceX01Require();
-        startAmbientBed();
+        runMatchIntroAnnounce(null).finally(() => {
+          maybeAnnounceX01Require();
+          startAmbientBed();
+        });
       });
     }
   } else {
@@ -7201,6 +7203,9 @@ function hydrateMatchGameState(game, gameState) {
 }
 
 const MATCH_PREVIEW_MS = 17000;
+const MATCH_PREVIEW_BOT_MS = 8000;
+const WALKOUT_CLIP_MS = 15000;
+const MAIN_MATCH_INTRO_SPEECH_MS = 12000;
 let matchPreviewTimer = null;
 let pendingMatchPreview = null;
 let starterFlow = {
@@ -7316,7 +7321,8 @@ function showMatchPreviewOverlay(preview, opts = {}) {
 
   const awaitStarter = !!opts.awaitStarter && !starterFlow.decided;
   const starterName = opts.starterName || null;
-  const previewMs = S.isBot ? 8000 : MATCH_PREVIEW_MS;
+  const minHoldMs = S.isBot ? MATCH_PREVIEW_BOT_MS : MATCH_PREVIEW_MS;
+  const previewMs = Math.max(minHoldMs, estimateMatchIntroMs(players));
 
   if (chooser) {
     chooser.classList.toggle('hidden', !awaitStarter);
@@ -7347,23 +7353,30 @@ function showMatchPreviewOverlay(preview, opts = {}) {
         ? 'Tap “You Start” to begin, or use bull / coin / pick'
         : 'Host is deciding who throws first…';
     } else if (starterName) {
-      footerEl.textContent = `${starterName} throws first — match opens shortly…`;
+      footerEl.textContent = `${starterName} throws first — walk-ons & intro…`;
     } else {
-      footerEl.textContent = 'Match opens in a moment…';
+      footerEl.textContent = 'Walk-ons & main-event intro…';
     }
   }
 
   overlay.classList.remove('hidden');
 
-  // Announce the match (and walk-outs) during the preview card, not only after it.
-  runMatchIntroAnnounce(preview);
+  // Walk-outs + main-event announce during the preview card (awaited before kickoff).
+  const introPromise = runMatchIntroAnnounce(preview);
 
   if (!awaitStarter) {
-    matchPreviewTimer = setTimeout(() => {
-      matchPreviewTimer = null;
-      hideMatchPreviewOverlay();
-      beginMatchAfterPreview();
-    }, previewMs);
+    const holdPromise = new Promise(resolve => setTimeout(resolve, minHoldMs));
+    Promise.all([introPromise, holdPromise]).then(() => {
+      if (progressEl) {
+        progressEl.style.animation = 'none';
+        progressEl.style.width = '100%';
+      }
+      matchPreviewTimer = setTimeout(() => {
+        matchPreviewTimer = null;
+        hideMatchPreviewOverlay();
+        beginMatchAfterPreview();
+      }, 700);
+    });
   }
 }
 
@@ -7389,10 +7402,20 @@ function beginMatchAfterPreview() {
     ms: 1600
   });
   runWarmupCountdown(() => {
-    if (!matchIntroAnnounced) runMatchIntroAnnounce(pendingMatchPreview);
-    else announceSpeak('Game on.', { cancel: false, enqueue: true });
-    maybeAnnounceX01Require();
-    startAmbientBed();
+    const afterIntro = () => {
+      maybeAnnounceX01Require();
+      startAmbientBed();
+    };
+    if (!matchIntroAnnounced) {
+      runMatchIntroAnnounce(pendingMatchPreview).finally(() => {
+        announceSpeak('Game on.', { cancel: false, enqueue: true });
+        afterIntro();
+      });
+    } else {
+      // Intro already finished before warm-up (preview waited on it).
+      announceSpeak('Game on.', { cancel: false, enqueue: true });
+      afterIntro();
+    }
   });
 }
 
@@ -12841,8 +12864,8 @@ function toggleAnnounceMute() {
 }
 
 function announceSpeak(text, { force = false, cancel = true, enqueue = false, eventType = null } = {}) {
-  if ((!force && announceMuted) || text == null || text === '') return;
-  if (typeof window === 'undefined') return;
+  if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
+  if (typeof window === 'undefined') return Promise.resolve();
 
   const speakNow = async () => {
     const voice = resolveAnnounceVoiceId(eventType);
@@ -12886,9 +12909,10 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false, ev
 
   if (enqueue) {
     announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
-    return;
+    return announceSpeakQueue;
   }
   announceSpeakQueue = speakNow();
+  return announceSpeakQueue;
 }
 
 function previewAnnounceVoice() {
@@ -12902,15 +12926,50 @@ function previewAnnounceVoice() {
   if (wasMuted) toast('Preview only — announcements still muted');
 }
 
-function announceMatchStart(preview = null) {
-  const game = S.game || preview?.game || 'Match';
-  const fromPreview = preview?.players?.length >= 2
-    ? [preview.players[0]?.username, preview.players[1]?.username]
+function matchIntroPlayersAndNames(preview = null) {
+  const src = preview || pendingMatchPreview;
+  const players = src?.players?.length ? src.players : null;
+  const fromPreview = players?.length >= 2
+    ? [players[0]?.username, players[1]?.username]
     : null;
   const names = fromPreview || seatPlayerNames();
-  const a = names[0] || 'Player 1';
-  const b = names[1] || 'Player 2';
-  announceSpeak(`${game}. ${a} versus ${b}.`);
+  return {
+    src,
+    players: players || [],
+    game: S.game || src?.game || 'Match',
+    a: names[0] || 'Player 1',
+    b: names[1] || 'Player 2',
+    tournamentName: src?.tournamentName || S.tournamentName || '',
+  };
+}
+
+function buildMainMatchOpenLine({ game, tournamentName = '' } = {}) {
+  const eventBit = tournamentName
+    ? `this ${tournamentName} ${game} main event`
+    : `this ${game} main event`;
+  const lines = [
+    `Ladies and gentlemen… welcome to Treble-Makers Arena for ${eventBit}!`,
+    `From Treble-Makers Arena… it's ${eventBit}!`,
+    `Welcome to Treble-Makers Arena — ${eventBit} is about to begin!`,
+    `It's main-event time in Treble-Makers Arena for ${eventBit}!`,
+  ];
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+function buildMainMatchCloseLine({ game, a, b } = {}) {
+  const lines = [
+    `${game}! ${a} versus ${b}!`,
+    `Your main event — ${a} versus ${b}!`,
+    `${a} versus ${b}… for the ${game}!`,
+  ];
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+/** Fallback one-shot intro when walk-on sequence is unavailable. */
+function announceMatchStart(preview = null) {
+  const { game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
+  const line = `${buildMainMatchOpenLine({ game, tournamentName })} Introducing… ${a}… versus… ${b}!`;
+  return announceSpeak(line, { cancel: false, enqueue: true });
 }
 
 function parseAnnounceVisitTotal(display) {
@@ -13079,37 +13138,45 @@ let walkoutHearMode = (() => {
   } catch { return 'mine'; }
 })();
 let matchIntroAnnounced = false;
+let matchIntroPromise = Promise.resolve();
 let walkoutPlayToken = 0;
 let quietProfileSave = false;
 
-// 24 synthesized ~5s walk-out stings (no external audio files required).
+// Real walk-out MP3 clips (~11–15s), served from TrebleMakers_Walkout_clips/ (copied into public/ at build).
+const WALKOUT_DIR = 'TrebleMakers_Walkout_clips';
+// Bump when replacing clip bytes under the same filenames (public/ is cache-immutable for 30d).
+const WALKOUT_ASSET_VER = '15s1';
 const WALKOUT_CATALOG = [
-  { id: 'wo01', name: 'Oche Thunder', key: 0 },
-  { id: 'wo02', name: 'Treble March', key: 2 },
-  { id: 'wo03', name: 'Bullseye Brass', key: 4 },
-  { id: 'wo04', name: 'Checkout Call', key: 5 },
-  { id: 'wo05', name: 'Arena Pulse', key: 7 },
-  { id: 'wo06', name: 'Double Top', key: 9 },
-  { id: 'wo07', name: 'Nine-Darter', key: 11 },
-  { id: 'wo08', name: 'Lazy Fire', key: 0 },
-  { id: 'wo09', name: 'WDL Rise', key: 2 },
-  { id: 'wo10', name: 'Silver Flight', key: 3 },
-  { id: 'wo11', name: 'Gold Rush', key: 5 },
-  { id: 'wo12', name: 'Backboard Beat', key: 7 },
-  { id: 'wo13', name: 'Shanghai Strut', key: 8 },
-  { id: 'wo14', name: 'Cricket Crowd', key: 10 },
-  { id: 'wo15', name: 'Halve-It Hook', key: 0 },
-  { id: 'wo16', name: 'Power Visit', key: 1 },
-  { id: 'wo17', name: 'Leg Breaker', key: 3 },
-  { id: 'wo18', name: 'Set Closer', key: 4 },
-  { id: 'wo19', name: 'Trophy Walk', key: 6 },
-  { id: 'wo20', name: 'Neon Oche', key: 8 },
-  { id: 'wo21', name: 'Midnight Match', key: 9 },
-  { id: 'wo22', name: 'Crowd Surge', key: 11 },
-  { id: 'wo23', name: 'Final Dart', key: 2 },
-  { id: 'wo24', name: 'Champ Entrance', key: 5 },
+  { id: 'wo01', name: 'Sports Score', file: 'adinkra_audio-sports-score-273965.mp3' },
+  { id: 'wo02', name: 'Big Dreams', file: 'alexguz-big-dreams-motivation-success-running-sport-399753.mp3' },
+  { id: 'wo03', name: 'Indie Rock', file: 'alexguz-energetic-indie-rock-435816.mp3' },
+  { id: 'wo04', name: 'No Rules', file: 'alexguz-no-rules-indie-energetic-sport-rock-403876.mp3' },
+  { id: 'wo05', name: 'Stomps', file: 'alex_kizenkov-stomps-145521.mp3' },
+  { id: 'wo06', name: 'Stomps Anthem', file: 'alex_kizenkov-stomps-anthem-percussion-and-rhythm-141637.mp3' },
+  { id: 'wo07', name: 'Action Teaser', file: 'arctsound-sports-action-teaser-175880.mp3' },
+  { id: 'wo08', name: 'Pick Up', file: 'diamond_tunes-pick-up-30sec-291144.mp3' },
+  { id: 'wo09', name: 'Winning Energy', file: 'diamond_tunes-winning-energy-369939.mp3' },
+  { id: 'wo10', name: 'Metalcore', file: 'farran_ez-metalcore-music-for-extreme-sports-20s-506268.mp3' },
+  { id: 'wo11', name: 'Motivational Rap A', file: 'fasttech123-motivational-rap-300307.mp3' },
+  { id: 'wo12', name: 'Motivational Rap B', file: 'fasttech123-motivational-rap-300318.mp3' },
+  { id: 'wo13', name: 'Motivational Rap C', file: 'fasttech123-motivational-rap-300321.mp3' },
+  { id: 'wo14', name: 'Sport Claps', file: 'good_b_music-epic-sport-clap-amp-loop-revers-claps-427430.mp3' },
+  { id: 'wo15', name: 'Fear and Fire', file: 'grand_project-fear-and-fire_outro-367697.mp3' },
+  { id: 'wo16', name: 'Energy Rock', file: 'jonasblakewood-energy-rock-positive-567331.mp3' },
+  { id: 'wo17', name: 'Deep House', file: 'jonasblakewood-house-deep-528053.mp3' },
+  { id: 'wo18', name: 'Sports Intro', file: 'kaden_cook-sports-intro-259888.mp3' },
+  { id: 'wo19', name: 'Dance Party', file: 'litesaturation-dance-party-logo-112154.mp3' },
+  { id: 'wo20', name: 'Groovy Energy', file: 'litesaturation-groovy-energy-sports-80-bpm-short-12275.mp3' },
+  { id: 'wo21', name: 'Heavy Sports', file: 'litesaturation-heavy-sports-electro-rock-100-bpm-short-12480.mp3' },
+  { id: 'wo22', name: 'Dance Rock', file: 'litesaturation-sports-dance-rock-120-bpm-logo-13095.mp3' },
+  { id: 'wo23', name: 'Sport Anthem', file: 'nra-lab-no-copyright-sport-music-short-version-1-567113.mp3' },
+  { id: 'wo24', name: 'Electro Theme', file: 'studiokolomna-advertising-electro-theme-139009.mp3' },
+  { id: 'wo25', name: 'Brass Motivation', file: 'universfield-brass-motivation-143031.mp3' },
+  { id: 'wo26', name: 'Drumming', file: 'universfield-drumming-120909.mp3' },
+  { id: 'wo27', name: 'Sports Dubstep', file: 'vicatestudio-inspiring-sports-dubstep-loop-501560.mp3' },
 ];
 const WALKOUT_BY_ID = Object.fromEntries(WALKOUT_CATALOG.map(w => [w.id, w]));
+let walkoutAudioEl = null;
 
 function getWalkoutId() {
   return WALKOUT_BY_ID[walkoutIdSelected] ? walkoutIdSelected : '';
@@ -13186,7 +13253,7 @@ function syncStandsWalkoutPrefsUI() {
     ${WALKOUT_CATALOG.map(w => `
       <button type="button" class="walkout-chip${walkoutIdSelected === w.id ? ' active' : ''}" onclick="setWalkoutId('${w.id}')">
         <span class="wo-name">${w.name}</span>
-        <span class="wo-id">${w.id} · ~5s</span>
+        <span class="wo-id">${w.id} · ~12–15s</span>
       </button>
     `).join('')}
   `;
@@ -13211,32 +13278,68 @@ function enrichPreviewWithLocalPrefs(preview) {
   return copy;
 }
 
+function countHeardWalkouts(players) {
+  const hearBoth = getWalkoutHearMode() === 'both';
+  const me = S.user?.username;
+  let n = 0;
+  for (const p of players || []) {
+    if (!sanitizeClientWalkoutId(p.walkoutId)) continue;
+    if (!hearBoth && p.username !== me) continue;
+    n += 1;
+  }
+  return n;
+}
+
+function estimateMatchIntroMs(players) {
+  // Open + per-player name calls + close (~speech) + each heard walk-out clip.
+  const nameBeats = Math.max(2, (players || []).length);
+  return MAIN_MATCH_INTRO_SPEECH_MS + nameBeats * 2500 + countHeardWalkouts(players) * WALKOUT_CLIP_MS + 1500;
+}
+
 function runMatchIntroAnnounce(preview) {
-  if (matchIntroAnnounced) return;
+  if (matchIntroAnnounced) return matchIntroPromise;
   matchIntroAnnounced = true;
-  const src = preview || pendingMatchPreview;
-  const players = src?.players || [];
-  playWalkoutSequence(players).finally(() => {
-    announceMatchStart(src);
-  });
+  const { src, players, game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
+
+  matchIntroPromise = (async () => {
+    // 1) Big-stage open for every match (bot / casual / tournament).
+    await announceSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
+      cancel: false,
+      enqueue: true,
+    });
+    // 2) Walk-ons with name calls.
+    await playWalkoutSequence(players.length ? players : [{ username: a }, { username: b }]);
+    // 3) Title-card close before warm-up / "Game on."
+    await announceSpeak(buildMainMatchCloseLine({ game, a, b }), {
+      cancel: false,
+      enqueue: true,
+    });
+  })().catch(() => announceMatchStart(src));
+
+  return matchIntroPromise;
 }
 
 function playWalkoutSequence(players) {
   const hearBoth = getWalkoutHearMode() === 'both';
   const me = S.user?.username;
-  const ordered = [];
-  for (const p of players || []) {
-    const id = sanitizeClientWalkoutId(p.walkoutId);
-    if (!id) continue;
-    if (!hearBoth && p.username !== me) continue;
-    ordered.push({ username: p.username, id });
-  }
-  // "Only mine" with no selection → silence (default).
-  if (!ordered.length) return Promise.resolve();
+  const list = Array.isArray(players) ? players.filter(p => p?.username) : [];
+  if (!list.length) return Promise.resolve();
+
+  // Main-match walk-on: announce each competitor, then play their clip (if heard).
   let chain = Promise.resolve();
-  for (const item of ordered) {
-    chain = chain.then(() => playWalkoutSting(item.id));
-  }
+  list.forEach((p, i) => {
+    chain = chain.then(async () => {
+      const label = i === 0 ? 'Introducing' : 'And their opponent';
+      await announceSpeak(`${label}… ${p.username}!`, { cancel: false, enqueue: true });
+      const id = sanitizeClientWalkoutId(p.walkoutId);
+      const hearThis = hearBoth || p.username === me;
+      if (hearThis && id) {
+        await playWalkoutSting(id);
+      } else {
+        await new Promise(r => setTimeout(r, 650));
+      }
+    });
+  });
   return chain;
 }
 
@@ -13244,37 +13347,56 @@ function sanitizeClientWalkoutId(id) {
   return WALKOUT_BY_ID[id] ? id : '';
 }
 
+function stopWalkoutAudio() {
+  walkoutPlayToken += 1;
+  if (!walkoutAudioEl) return;
+  try {
+    walkoutAudioEl.pause();
+    walkoutAudioEl.removeAttribute('src');
+    walkoutAudioEl.load();
+  } catch { /* ignore */ }
+  walkoutAudioEl = null;
+}
+
 function playWalkoutSting(id) {
   const entry = WALKOUT_BY_ID[id];
-  if (!entry) return Promise.resolve();
-  const ctx = ensureArenaAudio();
-  if (!ctx) return Promise.resolve();
-  const token = ++walkoutPlayToken;
-  try {
-    if (ctx.state === 'suspended') ctx.resume();
-  } catch { /* ignore */ }
+  if (!entry?.file) return Promise.resolve();
 
-  // ~5s melodic entrance: fanfare motif unique per key offset.
-  const root = 196 * Math.pow(2, (entry.key % 12) / 12); // ~G3 family
-  const scale = [0, 2, 4, 5, 7, 9, 11, 12];
-  const pattern = [0, 2, 4, 7, 4, 7, 9, 12, 7, 12];
-  const t0 = ctx.currentTime + 0.02;
-  const dur = 5.0;
-  pattern.forEach((deg, i) => {
-    const freq = root * Math.pow(2, scale[deg % scale.length] / 12);
-    const when = (i / pattern.length) * 3.6;
-    playTone(freq, 0.28, i % 2 ? 'triangle' : 'sawtooth', 0.03, when);
-    playTone(freq * 2, 0.18, 'sine', 0.012, when + 0.05);
-  });
-  // Sustained pad under the motif
-  playTone(root / 2, dur - 0.3, 'sine', 0.018, 0);
-  playTone(root, 0.5, 'triangle', 0.025, 4.2);
-  playTone(root * 1.5, 0.45, 'sine', 0.02, 4.35);
+  // Cancel any in-flight clip so preview / sequence handoffs stay clean.
+  if (walkoutAudioEl) {
+    try {
+      walkoutAudioEl.pause();
+      walkoutAudioEl.removeAttribute('src');
+      walkoutAudioEl.load();
+    } catch { /* ignore */ }
+    walkoutAudioEl = null;
+  }
+
+  const token = ++walkoutPlayToken;
+  const audio = new Audio(`${WALKOUT_DIR}/${entry.file}?v=${WALKOUT_ASSET_VER}`);
+  walkoutAudioEl = audio;
+  audio.preload = 'auto';
+  audio.volume = 0.85;
+
   return new Promise(resolve => {
-    setTimeout(() => {
-      if (token === walkoutPlayToken) resolve();
-      else resolve();
-    }, Math.ceil(dur * 1000));
+    let settled = false;
+    let safety = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (safety != null) clearTimeout(safety);
+      if (walkoutAudioEl === audio) walkoutAudioEl = null;
+      resolve();
+    };
+    audio.addEventListener('ended', finish, { once: true });
+    audio.addEventListener('error', finish, { once: true });
+    safety = setTimeout(() => {
+      if (token === walkoutPlayToken) {
+        try { audio.pause(); } catch { /* ignore */ }
+      }
+      finish();
+    }, 16000);
+    audio.play().catch(finish);
   });
 }
 

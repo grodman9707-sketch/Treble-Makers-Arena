@@ -634,12 +634,12 @@ function defaultUserProfile() {
     league: '',
     equipment: '',
     avatarUrl: '',
-    walkoutId: '',          // '' = none (default); wo01–wo24
+    walkoutId: '',          // '' = none (default); wo01–wo27
     standsOptIn: '0',       // '1' = allow Stands gallery reactions
   };
 }
 
-const WALKOUT_IDS = new Set(Array.from({ length: 24 }, (_, i) => `wo${String(i + 1).padStart(2, '0')}`));
+const WALKOUT_IDS = new Set(Array.from({ length: 27 }, (_, i) => `wo${String(i + 1).padStart(2, '0')}`));
 
 function sanitizeWalkoutId(raw) {
   const id = String(raw == null ? '' : raw).trim();
