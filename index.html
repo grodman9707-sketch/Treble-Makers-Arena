@@ -4342,7 +4342,7 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-setting-stack" id="pref-walkout-stack">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Walk-out music</span>
-                <span class="profile-setting-hint">5s arena sting during match preview &amp; announcement. Default: none.</span>
+                <span class="profile-setting-hint">~12–15s arena clip during match preview &amp; announcement. Default: none.</span>
               </div>
               <div class="profile-setting-controls walkout-hear">
                 <label class="profile-setting-field-label" for="pref-walkout-hear">Hear</label>
@@ -13082,34 +13082,41 @@ let matchIntroAnnounced = false;
 let walkoutPlayToken = 0;
 let quietProfileSave = false;
 
-// 24 synthesized ~5s walk-out stings (no external audio files required).
+// Real walk-out MP3 clips (~11–15s), served from TrebleMakers_Walkout_clips/ (copied into public/ at build).
+const WALKOUT_DIR = 'TrebleMakers_Walkout_clips';
+// Bump when replacing clip bytes under the same filenames (public/ is cache-immutable for 30d).
+const WALKOUT_ASSET_VER = '15s1';
 const WALKOUT_CATALOG = [
-  { id: 'wo01', name: 'Oche Thunder', key: 0 },
-  { id: 'wo02', name: 'Treble March', key: 2 },
-  { id: 'wo03', name: 'Bullseye Brass', key: 4 },
-  { id: 'wo04', name: 'Checkout Call', key: 5 },
-  { id: 'wo05', name: 'Arena Pulse', key: 7 },
-  { id: 'wo06', name: 'Double Top', key: 9 },
-  { id: 'wo07', name: 'Nine-Darter', key: 11 },
-  { id: 'wo08', name: 'Lazy Fire', key: 0 },
-  { id: 'wo09', name: 'WDL Rise', key: 2 },
-  { id: 'wo10', name: 'Silver Flight', key: 3 },
-  { id: 'wo11', name: 'Gold Rush', key: 5 },
-  { id: 'wo12', name: 'Backboard Beat', key: 7 },
-  { id: 'wo13', name: 'Shanghai Strut', key: 8 },
-  { id: 'wo14', name: 'Cricket Crowd', key: 10 },
-  { id: 'wo15', name: 'Halve-It Hook', key: 0 },
-  { id: 'wo16', name: 'Power Visit', key: 1 },
-  { id: 'wo17', name: 'Leg Breaker', key: 3 },
-  { id: 'wo18', name: 'Set Closer', key: 4 },
-  { id: 'wo19', name: 'Trophy Walk', key: 6 },
-  { id: 'wo20', name: 'Neon Oche', key: 8 },
-  { id: 'wo21', name: 'Midnight Match', key: 9 },
-  { id: 'wo22', name: 'Crowd Surge', key: 11 },
-  { id: 'wo23', name: 'Final Dart', key: 2 },
-  { id: 'wo24', name: 'Champ Entrance', key: 5 },
+  { id: 'wo01', name: 'Sports Score', file: 'adinkra_audio-sports-score-273965.mp3' },
+  { id: 'wo02', name: 'Big Dreams', file: 'alexguz-big-dreams-motivation-success-running-sport-399753.mp3' },
+  { id: 'wo03', name: 'Indie Rock', file: 'alexguz-energetic-indie-rock-435816.mp3' },
+  { id: 'wo04', name: 'No Rules', file: 'alexguz-no-rules-indie-energetic-sport-rock-403876.mp3' },
+  { id: 'wo05', name: 'Stomps', file: 'alex_kizenkov-stomps-145521.mp3' },
+  { id: 'wo06', name: 'Stomps Anthem', file: 'alex_kizenkov-stomps-anthem-percussion-and-rhythm-141637.mp3' },
+  { id: 'wo07', name: 'Action Teaser', file: 'arctsound-sports-action-teaser-175880.mp3' },
+  { id: 'wo08', name: 'Pick Up', file: 'diamond_tunes-pick-up-30sec-291144.mp3' },
+  { id: 'wo09', name: 'Winning Energy', file: 'diamond_tunes-winning-energy-369939.mp3' },
+  { id: 'wo10', name: 'Metalcore', file: 'farran_ez-metalcore-music-for-extreme-sports-20s-506268.mp3' },
+  { id: 'wo11', name: 'Motivational Rap A', file: 'fasttech123-motivational-rap-300307.mp3' },
+  { id: 'wo12', name: 'Motivational Rap B', file: 'fasttech123-motivational-rap-300318.mp3' },
+  { id: 'wo13', name: 'Motivational Rap C', file: 'fasttech123-motivational-rap-300321.mp3' },
+  { id: 'wo14', name: 'Sport Claps', file: 'good_b_music-epic-sport-clap-amp-loop-revers-claps-427430.mp3' },
+  { id: 'wo15', name: 'Fear and Fire', file: 'grand_project-fear-and-fire_outro-367697.mp3' },
+  { id: 'wo16', name: 'Energy Rock', file: 'jonasblakewood-energy-rock-positive-567331.mp3' },
+  { id: 'wo17', name: 'Deep House', file: 'jonasblakewood-house-deep-528053.mp3' },
+  { id: 'wo18', name: 'Sports Intro', file: 'kaden_cook-sports-intro-259888.mp3' },
+  { id: 'wo19', name: 'Dance Party', file: 'litesaturation-dance-party-logo-112154.mp3' },
+  { id: 'wo20', name: 'Groovy Energy', file: 'litesaturation-groovy-energy-sports-80-bpm-short-12275.mp3' },
+  { id: 'wo21', name: 'Heavy Sports', file: 'litesaturation-heavy-sports-electro-rock-100-bpm-short-12480.mp3' },
+  { id: 'wo22', name: 'Dance Rock', file: 'litesaturation-sports-dance-rock-120-bpm-logo-13095.mp3' },
+  { id: 'wo23', name: 'Sport Anthem', file: 'nra-lab-no-copyright-sport-music-short-version-1-567113.mp3' },
+  { id: 'wo24', name: 'Electro Theme', file: 'studiokolomna-advertising-electro-theme-139009.mp3' },
+  { id: 'wo25', name: 'Brass Motivation', file: 'universfield-brass-motivation-143031.mp3' },
+  { id: 'wo26', name: 'Drumming', file: 'universfield-drumming-120909.mp3' },
+  { id: 'wo27', name: 'Sports Dubstep', file: 'vicatestudio-inspiring-sports-dubstep-loop-501560.mp3' },
 ];
 const WALKOUT_BY_ID = Object.fromEntries(WALKOUT_CATALOG.map(w => [w.id, w]));
+let walkoutAudioEl = null;
 
 function getWalkoutId() {
   return WALKOUT_BY_ID[walkoutIdSelected] ? walkoutIdSelected : '';
@@ -13186,7 +13193,7 @@ function syncStandsWalkoutPrefsUI() {
     ${WALKOUT_CATALOG.map(w => `
       <button type="button" class="walkout-chip${walkoutIdSelected === w.id ? ' active' : ''}" onclick="setWalkoutId('${w.id}')">
         <span class="wo-name">${w.name}</span>
-        <span class="wo-id">${w.id} · ~5s</span>
+        <span class="wo-id">${w.id} · ~12–15s</span>
       </button>
     `).join('')}
   `;
@@ -13244,37 +13251,56 @@ function sanitizeClientWalkoutId(id) {
   return WALKOUT_BY_ID[id] ? id : '';
 }
 
+function stopWalkoutAudio() {
+  walkoutPlayToken += 1;
+  if (!walkoutAudioEl) return;
+  try {
+    walkoutAudioEl.pause();
+    walkoutAudioEl.removeAttribute('src');
+    walkoutAudioEl.load();
+  } catch { /* ignore */ }
+  walkoutAudioEl = null;
+}
+
 function playWalkoutSting(id) {
   const entry = WALKOUT_BY_ID[id];
-  if (!entry) return Promise.resolve();
-  const ctx = ensureArenaAudio();
-  if (!ctx) return Promise.resolve();
-  const token = ++walkoutPlayToken;
-  try {
-    if (ctx.state === 'suspended') ctx.resume();
-  } catch { /* ignore */ }
+  if (!entry?.file) return Promise.resolve();
 
-  // ~5s melodic entrance: fanfare motif unique per key offset.
-  const root = 196 * Math.pow(2, (entry.key % 12) / 12); // ~G3 family
-  const scale = [0, 2, 4, 5, 7, 9, 11, 12];
-  const pattern = [0, 2, 4, 7, 4, 7, 9, 12, 7, 12];
-  const t0 = ctx.currentTime + 0.02;
-  const dur = 5.0;
-  pattern.forEach((deg, i) => {
-    const freq = root * Math.pow(2, scale[deg % scale.length] / 12);
-    const when = (i / pattern.length) * 3.6;
-    playTone(freq, 0.28, i % 2 ? 'triangle' : 'sawtooth', 0.03, when);
-    playTone(freq * 2, 0.18, 'sine', 0.012, when + 0.05);
-  });
-  // Sustained pad under the motif
-  playTone(root / 2, dur - 0.3, 'sine', 0.018, 0);
-  playTone(root, 0.5, 'triangle', 0.025, 4.2);
-  playTone(root * 1.5, 0.45, 'sine', 0.02, 4.35);
+  // Cancel any in-flight clip so preview / sequence handoffs stay clean.
+  if (walkoutAudioEl) {
+    try {
+      walkoutAudioEl.pause();
+      walkoutAudioEl.removeAttribute('src');
+      walkoutAudioEl.load();
+    } catch { /* ignore */ }
+    walkoutAudioEl = null;
+  }
+
+  const token = ++walkoutPlayToken;
+  const audio = new Audio(`${WALKOUT_DIR}/${entry.file}?v=${WALKOUT_ASSET_VER}`);
+  walkoutAudioEl = audio;
+  audio.preload = 'auto';
+  audio.volume = 0.85;
+
   return new Promise(resolve => {
-    setTimeout(() => {
-      if (token === walkoutPlayToken) resolve();
-      else resolve();
-    }, Math.ceil(dur * 1000));
+    let settled = false;
+    let safety = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (safety != null) clearTimeout(safety);
+      if (walkoutAudioEl === audio) walkoutAudioEl = null;
+      resolve();
+    };
+    audio.addEventListener('ended', finish, { once: true });
+    audio.addEventListener('error', finish, { once: true });
+    safety = setTimeout(() => {
+      if (token === walkoutPlayToken) {
+        try { audio.pause(); } catch { /* ignore */ }
+      }
+      finish();
+    }, 16000);
+    audio.play().catch(finish);
   });
 }
 
