@@ -13538,6 +13538,8 @@ function previewSelectedWalkout() {
   playWalkoutSting(id);
 }
 
+const BOT_WALKOUT_ID = 'wo18'; // Sports Intro — fixed bot walk-out
+
 function enrichPreviewWithLocalPrefs(preview) {
   const copy = preview && typeof preview === 'object'
     ? { ...preview, players: (preview.players || []).map(p => ({ ...p })) }
@@ -13546,6 +13548,9 @@ function enrichPreviewWithLocalPrefs(preview) {
     if (p.username === S.user?.username) {
       p.walkoutId = getWalkoutId() || p.walkoutId || '';
       p.standsOptIn = getStandsOptIn();
+    } else if (p.isBot || /bot/i.test(p.username || '')) {
+      // Ensure bot opponents always have Sports Intro walk-out music.
+      p.walkoutId = sanitizeClientWalkoutId(p.walkoutId) || BOT_WALKOUT_ID;
     }
   }
   return copy;
@@ -13592,7 +13597,9 @@ function playWalkoutSequence(players) {
   let chain = Promise.resolve();
   list.forEach((p) => {
     chain = chain.then(async () => {
-      const id = sanitizeClientWalkoutId(p.walkoutId) || houseId;
+      const isBot = !!(p.isBot || /bot/i.test(p.username || ''));
+      const id = sanitizeClientWalkoutId(p.walkoutId)
+        || (isBot ? BOT_WALKOUT_ID : houseId);
       if (id) {
         await playWalkoutSting(id);
       } else {

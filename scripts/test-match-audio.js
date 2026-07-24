@@ -98,19 +98,20 @@ async function main() {
     }
     report.steps.push('preview timing covers both walk-outs');
 
-    // Spy walkout playback
+    // Spy walkout IDs played
     await page.evaluate(() => {
       window.__walkoutPlays = 0;
+      window.__walkoutIds = [];
       const orig = playWalkoutSting;
       playWalkoutSting = (id) => {
         window.__walkoutPlays += 1;
-        // Resolve quickly in test — still count both slots.
+        window.__walkoutIds.push(id);
         return Promise.resolve();
       };
       window.__origPlayWalkoutSting = orig;
     });
 
-    await page.evaluate(async () => {
+    const botPreview = await page.evaluate(async () => {
       S.game = 'X01';
       S.matchVariation = {
         x01Base: 501,
@@ -123,35 +124,50 @@ async function main() {
       createBotMatch();
       for (let i = 0; i < 50; i++) {
         await new Promise((r) => setTimeout(r, 100));
-        if (S.roomId && S.gameState) return;
+        if (S.roomId && pendingMatchPreview) {
+          return {
+            roomId: S.roomId,
+            players: (pendingMatchPreview.players || []).map((p) => ({
+              username: p.username,
+              walkoutId: p.walkoutId || '',
+              isBot: !!p.isBot,
+            })),
+          };
+        }
       }
       throw new Error('bot room did not start');
     });
+    report.botPreview = botPreview;
     report.steps.push('bot room started');
 
-    // Let preview intro sequence start (music-only).
-    await wait(1500);
-    const walkouts = await page.evaluate(() => window.__walkoutPlays || 0);
-    report.walkoutPlays = walkouts;
-    if (walkouts < 1) {
-      // Sequence may still be mid-flight; force a direct call check.
-      const forced = await page.evaluate(async () => {
-        matchIntroAnnounced = false;
-        matchIntroPromise = Promise.resolve();
-        await runMatchIntroAnnounce({
-          game: 'X01',
-          x01Base: 501,
-          players: [
-            { username: S.user.username, walkoutId: 'wo01' },
-            { username: 'Bot (Level 3)', walkoutId: 'wo02' },
-          ],
-        });
-        return window.__walkoutPlays;
-      });
-      report.walkoutPlays = forced;
-      if (forced < 2) throw new Error('expected 2 walk-out plays, got ' + forced);
+    const botPlayer = (botPreview.players || []).find((p) => /bot/i.test(p.username || '') || p.isBot);
+    if (!botPlayer || botPlayer.walkoutId !== 'wo18') {
+      throw new Error('bot walkout expected wo18, got ' + JSON.stringify(botPlayer));
     }
-    report.steps.push(`walk-out plays: ${report.walkoutPlays}`);
+    report.steps.push('bot walkout is wo18');
+
+    // Force a clean dual walk-out sequence and confirm bot clip id.
+    const forced = await page.evaluate(async () => {
+      window.__walkoutPlays = 0;
+      window.__walkoutIds = [];
+      matchIntroAnnounced = false;
+      matchIntroPromise = Promise.resolve();
+      await runMatchIntroAnnounce({
+        game: 'X01',
+        x01Base: 501,
+        players: [
+          { username: S.user.username, walkoutId: 'wo01' },
+          { username: 'Bot (Level 3)', walkoutId: 'wo18', isBot: true },
+        ],
+      });
+      return { plays: window.__walkoutPlays, ids: window.__walkoutIds.slice() };
+    });
+    report.walkoutPlays = forced.plays;
+    report.walkoutIds = forced.ids;
+    if (forced.plays < 2 || !forced.ids.includes('wo18')) {
+      throw new Error('expected wo18 in walk-out sequence, got ' + JSON.stringify(forced));
+    }
+    report.steps.push(`walk-out plays: ${report.walkoutPlays} (${forced.ids.join(',')})`);
 
     // Voice APIs must not be hit for intro/score calling.
     if (report.voicePosts.length) {
