@@ -115,12 +115,29 @@ async function build() {
     copied++;
   }
 
+  // 6) Copy walkout audio clips (whole folder) into public/ so cloud deploys can serve them.
+  const WALKOUT_DIR = 'TrebleMakers_Walkout_clips';
+  let walkoutCopied = 0;
+  const walkoutFrom = path.join(ROOT, WALKOUT_DIR);
+  if (fs.existsSync(walkoutFrom)) {
+    const walkoutTo = path.join(PUBLIC_DIR, WALKOUT_DIR);
+    fs.mkdirSync(walkoutTo, { recursive: true });
+    for (const name of fs.readdirSync(walkoutFrom)) {
+      if (!name.toLowerCase().endsWith('.mp3')) continue;
+      fs.copyFileSync(path.join(walkoutFrom, name), path.join(walkoutTo, name));
+      walkoutCopied++;
+    }
+  } else {
+    console.warn(`  ! missing walkout clips folder: ${WALKOUT_DIR}`);
+  }
+
   const kb = (p) => (fs.statSync(p).size / 1024).toFixed(1);
   console.log('Build complete -> public/');
   console.log(`  index.html : ${kb(path.join(PUBLIC_DIR, 'index.html'))} KB`);
   console.log(`  app.css    : ${kb(path.join(PUBLIC_DIR, 'app.css'))} KB (minified)`);
   console.log(`  app.js     : ${kb(path.join(PUBLIC_DIR, 'app.js'))} KB (minified)`);
   console.log(`  assets     : ${copied} copied${missing ? `, ${missing} MISSING` : ''}`);
+  console.log(`  walkouts   : ${walkoutCopied} mp3 copied`);
 }
 
 build().catch((err) => { console.error(err); process.exit(1); });

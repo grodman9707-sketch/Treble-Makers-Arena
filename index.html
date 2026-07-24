@@ -558,6 +558,50 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .lobby-hero p { color: var(--silver-light); font-size: 0.85rem; margin-top: 0.3rem; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
 
+.presence-bar {
+  display: flex; align-items: stretch; gap: 0.75rem; padding: 0.85rem 2rem 0.35rem;
+  flex-wrap: wrap;
+}
+.presence-box {
+  display: flex; flex-direction: column; justify-content: center; gap: 0.15rem;
+  min-width: 150px; padding: 0.65rem 1.1rem;
+  border: 1px solid rgba(201,168,76,0.35); border-radius: 6px;
+  background: rgba(13, 13, 20, 0.72); color: var(--silver-light);
+  cursor: pointer; text-align: left;
+  font-family: 'Cinzel', serif; letter-spacing: 0.06em;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+.presence-box:hover {
+  border-color: var(--gold);
+  background: rgba(26, 26, 46, 0.88);
+  color: var(--gold-light);
+  transform: translateY(-1px);
+}
+.presence-box-label {
+  font-size: 0.62rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.14em;
+}
+.presence-box-value {
+  font-family: 'Orbitron', monospace; font-size: 1.05rem; color: var(--gold-light);
+}
+.presence-box-hint { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.04em; }
+.presence-list { display: flex; flex-direction: column; gap: 0.45rem; max-height: 320px; overflow-y: auto; }
+.presence-row {
+  display: flex; align-items: center; gap: 0.65rem; justify-content: space-between;
+  padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(0,0,0,0.28);
+}
+.presence-row-name { font-size: 0.9rem; color: var(--text); }
+.presence-row-meta { font-size: 0.68rem; color: var(--muted); }
+.presence-row-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.presence-search-row { display: flex; gap: 0.5rem; margin-bottom: 0.85rem; }
+.presence-search-row input { flex: 1; }
+.presence-section-title {
+  font-family: 'Cinzel', serif; font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold); margin: 0.85rem 0 0.45rem;
+}
+.presence-empty { color: var(--muted); font-size: 0.85rem; padding: 0.75rem 0; text-align: center; }
+
 .lobby-toolbar {
   display: flex; align-items: center; gap: 0.65rem; padding: 1rem 2rem;
   border-bottom: 1px solid var(--border); flex-wrap: wrap; background: transparent;
@@ -3282,6 +3326,18 @@ body.app-active .arena-bg { animation: none !important; }
         <h1>Match Lobby</h1>
         <p>Find an open match or create your own. Enable your camera from the nav before joining.</p>
       </div>
+      <div class="presence-bar" id="presence-bar">
+        <button type="button" class="presence-box" id="people-online-box" onclick="openPeopleOnlinePanel()">
+          <span class="presence-box-label">People online</span>
+          <span class="presence-box-value" id="people-online-count">0</span>
+          <span class="presence-box-hint">Tap to view players</span>
+        </button>
+        <button type="button" class="presence-box" id="friends-online-box" onclick="openFriendsOnlinePanel()">
+          <span class="presence-box-label">Friends online</span>
+          <span class="presence-box-value" id="friends-online-count">0</span>
+          <span class="presence-box-hint">Tap to view friends</span>
+        </button>
+      </div>
       <div class="lobby-toolbar">
         <button class="filter-chip active" data-filter="all">All Games</button>
         <button class="filter-chip" data-filter="X01">X01</button>
@@ -3878,6 +3934,11 @@ body.app-active .arena-bg { animation: none !important; }
             <option value="bot">Bot Opponent</option>
           </select>
         </div>
+        <div class="form-group" id="invite-friend-row">
+          <label>Invite</label>
+          <button type="button" class="btn btn-sm" id="invite-friend-btn" onclick="openInviteFriendPicker()">Invite a Friend</button>
+          <div id="invite-friend-selected" class="presence-row-meta" style="margin-top:0.45rem"></div>
+        </div>
         <div class="form-group hidden" id="bot-skill-row">
           <label>Bot Skill</label>
           <select id="bot-skill" onchange="selectBotSkill(this)">
@@ -3892,6 +3953,75 @@ body.app-active .arena-bg { animation: none !important; }
     <div class="modal-footer">
       <button class="btn" onclick="closeModal('create-match-modal')">Cancel</button>
       <button class="btn btn-gold" id="create-match-go-btn" onclick="startMatchFromModal()">Start Match →</button>
+    </div>
+  </div>
+</div>
+
+<!-- People Online Modal -->
+<div class="modal-overlay" id="people-online-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2>People Online</h2>
+      <button class="modal-close" onclick="closeModal('people-online-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="presence-search-row form-group" style="margin:0">
+        <input id="friend-search-input" type="text" placeholder="Search username to add friend" maxlength="24" />
+        <button type="button" class="btn btn-gold btn-sm" onclick="sendFriendRequestFromSearch()">Add</button>
+      </div>
+      <div class="presence-section-title">Incoming requests</div>
+      <div class="presence-list" id="people-incoming-list"></div>
+      <div class="presence-section-title">Online now</div>
+      <div class="presence-list" id="people-online-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Friends Online Modal -->
+<div class="modal-overlay" id="friends-online-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2>Friends Online</h2>
+      <button class="modal-close" onclick="closeModal('friends-online-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="presence-section-title">Online friends</div>
+      <div class="presence-list" id="friends-online-list"></div>
+      <div class="presence-section-title">All friends</div>
+      <div class="presence-list" id="friends-all-list"></div>
+      <div class="presence-section-title">Outgoing requests</div>
+      <div class="presence-list" id="friends-outgoing-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Invite Friend Picker (from create match) -->
+<div class="modal-overlay" id="invite-friend-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2>Invite a Friend</h2>
+      <button class="modal-close" onclick="closeModal('invite-friend-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="presence-row-meta" style="margin-bottom:0.75rem">Choose an online friend to invite when the match starts.</p>
+      <div class="presence-list" id="invite-friend-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Incoming Match Invite -->
+<div class="modal-overlay" id="match-invite-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2>Match Invite</h2>
+      <button class="modal-close" onclick="declineMatchInvite()">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="match-invite-text" style="color:var(--silver-light);line-height:1.5"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="declineMatchInvite()">Decline</button>
+      <button class="btn btn-gold" onclick="acceptMatchInvite()">Join Match →</button>
     </div>
   </div>
 </div>
@@ -4233,6 +4363,11 @@ const S = {
   arena: { mode: 'open', message: '', registrationOpen: true, guestAllowed: true, pendingCount: 0 },
   camView: { zoom: 1.15, fit: 'cover' },
   matchVariation: {},
+  onlineCount: 0,
+  onlinePlayers: [],
+  friends: [],
+  friendRequests: { incoming: [], outgoing: [] },
+  onlineFriends: [],
 };
 
 const GAME_RULES = {
@@ -4465,6 +4600,8 @@ function handleWS(msg) {
         updateArenaAdminUI();
         updateGameAccessUI();
         wsSend({ type: 'get_lobby' });
+        wsSend({ type: 'get_presence' });
+        wsSend({ type: 'get_friends' });
         if (S.user.mustChangePassword) openForcedPasswordChange();
       } else {
         enterApp();
@@ -4493,7 +4630,14 @@ function handleWS(msg) {
       S.roomId = msg.roomId; S.isHost = true;
       setChatEnabled(true);
       updateConnStatusVisibility();
-      toast('Match created! Waiting for opponent...');
+      if (pendingInviteFriend) {
+        wsSend({ type: 'invite_friend', username: pendingInviteFriend, roomId: msg.roomId });
+        toast(`Match created! Invite sent to ${pendingInviteFriend}.`);
+        pendingInviteFriend = null;
+        updateInviteFriendSelectedLabel();
+      } else {
+        toast('Match created! Waiting for opponent...');
+      }
       break;
     case 'room_cancelled':
       if (S.roomId === msg.roomId) {
@@ -4663,6 +4807,56 @@ function handleWS(msg) {
       toast(msg.message || 'Could not save profile.');
       break;
     case 'error': toast(msg.message); break;
+    case 'presence_update':
+      applyPresenceUpdate(msg);
+      break;
+    case 'friends':
+      applyFriendsUpdate(msg);
+      break;
+    case 'friend_request_ok':
+      toast(msg.accepted
+        ? `You are now friends with ${msg.username}.`
+        : `Friend request sent to ${msg.username}.`);
+      wsSend({ type: 'get_friends' });
+      break;
+    case 'friend_request_received':
+      toast(msg.message || `${msg.username} sent you a friend request.`);
+      wsSend({ type: 'get_friends' });
+      refreshOpenPresencePanels();
+      break;
+    case 'friend_accepted':
+      toast(msg.message || `${msg.username} accepted your friend request.`);
+      wsSend({ type: 'get_friends' });
+      refreshOpenPresencePanels();
+      break;
+    case 'friend_declined':
+      toast(msg.message || `${msg.username} declined your friend request.`);
+      wsSend({ type: 'get_friends' });
+      refreshOpenPresencePanels();
+      break;
+    case 'friend_respond_ok':
+      toast(msg.accept
+        ? `You are now friends with ${msg.username}.`
+        : `Declined ${msg.username}'s request.`);
+      wsSend({ type: 'get_friends' });
+      refreshOpenPresencePanels();
+      break;
+    case 'friend_remove_ok':
+      toast(`Removed ${msg.username} from friends.`);
+      wsSend({ type: 'get_friends' });
+      refreshOpenPresencePanels();
+      break;
+    case 'invite_friend_ok':
+      toast(`Invite sent to ${msg.username}.`);
+      break;
+    case 'match_invite':
+      showMatchInvite(msg);
+      break;
+    case 'invite_declined':
+      toast(`${msg.username || 'Friend'} declined your match invite.`);
+      break;
+    case 'decline_invite_ok':
+      break;
   }
 }
 
@@ -5015,6 +5209,11 @@ function doLogout() {
   sessionToken = null;
   pendingRemember = false;
   stopLocalStream(); S.user = {}; S.roomId = null;
+  S.friends = [];
+  S.friendRequests = { incoming: [], outgoing: [] };
+  S.onlineFriends = [];
+  pendingInviteFriend = null;
+  pendingMatchInvite = null;
   resetArenaDoors();
   const landing = document.getElementById('screen-landing');
   const app = document.getElementById('screen-app');
@@ -5100,9 +5299,12 @@ function enterApp(skipDoorAnimation) {
   wsSend({ type: 'get_lobby' });
   wsSend({ type: 'get_tournaments' });
   wsSend({ type: 'get_leaderboard' });
+  wsSend({ type: 'get_presence' });
+  wsSend({ type: 'get_friends' });
   showPage('lobby');
   showAppTickers();
   syncAppTickersForPage('lobby');
+  updatePresenceBar();
 
   if (S.user.mustChangePassword) {
     openForcedPasswordChange();
@@ -5182,6 +5384,293 @@ function renderLobby(filter = currentFilter) {
 
   ag.innerHTML = active.length ? active.map(r => matchCard(r, true)).join('') :
     '<div class="empty-state"><div class="big-icon">🎮</div><p>No active matches right now.</p></div>';
+}
+
+// ── Presence & friends UI ──
+let pendingInviteFriend = null;
+let pendingMatchInvite = null;
+
+function computeOnlineFriends() {
+  const onlineSet = new Set((S.onlinePlayers || []).map(p => p.username));
+  return (S.friends || []).filter(n => onlineSet.has(n));
+}
+
+function applyPresenceUpdate(msg) {
+  S.onlineCount = msg.onlineCount || 0;
+  S.onlinePlayers = Array.isArray(msg.online) ? msg.online : [];
+  S.onlineFriends = computeOnlineFriends();
+  updatePresenceBar();
+  refreshOpenPresencePanels();
+}
+
+function applyFriendsUpdate(msg) {
+  S.friends = Array.isArray(msg.friends) ? msg.friends : [];
+  S.friendRequests = {
+    incoming: Array.isArray(msg.friendRequests?.incoming) ? msg.friendRequests.incoming : [],
+    outgoing: Array.isArray(msg.friendRequests?.outgoing) ? msg.friendRequests.outgoing : [],
+  };
+  S.onlineFriends = Array.isArray(msg.onlineFriends) ? msg.onlineFriends : computeOnlineFriends();
+  updatePresenceBar();
+  refreshOpenPresencePanels();
+}
+
+function updatePresenceBar() {
+  const peopleEl = document.getElementById('people-online-count');
+  const friendsEl = document.getElementById('friends-online-count');
+  if (peopleEl) peopleEl.textContent = String(S.onlineCount || 0);
+  if (friendsEl) {
+    friendsEl.textContent = isGuestUser() ? '—' : String((S.onlineFriends || []).length);
+  }
+  const hint = document.querySelector('#friends-online-box .presence-box-hint');
+  if (hint) hint.textContent = isGuestUser() ? 'Sign in to use friends' : 'Tap to view friends';
+}
+
+function refreshOpenPresencePanels() {
+  if (document.getElementById('people-online-modal')?.classList.contains('open')) {
+    renderPeopleOnlinePanel();
+  }
+  if (document.getElementById('friends-online-modal')?.classList.contains('open')) {
+    renderFriendsOnlinePanel();
+  }
+  if (document.getElementById('invite-friend-modal')?.classList.contains('open')) {
+    renderInviteFriendPicker();
+  }
+}
+
+function openPeopleOnlinePanel() {
+  renderPeopleOnlinePanel();
+  openModal('people-online-modal');
+}
+
+function openFriendsOnlinePanel() {
+  if (isGuestUser()) {
+    toast('Sign in with a registered account to use friends.');
+    return;
+  }
+  renderFriendsOnlinePanel();
+  openModal('friends-online-modal');
+}
+
+function friendRelation(username) {
+  if (!username || username === S.user?.username) return 'self';
+  if ((S.friends || []).includes(username)) return 'friend';
+  if ((S.friendRequests?.outgoing || []).includes(username)) return 'outgoing';
+  if ((S.friendRequests?.incoming || []).includes(username)) return 'incoming';
+  return 'none';
+}
+
+function renderPeopleOnlinePanel() {
+  const incomingEl = document.getElementById('people-incoming-list');
+  const listEl = document.getElementById('people-online-list');
+  if (!incomingEl || !listEl) return;
+
+  const incoming = S.friendRequests?.incoming || [];
+  if (isGuestUser()) {
+    incomingEl.innerHTML = '<div class="presence-empty">Sign in to manage friend requests.</div>';
+  } else if (!incoming.length) {
+    incomingEl.innerHTML = '<div class="presence-empty">No pending requests.</div>';
+  } else {
+    incomingEl.innerHTML = incoming.map(name => `
+      <div class="presence-row">
+        <div>
+          <div class="presence-row-name">${usernameLinkHtml(name)}</div>
+          <div class="presence-row-meta">Wants to be friends</div>
+        </div>
+        <div class="presence-row-actions">
+          <button class="btn btn-gold btn-sm" onclick="respondFriendRequest(${JSON.stringify(name)}, true)">Accept</button>
+          <button class="btn btn-sm" onclick="respondFriendRequest(${JSON.stringify(name)}, false)">Decline</button>
+        </div>
+      </div>`).join('');
+  }
+
+  const players = (S.onlinePlayers || []).filter(p => p.username !== S.user?.username);
+  if (!players.length) {
+    listEl.innerHTML = '<div class="presence-empty">No one else is online right now.</div>';
+    return;
+  }
+  listEl.innerHTML = players.map(p => {
+    const rel = friendRelation(p.username);
+    let actions = '';
+    if (!isGuestUser() && !p.isGuest) {
+      if (rel === 'none') {
+        actions = `<button class="btn btn-gold btn-sm" onclick="sendFriendRequest(${JSON.stringify(p.username)})">Add Friend</button>`;
+      } else if (rel === 'outgoing') {
+        actions = `<span class="presence-row-meta">Request sent</span>`;
+      } else if (rel === 'incoming') {
+        actions = `<button class="btn btn-gold btn-sm" onclick="respondFriendRequest(${JSON.stringify(p.username)}, true)">Accept</button>`;
+      } else if (rel === 'friend') {
+        actions = `<span class="presence-row-meta">Friends</span>`;
+      }
+    } else if (p.isGuest) {
+      actions = `<span class="presence-row-meta">Guest</span>`;
+    }
+    return `<div class="presence-row">
+      <div>
+        <div class="presence-row-name">${usernameLinkHtml(p.username)}</div>
+        <div class="presence-row-meta">${p.isGuest ? 'Guest' : 'Registered'}</div>
+      </div>
+      <div class="presence-row-actions">${actions}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderFriendsOnlinePanel() {
+  const onlineEl = document.getElementById('friends-online-list');
+  const allEl = document.getElementById('friends-all-list');
+  const outEl = document.getElementById('friends-outgoing-list');
+  if (!onlineEl || !allEl || !outEl) return;
+
+  const onlineFriends = computeOnlineFriends();
+  onlineEl.innerHTML = onlineFriends.length
+    ? onlineFriends.map(name => `
+      <div class="presence-row">
+        <div>
+          <div class="presence-row-name">${usernameLinkHtml(name)}</div>
+          <div class="presence-row-meta">Online</div>
+        </div>
+        <div class="presence-row-actions">
+          <button class="btn btn-gold btn-sm" onclick="inviteFriendFromPanel(${JSON.stringify(name)})">Invite</button>
+          <button class="btn btn-sm" onclick="removeFriend(${JSON.stringify(name)})">Remove</button>
+        </div>
+      </div>`).join('')
+    : '<div class="presence-empty">No friends online.</div>';
+
+  const friends = S.friends || [];
+  allEl.innerHTML = friends.length
+    ? friends.map(name => {
+        const online = onlineFriends.includes(name);
+        return `<div class="presence-row">
+          <div>
+            <div class="presence-row-name">${usernameLinkHtml(name)}</div>
+            <div class="presence-row-meta">${online ? 'Online' : 'Offline'}</div>
+          </div>
+          <div class="presence-row-actions">
+            ${online ? `<button class="btn btn-gold btn-sm" onclick="inviteFriendFromPanel(${JSON.stringify(name)})">Invite</button>` : ''}
+            <button class="btn btn-sm" onclick="removeFriend(${JSON.stringify(name)})">Remove</button>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="presence-empty">No friends yet. Add someone from People Online.</div>';
+
+  const outgoing = S.friendRequests?.outgoing || [];
+  outEl.innerHTML = outgoing.length
+    ? outgoing.map(name => `
+      <div class="presence-row">
+        <div>
+          <div class="presence-row-name">${usernameLinkHtml(name)}</div>
+          <div class="presence-row-meta">Pending</div>
+        </div>
+      </div>`).join('')
+    : '<div class="presence-empty">No outgoing requests.</div>';
+}
+
+function sendFriendRequest(username) {
+  if (isGuestUser()) return toast('Sign in with a registered account to add friends.');
+  const name = String(username || '').trim();
+  if (!name) return;
+  wsSend({ type: 'friend_request', username: name });
+}
+
+function sendFriendRequestFromSearch() {
+  const input = document.getElementById('friend-search-input');
+  const name = (input?.value || '').trim();
+  if (!name) return toast('Enter a username.');
+  sendFriendRequest(name);
+  if (input) input.value = '';
+}
+
+function respondFriendRequest(username, accept) {
+  wsSend({ type: 'friend_respond', username, accept: !!accept });
+}
+
+function removeFriend(username) {
+  if (!confirm(`Remove ${username} from friends?`)) return;
+  wsSend({ type: 'friend_remove', username });
+}
+
+function updateInviteFriendSelectedLabel() {
+  const el = document.getElementById('invite-friend-selected');
+  if (!el) return;
+  el.textContent = pendingInviteFriend
+    ? `Will invite: ${pendingInviteFriend}`
+    : '';
+}
+
+function openInviteFriendPicker() {
+  if (isGuestUser()) return toast('Sign in with a registered account to invite friends.');
+  if (selectedMatchType !== 'human') return toast('Switch opponent to Human to invite a friend.');
+  renderInviteFriendPicker();
+  openModal('invite-friend-modal');
+}
+
+function renderInviteFriendPicker() {
+  const list = document.getElementById('invite-friend-list');
+  if (!list) return;
+  const onlineFriends = computeOnlineFriends();
+  if (!onlineFriends.length) {
+    list.innerHTML = '<div class="presence-empty">No friends online right now.</div>';
+    return;
+  }
+  list.innerHTML = onlineFriends.map(name => `
+    <div class="presence-row">
+      <div class="presence-row-name">${usernameLinkHtml(name)}</div>
+      <div class="presence-row-actions">
+        <button class="btn btn-gold btn-sm" onclick="selectInviteFriend(${JSON.stringify(name)})">Select</button>
+      </div>
+    </div>`).join('');
+}
+
+function selectInviteFriend(username) {
+  pendingInviteFriend = username;
+  updateInviteFriendSelectedLabel();
+  closeModal('invite-friend-modal');
+  toast(`Will invite ${username} when the match starts.`);
+}
+
+function inviteFriendFromPanel(username) {
+  closeModal('friends-online-modal');
+  if (S.roomId && S.isHost) {
+    wsSend({ type: 'invite_friend', username, roomId: S.roomId });
+    return;
+  }
+  pendingInviteFriend = username;
+  updateInviteFriendSelectedLabel();
+  openCreateMatch();
+  const mode = document.getElementById('match-mode');
+  if (mode) {
+    mode.value = 'human';
+    setMatchType('human');
+  }
+  toast(`Create the match to invite ${username}.`);
+}
+
+function showMatchInvite(msg) {
+  pendingMatchInvite = {
+    roomId: msg.roomId,
+    game: msg.game,
+    from: msg.from || msg.hostName,
+  };
+  const text = document.getElementById('match-invite-text');
+  if (text) {
+    text.textContent = `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} match.`;
+  }
+  openModal('match-invite-modal');
+}
+
+function acceptMatchInvite() {
+  if (!pendingMatchInvite) return;
+  const invite = pendingMatchInvite;
+  pendingMatchInvite = null;
+  closeModal('match-invite-modal');
+  joinRoom(invite.roomId, invite.game, invite.from);
+}
+
+function declineMatchInvite() {
+  if (pendingMatchInvite?.roomId) {
+    wsSend({ type: 'decline_invite', roomId: pendingMatchInvite.roomId });
+  }
+  pendingMatchInvite = null;
+  closeModal('match-invite-modal');
 }
 
 let currentFilter = 'all';
@@ -5337,6 +5826,11 @@ function collectMatchVariation() {
 function setMatchType(type) {
   selectedMatchType = type;
   document.getElementById('bot-skill-row').classList.toggle('hidden', type !== 'bot');
+  document.getElementById('invite-friend-row')?.classList.toggle('hidden', type !== 'human');
+  if (type !== 'human') {
+    pendingInviteFriend = null;
+    updateInviteFriendSelectedLabel();
+  }
 }
 
 function selectBotSkill(el) {
@@ -5560,7 +6054,11 @@ function enterMatch() {
   } else {
     wsSend({ type: 'create_room', game: S.game, ...S.matchVariation });
     showPage('lobby');
-    toast('Match created! Share the lobby with your opponent.');
+    if (pendingInviteFriend) {
+      toast(`Match created! Inviting ${pendingInviteFriend}…`);
+    } else {
+      toast('Match created! Share the lobby with your opponent.');
+    }
   }
 }
 
