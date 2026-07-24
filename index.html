@@ -7236,8 +7236,9 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   if (!spectating && matchPreview?.players?.length >= 2) {
     hideAllMatchLayouts();
     pendingMatchPreview = enrichPreviewWithLocalPrefs(matchPreview);
-    // Host chooses who throws first (You / Opponent / Bot). Starter becomes Player One.
-    showMatchPreviewOverlay(pendingMatchPreview, { awaitStarter: true });
+    // PvP: host picks who throws first. Bot matches auto-start with you as Player One
+    // after the walk-on / Thunderous Tom intro so test matches stay smooth.
+    showMatchPreviewOverlay(pendingMatchPreview, { awaitStarter: !S.isBot });
     return;
   }
 
