@@ -7501,12 +7501,12 @@ function beginMatchAfterPreview() {
     };
     if (!matchIntroAnnounced) {
       runMatchIntroAnnounce(pendingMatchPreview).finally(() => {
-        announceSpeak('Game on.', { cancel: false, enqueue: true });
+        announceIntroSpeak('GAME ON!', { cancel: false, enqueue: true });
         afterIntro();
       });
     } else {
       // Intro already finished before warm-up (preview waited on it).
-      announceSpeak('Game on.', { cancel: false, enqueue: true });
+      announceIntroSpeak('GAME ON!', { cancel: false, enqueue: true });
       afterIntro();
     }
   });
@@ -12826,9 +12826,10 @@ function playOneCommentaryClip(arrayBuffer, token) {
   });
 }
 
-/** Play one or two MP3 clips; cancels any prior clip so audio never overlaps. */
+/** Play one or two MP3 clips in order. Does not cancel other queued arena speech. */
 async function playCommentaryBuffer(result, token) {
   if (token !== commentaryPlayToken) return;
+  // Only stop a leftover commentary clip — never touch ref/intro audio.
   stopCommentaryAudio();
   const buffers = result?.buffers || [];
   for (const buf of buffers) {
@@ -12840,7 +12841,7 @@ async function playCommentaryBuffer(result, token) {
 
 /**
  * Fetch Groq+Deepgram commentary and play via HTMLAudioElement.
- * Skips when personality is Off. Dual is opt-in and slower (2 voices).
+ * Queued behind Ref/intro so in-progress speech is never cut off mid-line.
  */
 function requestAndPlayAiCommentary({
   player, score, remaining, personality, force = false, record = true,
@@ -12851,11 +12852,16 @@ function requestAndPlayAiCommentary({
 
   unlockCommentaryAudio();
   const payload = buildCommentaryPayload({ player, score, remaining, personality: persona, record });
-  const token = ++commentaryPlayToken;
-  stopCommentaryAudio();
 
-  return (async () => {
+  // Preview / force may replace whatever is playing; normal match speech waits its turn.
+  if (force) {
+    commentaryPlayToken += 1;
+    stopCommentaryAudio();
+  }
+
+  const job = async () => {
     try {
+      if ((!force && announceMuted)) return;
       const configured = await probeCommentaryApi({ force });
       if (!configured) {
         if (force || !commentaryWarned) {
@@ -12864,16 +12870,14 @@ function requestAndPlayAiCommentary({
         }
         return;
       }
-      if (token !== commentaryPlayToken) return;
       if ((!force && announceMuted)) return;
 
       const result = await fetchCommentaryAudio(payload);
-      if (token !== commentaryPlayToken) return;
       if ((!force && announceMuted)) return;
 
-      const play = () => playCommentaryBuffer(result, token);
-      announceSpeakQueue = announceSpeakQueue.then(play, play);
-      await announceSpeakQueue;
+      // Take the play token only when we are next in the arena speech queue.
+      const token = ++commentaryPlayToken;
+      await playCommentaryBuffer(result, token);
     } catch (err) {
       if (force || !commentaryWarned) {
         commentaryWarned = true;
@@ -12884,7 +12888,10 @@ function requestAndPlayAiCommentary({
         updateCommentaryStatusNote();
       }
     }
-  })();
+  };
+
+  announceSpeakQueue = announceSpeakQueue.then(job, job);
+  return announceSpeakQueue;
 }
 
 function resolveCommentaryPlayerName(opts = {}) {
@@ -13146,7 +13153,9 @@ function requestAndPlayRefAnnounce({
         ? 'GAME SHOT AND THE MATCH!'
         : (Number(score) === 180
           ? 'ONE HUNDRED AND EIGHTY!'
-          : (display || (Number.isFinite(Number(score)) ? `${Math.round(Number(score))}!` : '')));
+          : (display
+            ? `${String(display).replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()}!`.replace(/!!+/g, '!')
+            : (Number.isFinite(Number(score)) ? `${Math.round(Number(score))}!` : '')));
     try {
       // Always attempt the API — probe can be stale; 503/502 fall through to browser TTS.
       const res = await fetch('/api/ref-announce', {
@@ -13173,7 +13182,7 @@ function requestAndPlayRefAnnounce({
       }
     } catch { /* fall back */ }
     if (fallbackText) {
-      await speakWithBrowserFallback(fallbackText, { cancel: false, rate: 1.05, pitch: 1 });
+      await speakWithBrowserFallback(fallbackText, { cancel: false, rate: 1.08, pitch: 1 });
     }
   };
 
@@ -13442,16 +13451,16 @@ function matchIntroNames(preview = null) {
 }
 
 function buildMainMatchOpenLine({ game, tournamentName = '' } = {}) {
-  const g = game || announceGameLabel(null, { spoken: true });
+  const g = String(game || announceGameLabel(null, { spoken: true })).toUpperCase();
   if (tournamentName) {
-    return `Ladies and gentlemen… welcome to Treble-Makers Arena for this ${tournamentName} ${g} main event!`;
+    return `LADIES AND GENTLEMEN... welcome to TREBLE-MAKERS ARENA for this ${String(tournamentName).toUpperCase()} ${g} MAIN EVENT!`;
   }
-  return `Ladies and gentlemen… welcome to Treble-Makers Arena for this ${g} main event!`;
+  return `LADIES AND GENTLEMEN... welcome to TREBLE-MAKERS ARENA for this ${g} MAIN EVENT!`;
 }
 
 function buildMainMatchCloseLine({ game, a, b } = {}) {
-  const g = game || announceGameLabel(null, { spoken: true });
-  return `In the red corner… ${a}! And in the blue corner… ${b}! Let's play ${g}!`;
+  const g = String(game || announceGameLabel(null, { spoken: true })).toUpperCase();
+  return `IN THE RED CORNER... ${String(a || 'Player One').toUpperCase()}! AND IN THE BLUE CORNER... ${String(b || 'Player Two').toUpperCase()}! LET'S PLAY ${g}!`;
 }
 
 /** Fallback one-shot intro when walk-on sequence is unavailable. */

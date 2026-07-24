@@ -4507,7 +4507,7 @@ function parseDualCommentaryJson(raw) {
   }
 }
 
-async function synthesizeDeepgramSpeech(text, model) {
+async function synthesizeDeepgramSpeech(text, model, opts = {}) {
   const models = Array.isArray(model)
     ? model.filter(Boolean)
     : [model].filter(Boolean);
@@ -4517,9 +4517,19 @@ async function synthesizeDeepgramSpeech(text, model) {
     throw err;
   }
 
+  const speedRaw = Number(opts.speed);
+  const speed = Number.isFinite(speedRaw)
+    ? Math.min(1.5, Math.max(0.7, speedRaw))
+    : null;
+
   let lastErr = null;
   for (const m of models) {
-    const url = `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(m)}&encoding=mp3`;
+    const params = new URLSearchParams({
+      model: m,
+      encoding: 'mp3',
+    });
+    if (speed != null) params.set('speed', String(speed));
+    const url = `https://api.deepgram.com/v1/speak?${params.toString()}`;
     // Deepgram API keys use "Token", not "Bearer" (Bearer is only for short-lived JWTs).
     const upstream = await fetch(url, {
       method: 'POST',
@@ -4592,8 +4602,21 @@ function fallbackRefCallout({ score, bust, matchWon, legWon } = {}) {
   if (matchWon || legWon) return 'GAME SHOT AND THE MATCH!';
   const n = Number(score);
   if (n === 180) return 'ONE HUNDRED AND EIGHTY!';
-  if (Number.isFinite(n)) return `${n}!`;
+  if (Number.isFinite(n)) {
+    // Russ Bray energy: shouted digits with bang.
+    return `${Math.round(n)}!`;
+  }
   return '';
+}
+
+function energizeRefLine(line) {
+  const cleaned = String(line || '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+  const upper = cleaned.toUpperCase();
+  return /[!?]$/.test(upper) ? upper : `${upper}!`;
 }
 
 app.get('/api/personalities', (req, res) => {
@@ -4658,8 +4681,8 @@ app.post('/api/match-intro', async (req, res) => {
     const player1 = typeof req.body?.player1 === 'string' ? req.body.player1.trim().slice(0, 40) : '';
     const player2 = typeof req.body?.player2 === 'string' ? req.body.player2.trim().slice(0, 40) : '';
     const gameType = normalizeIntroGameType(req.body?.gameType || req.body?.game);
-    const fallbackIntro = player1 && player2
-      ? `LADIES AND GENTLEMEN… ${player1} versus ${player2}… IT'S ${String(gameType).toUpperCase()} TIME!`
+      const fallbackIntro = player1 && player2
+      ? `LADIES AND GENTLEMEN... ${String(player1).toUpperCase()} versus ${String(player2).toUpperCase()}... IIIIIT'S ${String(gameType).toUpperCase()} TIME!`
       : '';
 
     if (!text && player1 && player2) {
@@ -4691,7 +4714,9 @@ app.post('/api/match-intro', async (req, res) => {
 
     if (!text) return res.status(400).json({ ok: false, error: 'Missing text or players.' });
 
-    const buf = await synthesizeDeepgramSpeech(text, voices);
+    const buf = await synthesizeDeepgramSpeech(text, voices, {
+      speed: PERSONALITIES.INTRO_ANNOUNCER.speed,
+    });
     if (!buf.length) {
       return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
     }
@@ -4762,11 +4787,14 @@ app.post('/api/ref-announce', async (req, res) => {
       }
     }
     if (!line) line = fallbackRefCallout({ score, bust, matchWon, legWon });
+    line = energizeRefLine(line);
     if (!line) {
       return res.status(502).json({ ok: false, error: 'Ref callout generation failed.' });
     }
 
-    const buf = await synthesizeDeepgramSpeech(line, voices);
+    const buf = await synthesizeDeepgramSpeech(line, voices, {
+      speed: PERSONALITIES.REF_ANNOUNCER.speed,
+    });
     if (!buf.length) {
       return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
     }
