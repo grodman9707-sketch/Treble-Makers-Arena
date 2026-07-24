@@ -667,9 +667,14 @@ body.app-active .arena-bg { animation: none !important; }
 ════════════════════════════════════════════ */
 .match-layout {
   display: grid; grid-template-columns: 1fr 340px;
-  height: calc(100vh - 54px); overflow: hidden;
+  min-height: calc(100vh - 54px);
+  height: auto;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
-.match-main { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+.match-main { display: flex; flex-direction: column; overflow: visible; border-right: 1px solid var(--border); min-height: 0; }
 .match-header {
   display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--border); background: var(--deep); flex-shrink: 0;
@@ -3096,7 +3101,7 @@ body.app-active .arena-bg { animation: none !important; }
    whole match view growing as turns accumulate. */
 /* Bound the whole X01 view to the viewport so the columns have a definite
    height — this lets the score log scroll internally and the cam use a fixed square. */
-.x01-layout { height: calc(100vh - 60px); overflow: hidden; }
+.x01-layout { height: auto; min-height: calc(100vh - 60px); overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .x01-body { min-height: 0; }
 .x01-center { min-height: 0; }
 /* Fixed square player-cam area: largest square that fits under the score entry */
@@ -3122,8 +3127,11 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-layout {
   display: flex; flex-direction: column; gap: 0.75rem;
   padding: 0.75rem 1rem 1.25rem;
-  height: calc(100vh - 60px); overflow: hidden;
-  min-height: 0;
+  height: auto;
+  min-height: calc(100vh - 60px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .ckt-topbar { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; flex-shrink: 0; }
 .ckt-icon-btn {
@@ -3141,7 +3149,10 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 1.02rem; color: var(--silver-light); letter-spacing: 0.1em; margin-top: 2px;
   text-shadow: 0 1px 6px rgba(0,0,0,0.85);
 }
-.ckt-body { display: grid; grid-template-columns: 230px 1fr 360px; gap: 1rem; align-items: stretch; flex: 1; min-height: 0; }
+.ckt-body {
+  display: grid; grid-template-columns: 230px 1fr 380px; gap: 1rem;
+  align-items: start; flex: 1 0 auto; min-height: min-content;
+}
 @media (max-width: 1100px) { .ckt-body { grid-template-columns: 200px 1fr; } .ckt-side { grid-column: 1 / -1; } }
 @media (max-width: 720px) {
   .ckt-body { grid-template-columns: 1fr; }
@@ -3249,6 +3260,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-mk-0 { color: rgba(255,255,255,0.18); text-shadow: none; }
 .ckt-mk-1, .ckt-mk-2 { color: var(--gold-light); font-weight: 700; }
 .ckt-mk-3 { color: var(--green-bright); font-weight: 800; }
+.ckt-mk-pending { color: #7ec8ff; font-weight: 800; filter: drop-shadow(0 0 6px rgba(126,200,255,0.45)); }
 
 /* Pending visit chips */
 .ckt-visit { display: flex; gap: 0.5rem; justify-content: center; }
@@ -3262,27 +3274,45 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-chip.miss { background: rgba(214,69,42,0.18); color: var(--crimson-bright); border-color: rgba(214,69,42,0.4); }
 .ckt-chip.dead { background: rgba(255,255,255,0.04); color: var(--muted); text-decoration: line-through; }
 
-/* Segment button pad */
+/* Segment button pad — single column, distinct target numbers */
 .ckt-pad {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.4rem 0.55rem;
-  background: rgba(10,10,16,0.9); border: 1px solid rgba(201,168,76,0.45); border-radius: 12px;
-  padding: 0.6rem; box-shadow: 0 6px 22px rgba(0,0,0,0.55);
+  display: flex; flex-direction: column; gap: 0.35rem;
+  background: rgba(10,10,16,0.92); border: 1px solid rgba(201,168,76,0.45); border-radius: 12px;
+  padding: 0.65rem; box-shadow: 0 6px 22px rgba(0,0,0,0.55);
 }
 .ckt-pad.waiting { opacity: 0.5; }
 .ckt-pad-row {
-  display: grid; grid-template-columns: 2.1rem 1fr; align-items: center; gap: 0.4rem;
+  display: grid; grid-template-columns: 3.5rem 1fr; align-items: stretch; gap: 0.45rem;
+  padding: 0.28rem 0.2rem; border-radius: 8px;
 }
+.ckt-pad-row:nth-child(odd) { background: rgba(255,255,255,0.035); }
+.ckt-pad-row:nth-child(even) { background: rgba(0,0,0,0.22); }
 .ckt-pad-label {
-  font-family: 'Orbitron', monospace; font-size: 0.95rem; font-weight: 700; color: var(--gold-light);
-  text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  font-size: 1.4rem; font-weight: 800; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: #fff;
+  background: linear-gradient(160deg, #3a3a4c, #1a1a26);
+  border: 2px solid rgba(201,168,76,0.55);
+  border-radius: 8px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.95);
+  min-height: 2.7rem;
 }
+.ckt-pad-row[data-target="15"] .ckt-pad-label { border-color: #6ec6ff; color: #bfe6ff; }
+.ckt-pad-row[data-target="16"] .ckt-pad-label { border-color: #ffb86b; color: #ffe0b8; }
+.ckt-pad-row[data-target="17"] .ckt-pad-label { border-color: #9dffb0; color: #d2ffd9; }
+.ckt-pad-row[data-target="18"] .ckt-pad-label { border-color: #ff8fab; color: #ffd0dc; }
+.ckt-pad-row[data-target="19"] .ckt-pad-label { border-color: #d4a1ff; color: #ecd9ff; }
+.ckt-pad-row[data-target="20"] .ckt-pad-label { border-color: var(--gold); color: var(--gold-light); }
 .ckt-pad-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; }
 .ckt-pad-bull .ckt-pad-btns { grid-template-columns: repeat(2, 1fr); }
 .ckt-seg {
   border: 1px solid rgba(201,168,76,0.35); border-radius: 7px; cursor: pointer;
   background: linear-gradient(160deg, #2a2a38, #15151f); color: var(--silver-light);
-  font-family: 'Orbitron', monospace; font-weight: 700; font-size: 0.92rem; padding: 0.5rem 0.2rem;
-  text-shadow: 0 1px 2px rgba(0,0,0,.9); transition: all 0.15s; line-height: 1.1;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif; font-weight: 800; font-size: 0.95rem;
+  padding: 0.42rem 0.15rem 0.38rem; text-shadow: 0 1px 2px rgba(0,0,0,.9);
+  transition: all 0.15s; line-height: 1.15; text-align: center;
 }
 .ckt-seg:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-light); filter: brightness(1.15); }
 .ckt-seg:active:not(:disabled) { transform: translateY(1px); }
@@ -3290,11 +3320,17 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-seg-d { color: #9ad7ff; }
 .ckt-seg-t { color: var(--green-bright); }
 .ckt-seg-ob, .ckt-seg-ib { color: var(--gold-light); }
-.ckt-seg span { display: block; font-size: 0.6rem; opacity: 0.75; font-weight: 600; }
-.ckt-pad-miss { grid-column: 1 / -1; grid-template-columns: 1fr; }
-.ckt-seg-miss { grid-column: 1 / -1; background: linear-gradient(160deg, #5a2a22, #3a1812); border-color: rgba(214,69,42,0.5); color: var(--crimson-bright); }
+.ckt-seg .ckt-seg-num {
+  display: block; font-size: 0.78rem; opacity: 0.95; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.04em; margin-top: 0.1rem;
+}
+.ckt-seg span.ckt-seg-sub { display: block; font-size: 0.56rem; opacity: 0.7; font-weight: 600; margin-top: 0.06rem; }
+.ckt-pad-miss { grid-template-columns: 1fr; }
+.ckt-seg-miss {
+  background: linear-gradient(160deg, #5a2a22, #3a1812); border-color: rgba(214,69,42,0.5);
+  color: var(--crimson-bright); padding: 0.65rem;
+}
 .ckt-pad-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 0.55rem; }
-@media (max-width: 720px) { .ckt-pad { grid-template-columns: 1fr; } }
 .ckt-side .ckt-pad { flex: 0 0 auto; }
 .ckt-side .ckt-pad-actions { flex: 0 0 auto; }
 .ckt-side .ckt-hint { padding: 0; }
@@ -3334,7 +3370,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-hint { font-size: 0.66rem; color: var(--muted); line-height: 1.5; text-align: center; padding: 0 0.4rem; }
 
 /* Right column: marks board + scoring pad */
-.ckt-side { display: flex; flex-direction: column; gap: 0.7rem; align-self: stretch; min-height: 0; }
+.ckt-side { display: flex; flex-direction: column; gap: 0.7rem; align-self: start; min-height: 0; }
 .ckt-cam-frame {
   position: relative; width: 100%; aspect-ratio: var(--cam-frame-ratio); border-radius: 12px; overflow: hidden;
   border: 1px solid var(--border); background: #000; flex-shrink: 0;
@@ -4451,7 +4487,7 @@ body.app-active .arena-bg { animation: none !important; }
             <option value="local">Play Local (same device)</option>
           </select>
           <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
-            Same-device play for X01 and Cricket/Tactics — no camera or online opponent.
+            Same-device pass-and-play for unlocked games — no camera or online opponent.
           </div>
         </div>
         <div class="form-group" id="invite-friend-row">
@@ -6814,13 +6850,14 @@ function startMatchFromModal() {
 }
 
 function supportsLocalPlay(game) {
-  return isX01Game(game) || isCricketGame(game);
+  // Any unlocked game (or admin-preview construction game) can be played locally.
+  return canPlayGame(game || S.game, S.user);
 }
 
 /** Same-device pass-and-play — no camera, WebRTC, or online opponent. */
 function startLocalMatch() {
   if (!supportsLocalPlay(S.game)) {
-    toast('Play Local is available for X01 and Cricket/Tactics only for now.');
+    toast('This game is under construction. Admin access only.');
     return;
   }
   closeModal('create-match-modal');
@@ -8910,12 +8947,7 @@ function cktVariationLabel(v) {
 function cktTargetLabel(t) { return t === CRICKET_BULL ? 'BULL' : String(t); }
 
 // Marks glyph: 0=blank, 1=/, 2=X, 3=Ⓧ (circled X = closed by that player)
-function cktMarkGlyph(n) {
-  if (n >= 3) return '<span class="ckt-mk ckt-mk-3">Ⓧ</span>';
-  if (n === 2) return '<span class="ckt-mk ckt-mk-2">✕</span>';
-  if (n === 1) return '<span class="ckt-mk ckt-mk-1">/</span>';
-  return '<span class="ckt-mk ckt-mk-0">·</span>';
-}
+// (see cktMarkGlyph below — supports pending preview styling)
 
 let cktUndoStack = [];
 let cktVisit = [];        // pending darts (parsed) for the current visit
@@ -9056,6 +9088,33 @@ function cktUndo() {
   toast('Last visit reverted.');
 }
 
+function cktMarkGlyph(n, pending = false) {
+  const pend = pending ? ' ckt-mk-pending' : '';
+  if (n >= 3) return `<span class="ckt-mk ckt-mk-3${pend}">Ⓧ</span>`;
+  if (n === 2) return `<span class="ckt-mk ckt-mk-2${pend}">✕</span>`;
+  if (n === 1) return `<span class="ckt-mk ckt-mk-1${pend}">/</span>`;
+  return '<span class="ckt-mk ckt-mk-0">·</span>';
+}
+
+/** Preview marks for the active player including pending visit darts (not yet submitted). */
+function cktPreviewMarksForPlayer(gs, playerIdx) {
+  const base = { ...(gs.marks?.[playerIdx] || {}) };
+  if (!cktVisit.length || playerIdx !== S.turn) return { marks: base, pendingTargets: new Set() };
+  const pendingTargets = new Set();
+  for (const d of cktVisit) {
+    if (!d || d.miss || d.dead || d.target == null) continue;
+    const t = d.target;
+    const before = base[t] || 0;
+    const needed = Math.max(0, 3 - before);
+    const applied = Math.max(0, Math.min(Number(d.marks) || 0, needed));
+    if (applied > 0) {
+      base[t] = before + applied;
+      pendingTargets.add(t);
+    }
+  }
+  return { marks: base, pendingTargets };
+}
+
 // Render the segment-button pad from the active target set (Cricket vs Tactics).
 function cktRenderPad(gs, isMyTurn) {
   const padEl = document.getElementById('ckt-pad');
@@ -9065,21 +9124,21 @@ function cktRenderPad(gs, isMyTurn) {
     const dis = (!isMyTurn || dead) ? ' disabled' : '';
     if (t === CRICKET_BULL) {
       return `
-      <div class="ckt-pad-row ckt-pad-bull${dead ? ' dead' : ''}">
-        <div class="ckt-pad-label">BULL</div>
+      <div class="ckt-pad-row ckt-pad-bull${dead ? ' dead' : ''}" data-target="bull">
+        <div class="ckt-pad-label">B</div>
         <div class="ckt-pad-btns">
-          <button class="ckt-seg ckt-seg-ob" onclick="cktAddDart('25')"${dis}>OB<span>25 · 1</span></button>
-          <button class="ckt-seg ckt-seg-ib" onclick="cktAddDart('50')"${dis}>IB<span>50 · 2</span></button>
+          <button class="ckt-seg ckt-seg-ob" onclick="cktAddDart('25')"${dis}>OB<span class="ckt-seg-num">25</span><span class="ckt-seg-sub">1 mark</span></button>
+          <button class="ckt-seg ckt-seg-ib" onclick="cktAddDart('50')"${dis}>IB<span class="ckt-seg-num">50</span><span class="ckt-seg-sub">2 marks</span></button>
         </div>
       </div>`;
     }
     return `
-      <div class="ckt-pad-row${dead ? ' dead' : ''}">
+      <div class="ckt-pad-row${dead ? ' dead' : ''}" data-target="${t}">
         <div class="ckt-pad-label">${t}</div>
         <div class="ckt-pad-btns">
-          <button class="ckt-seg" onclick="cktAddDart('${t}')"${dis}>S</button>
-          <button class="ckt-seg ckt-seg-d" onclick="cktAddDart('D${t}')"${dis}>D</button>
-          <button class="ckt-seg ckt-seg-t" onclick="cktAddDart('T${t}')"${dis}>T</button>
+          <button class="ckt-seg" onclick="cktAddDart('${t}')"${dis}>S<span class="ckt-seg-num">${t}</span></button>
+          <button class="ckt-seg ckt-seg-d" onclick="cktAddDart('D${t}')"${dis}>D<span class="ckt-seg-num">${t}</span></button>
+          <button class="ckt-seg ckt-seg-t" onclick="cktAddDart('T${t}')"${dis}>T<span class="ckt-seg-num">${t}</span></button>
         </div>
       </div>`;
   }).join('');
@@ -9132,8 +9191,10 @@ function renderCricketMatch() {
       </div>`;
   }).join('');
 
-  // Marks board
+  // Marks board (includes live preview of pending pad presses for the thrower)
   const boardEl = document.getElementById('ckt-board');
+  const preview0 = cktPreviewMarksForPlayer(gs, 0);
+  const preview1 = cktPreviewMarksForPlayer(gs, 1);
   const headRow = `
     <div class="ckt-row ckt-row-head">
       <div class="ckt-mkcell">${escapeX01(names[0] || 'P1')}</div>
@@ -9147,12 +9208,14 @@ function renderCricketMatch() {
       <div class="ckt-mkcell"><b>${gs.score[1] || 0}</b></div>
     </div>`;
   const rows = gs.targets.map(t => {
-    const dead = (gs.marks[0][t] || 0) >= 3 && (gs.marks[1][t] || 0) >= 3;
+    const m0 = preview0.marks[t] || 0;
+    const m1 = preview1.marks[t] || 0;
+    const dead = m0 >= 3 && m1 >= 3;
     return `
       <div class="ckt-row${dead ? ' dead' : ''}">
-        <div class="ckt-mkcell">${cktMarkGlyph(gs.marks[0][t] || 0)}</div>
+        <div class="ckt-mkcell">${cktMarkGlyph(m0, preview0.pendingTargets.has(t))}</div>
         <div class="ckt-num">${cktTargetLabel(t)}</div>
-        <div class="ckt-mkcell">${cktMarkGlyph(gs.marks[1][t] || 0)}</div>
+        <div class="ckt-mkcell">${cktMarkGlyph(m1, preview1.pendingTargets.has(t))}</div>
       </div>`;
   }).join('');
   boardEl.innerHTML = headRow + scoreRow + rows;
@@ -9216,15 +9279,17 @@ function updateCricketCamera() {
 //  SCORE SUBMISSION
 // ═══════════════════════════════════════════════════════════
 function determineWinner(game, scores, gameState) {
+  const name0 = S.isLocal ? (S.localNames?.[0] || S.user.username || 'Player 1') : (S.user.username || 'You');
+  const name1 = S.isLocal ? (S.localNames?.[1] || 'Player 2') : 'Opponent';
   if (game === 'Golf Darts' || game === 'Golf Checkouts') {
     if (scores[0] === scores[1]) return null;
-    return scores[0] < scores[1] ? S.user.username : 'Opponent';
+    return scores[0] < scores[1] ? name0 : name1;
   }
   if (game === 'Snakes & Ladders') {
-    if (gameState?.pos?.[0] === 100) return S.user.username;
-    if (gameState?.pos?.[1] === 100) return 'Opponent';
+    if (gameState?.pos?.[0] === 100) return name0;
+    if (gameState?.pos?.[1] === 100) return name1;
   }
-  return scores[0] === scores[1] ? null : (scores[0] > scores[1] ? S.user.username : 'Opponent');
+  return scores[0] === scores[1] ? null : (scores[0] > scores[1] ? name0 : name1);
 }
 
 function parseDartInput(raw) {
@@ -9632,19 +9697,24 @@ function submitScore(opts = {}) {
   if (!winner) winner = determineWinner(g, S.scores, gs);
 
   const newGs = JSON.parse(JSON.stringify(gs));
-  wsSend({
-    type: 'submit_score', delta, absoluteScore, displayScore, note,
-    gameState: newGs, gameOver,
-    winner: gameOver ? winner : null,
-    highScore: S.stats.highScore,
-    matchStats: { scores: S.scores, time: Math.floor((Date.now()-S.stats.startTime)/1000), bestRound: S.stats.bestRound }
-  });
+  if (!S.isLocal) {
+    wsSend({
+      type: 'submit_score', delta, absoluteScore, displayScore, note,
+      gameState: newGs, gameOver,
+      winner: gameOver ? winner : null,
+      highScore: S.stats.highScore,
+      matchStats: { scores: S.scores, time: Math.floor((Date.now()-S.stats.startTime)/1000), bestRound: S.stats.bestRound }
+    });
+  }
 
-  // Local optimistic update
+  // Local optimistic update (also the sole path for same-device Play Local)
   const localIdx = myPlayerIdx();
+  const scorerName = S.isLocal
+    ? (S.localNames?.[localIdx] || S.user.username || `Player ${localIdx + 1}`)
+    : (S.user.username || 'You');
   if (absoluteScore !== undefined) S.scores[localIdx] = absoluteScore;
   else S.scores[localIdx] += delta;
-  S.history.unshift({ player: S.user.username, score: displayScore, note });
+  S.history.unshift({ player: scorerName, score: displayScore, note });
   if (gs.turnEnded) {
     if (g === 'Golf Checkouts') {
       S.turn = gcSkipWaitingTurn(1 - localIdx, gs);
@@ -9652,6 +9722,15 @@ function submitScore(opts = {}) {
       S.turn = 1 - localIdx;
     }
     gs.turnEnded = false;
+  }
+  if (S.isLocal) {
+    announceVisitScore(displayScore, {
+      player: scorerName,
+      visit: Number.isFinite(Number(val)) ? Number(val) : 0,
+      remaining: 0,
+      matchWon: !!gameOver,
+      winner: gameOver ? winner : null
+    });
   }
   updateMatchUI();
 
@@ -9860,17 +9939,26 @@ function updateMatchUI() {
   const isGolfDarts = g === 'Golf Darts';
   const isGolfCheckouts = g === 'Golf Checkouts';
   const isFootballDarts = g === 'Football Darts';
-  const me = myPlayerIdx();
+  // Local pass-and-play: keep seats fixed (P1 left / P2 right); highlight by turn.
+  const me = S.isLocal ? 0 : myPlayerIdx();
   const opp = 1 - me;
   const sbYou = gid('sb-score-you'), sbOpp = gid('sb-score-opp');
   sbYou.textContent = S.scores[me];
   sbOpp.textContent = S.scores[opp];
-  sbYou.className = 'sb-score' + (isMyTurn ? ' active' : '');
-  sbOpp.className = 'sb-score' + (!isMyTurn ? ' active' : '');
+  sbYou.className = 'sb-score' + (S.turn === me ? ' active' : '');
+  sbOpp.className = 'sb-score' + (S.turn === opp ? ' active' : '');
+  if (S.isLocal) {
+    const n0 = (S.localNames?.[0] || 'Player 1').toUpperCase();
+    const n1 = (S.localNames?.[1] || 'Player 2').toUpperCase();
+    gid('sb-name-you').textContent = n0;
+    gid('sb-name-opp').textContent = n1;
+    gid('cam-label-you').textContent = n0;
+    gid('cam-label-opp').textContent = n1;
+  }
   gid('cam-score-you').textContent = S.scores[me];
   gid('cam-score-opp').textContent = S.scores[opp];
-  gid('cam-score-you-wrap').className = 'cam-score-box you' + (isMyTurn ? ' active' : '');
-  gid('cam-score-opp-wrap').className = 'cam-score-box opp' + (!isMyTurn ? ' active' : '');
+  gid('cam-score-you-wrap').className = 'cam-score-box you' + (S.turn === me ? ' active' : '');
+  gid('cam-score-opp-wrap').className = 'cam-score-box opp' + (S.turn === opp ? ' active' : '');
   gid('scoreboard').classList.toggle('halveit-hidden', isHalveIt || isGolfDarts || isFootballDarts);
   gid('visualizer').classList.toggle('halveit-arena', isHalveIt);
   gid('visualizer').classList.toggle('golf-darts-arena', isGolfDarts);
