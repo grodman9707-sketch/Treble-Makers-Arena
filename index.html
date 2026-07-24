@@ -33,7 +33,8 @@
   /* Shared player-cam frame: square crop so Camera Setup framing matches every match box */
   --cam-frame-ratio: 1 / 1;
   --cam-zoom: 1.15;
-  --cam-box-max: 280px;
+  /* Restore pre-shrink player-cam size (was capped at 280px). */
+  --cam-box-max: 480px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -3110,14 +3111,15 @@ body.app-active .arena-bg { animation: none !important; }
 .x01-layout { height: auto; min-height: calc(100vh - 60px); overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .x01-body { min-height: 0; }
 .x01-center { min-height: 0; }
-/* Fixed square player-cam area under the score entry */
+/* Larger square player-cam under the score entry (pre-shrink sizing). */
 .x01-center .x01-cam {
   flex: 0 0 auto;
   width: 100%;
+  min-height: min(var(--cam-box-max), 52vmin);
   display: flex; align-items: center; justify-content: center;
 }
 .x01-center .x01-cam-frame {
-  width: min(100%, var(--cam-box-max, 280px));
+  width: min(100%, var(--cam-box-max, 480px), 52vmin);
   max-width: 100%;
   height: auto;
   aspect-ratio: var(--cam-frame-ratio);
@@ -3230,7 +3232,7 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .ckt-chat-close:hover { border-color: var(--gold); color: var(--gold-light); }
 
-/* Center column — camera needs a definite size (scroll layout has no cq height) */
+/* Center column — larger cam (definite size; scroll layout has no cq height) */
 .ckt-center {
   display: flex; flex-direction: column; gap: 0.7rem; min-height: 0;
 }
@@ -3238,6 +3240,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-center .ckt-cam {
   flex: 0 0 auto;
   width: 100%;
+  min-height: min(var(--cam-box-max), 52vmin);
   display: flex; align-items: center; justify-content: center;
 }
 
@@ -3380,9 +3383,9 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .ckt-cam-badge.bot { background: rgba(232,144,42,0.85); color: #1a0e00; font-weight: 700; }
-/* Cricket/Tactics: fixed square player-cam (do not use cqh — scroll layout has no height) */
+/* Cricket/Tactics: larger square player-cam (avoid cqh — scroll layout has no height) */
 .ckt-center .ckt-cam-frame {
-  width: min(100%, var(--cam-box-max, 280px));
+  width: min(100%, var(--cam-box-max, 480px), 52vmin);
   max-width: 100%;
   height: auto;
   aspect-ratio: var(--cam-frame-ratio);
@@ -4315,8 +4318,18 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
             <div class="profile-setting-stack" id="pref-announce-voice-stack">
               <div class="profile-setting-meta">
+                <span class="profile-setting-label">Arena language / accent</span>
+                <span class="profile-setting-hint">Applies to Ref Russ score calls and AI commentators</span>
+              </div>
+              <div class="profile-setting-controls">
+                <label class="profile-setting-field-label" for="pref-voice-locale">Locale</label>
+                <select id="pref-voice-locale" onchange="onVoiceLocaleChange('pref-voice-locale')">
+                  <option value="en-us">English (US)</option>
+                </select>
+              </div>
+              <div class="profile-setting-meta" style="margin-top:0.55rem">
                 <span class="profile-setting-label">AI announcer</span>
-                <span class="profile-setting-hint">Optional visit commentary (Groq + Deepgram)</span>
+                <span class="profile-setting-hint">Optional visit commentary (Groq + Deepgram). Ref Russ always calls scores when Announce is on.</span>
               </div>
               <div class="profile-setting-controls">
                 <label class="profile-setting-field-label" for="pref-commentary-personality">Personality</label>
@@ -4334,8 +4347,8 @@ body.app-active .arena-bg { animation: none !important; }
                 <select id="pref-commentary-speaker2" onchange="onCommentarySpeakerChange('pref-commentary-speaker2')"></select>
               </div>
               <p class="profile-setting-note" id="pref-commentary-status-note">
-                Singles are one voice (faster). Dual team lets you pick any two commentators.
-                Requires <code>GROQ_API_KEY</code> + <code>DEEPGRAM_API_KEY</code>. Default is Off.
+                Ref Russ (Perseus) calls scores. Commentators keep their personalities in any locale.
+                Intros use Thunderous Tom (Helios). Requires <code>GROQ_API_KEY</code> + <code>DEEPGRAM_API_KEY</code>.
               </p>
             </div>
             <div class="profile-setting-row">
@@ -4494,6 +4507,15 @@ body.app-active .arena-bg { animation: none !important; }
           </select>
           <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
             Same-device pass-and-play for unlocked games — no camera or online opponent.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Arena language / accent</label>
+          <select id="m-voice-locale" onchange="onVoiceLocaleChange('m-voice-locale')">
+            <option value="en-us">English (US)</option>
+          </select>
+          <div class="presence-row-meta" style="margin-top:0.45rem">
+            Ref Russ score calls + commentators (saved to locker settings).
           </div>
         </div>
         <div class="form-group">
@@ -12344,6 +12366,7 @@ const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
 const COMMENTARY_PERSONALITY_KEY = 'tma-commentary-personality';
 const COMMENTARY_SPEAKER1_KEY = 'tma-commentary-speaker1';
 const COMMENTARY_SPEAKER2_KEY = 'tma-commentary-speaker2';
+const VOICE_LOCALE_KEY = 'tma-voice-locale';
 
 let announceMuted = (() => {
   try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
@@ -12362,8 +12385,15 @@ let commentarySpeaker2Id = (() => {
   try { return (localStorage.getItem(COMMENTARY_SPEAKER2_KEY) || 'sam').trim().toLowerCase() || 'sam'; }
   catch { return 'sam'; }
 })();
+let voiceLocaleId = (() => {
+  try {
+    const raw = (localStorage.getItem(VOICE_LOCALE_KEY) || 'en-us').trim().toLowerCase();
+    return raw || 'en-us';
+  } catch { return 'en-us'; }
+})();
 let commentaryPersonalityList = [];
 let commentarySpeakerList = [];
+let voiceLocaleList = [];
 /** Recent visit scores for dual-announcer game memory (last 3–5). */
 let commentaryScoreHistory = [];
 let commentaryTurnNumber = 0;
@@ -12382,6 +12412,7 @@ let deepgramReady = null; // Deepgram-only (ring intro can work without Groq)
 let introAudio = null;
 let introObjectUrl = null;
 let introPlayToken = 0;
+let boxingBellAudio = null;
 
 function resetCommentaryMemory() {
   commentaryScoreHistory = [];
@@ -12537,7 +12568,7 @@ function updateCommentaryStatusNote() {
   const note = document.getElementById('pref-commentary-status-note');
   if (!note) return;
   const base =
-    'Singles are one voice (faster). Dual team lets you pick any two commentators. Default is Off.';
+    'Ref Russ calls scores. Commentators keep their personalities in any locale. Intros use Thunderous Tom (Helios).';
   if (commentaryConfigured === true) {
     note.innerHTML = `${base} <strong style="color:var(--green-bright)">Server ready</strong> (Groq + Deepgram).`;
   } else if (commentaryConfigured === false) {
@@ -12550,6 +12581,49 @@ function updateCommentaryStatusNote() {
   }
 }
 
+function persistVoiceLocale() {
+  try { localStorage.setItem(VOICE_LOCALE_KEY, voiceLocaleId || 'en-us'); } catch { /* ignore */ }
+}
+
+function syncVoiceLocaleSelect() {
+  const ids = ['pref-voice-locale', 'm-voice-locale'];
+  const known = new Set((voiceLocaleList || []).map(l => l.id));
+  if (voiceLocaleId && known.size && !known.has(voiceLocaleId)) {
+    voiceLocaleId = known.has('en-us') ? 'en-us' : (voiceLocaleList[0]?.id || 'en-us');
+    persistVoiceLocale();
+  }
+  ids.forEach((id) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '';
+    const list = voiceLocaleList.length
+      ? voiceLocaleList
+      : [{ id: 'en-us', label: 'English (US)' }];
+    list.forEach((loc) => {
+      const opt = document.createElement('option');
+      opt.value = loc.id;
+      opt.textContent = loc.label || loc.id;
+      sel.appendChild(opt);
+    });
+    sel.value = voiceLocaleId || 'en-us';
+    if (sel.value !== voiceLocaleId && list[0]) sel.value = list[0].id;
+    if (prev && sel.value !== prev && !voiceLocaleList.length) {
+      /* keep */
+    }
+  });
+}
+
+function onVoiceLocaleChange(selectId) {
+  const sel = document.getElementById(selectId) || document.getElementById('pref-voice-locale');
+  const raw = (sel?.value || 'en-us').trim().toLowerCase();
+  const known = new Set((voiceLocaleList || []).map(l => l.id));
+  voiceLocaleId = (!known.size || known.has(raw)) ? raw : 'en-us';
+  persistVoiceLocale();
+  syncVoiceLocaleSelect();
+  toast(`Arena voice: ${(voiceLocaleList.find(l => l.id === voiceLocaleId)?.label) || voiceLocaleId}`);
+}
+
 async function loadCommentaryPersonalities() {
   try {
     const res = await fetch('/api/personalities', { cache: 'no-store' });
@@ -12560,11 +12634,20 @@ async function loadCommentaryPersonalities() {
     if (res.ok && Array.isArray(data.speakers)) {
       commentarySpeakerList = data.speakers.filter(s => s && s.id && s.name);
     }
+    if (res.ok && Array.isArray(data.locales)) {
+      voiceLocaleList = data.locales.filter(l => l && l.id && l.label);
+    }
     if (typeof data.configured === 'boolean') commentaryConfigured = data.configured;
     if (typeof data.deepgram === 'boolean') deepgramReady = data.deepgram;
+    try {
+      if (data.defaultLocale && !localStorage.getItem(VOICE_LOCALE_KEY)) {
+        voiceLocaleId = String(data.defaultLocale).toLowerCase();
+      }
+    } catch { /* ignore */ }
   } catch { /* ignore */ }
   syncCommentaryPersonalitySelect();
   syncDualSpeakerRow();
+  syncVoiceLocaleSelect();
   updateCommentaryStatusNote();
 }
 
@@ -12590,6 +12673,7 @@ function buildCommentaryPayload({ player, score, remaining, personality, record 
     turnNumber: commentaryTurnNumber || 1,
     checkout: remainingNum > 0 && remainingNum <= 170,
     history: commentaryScoreHistory.slice(-5),
+    locale: voiceLocaleId || 'en-us',
   };
   if (persona === 'dual') {
     payload.speaker1Id = commentarySpeaker1Id;
@@ -12881,6 +12965,7 @@ function syncAnnouncePrefToggle() {
 function syncAnnouncePrefsUI() {
   syncAnnouncePrefToggle();
   syncCommentaryPersonalitySelect();
+  syncVoiceLocaleSelect();
 }
 
 function onCommentaryPersonalityChange(selectId) {
@@ -12955,6 +13040,161 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false } =
   return announceSpeakQueue;
 }
 
+/** Play Ref Russ / announce MP3 buffer (Web Audio preferred). */
+function playAnnounceBuffer(arrayBuffer) {
+  return new Promise(async (resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    try {
+      unlockCommentaryAudio();
+      const ctx = typeof ensureArenaAudio === 'function' ? ensureArenaAudio() : null;
+      if (ctx) {
+        if (ctx.state === 'suspended') await ctx.resume();
+        const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        const src = ctx.createBufferSource();
+        src.buffer = decoded;
+        src.connect(ctx.destination);
+        src.onended = done;
+        announceAudio = {
+          _announceDone: done,
+          pause() { try { src.stop(0); } catch { /* ignore */ } },
+          src: '',
+        };
+        src.start(0);
+        return;
+      }
+    } catch { /* fall through */ }
+
+    try {
+      if (announceObjectUrl) {
+        try { URL.revokeObjectURL(announceObjectUrl); } catch { /* ignore */ }
+        announceObjectUrl = null;
+      }
+      const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+      announceObjectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(announceObjectUrl);
+      audio._announceDone = done;
+      announceAudio = audio;
+      audio.onended = done;
+      audio.onerror = done;
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => done());
+    } catch {
+      done();
+    }
+  });
+}
+
+/**
+ * Ref Russ score callout via Groq + Deepgram (aura-2-perseus-en by default).
+ * Falls back to browser TTS if the API is unavailable.
+ */
+function requestAndPlayRefAnnounce({
+  score, bust = false, matchWon = false, legWon = false, display = '', force = false, enqueue = true,
+} = {}) {
+  if ((!force && announceMuted)) return Promise.resolve();
+  if (typeof window === 'undefined') return Promise.resolve();
+
+  const speakNow = async () => {
+    unlockCommentaryAudio();
+    const fallbackText = bust
+      ? 'BUST!'
+      : (matchWon || legWon)
+        ? 'GAME SHOT AND THE MATCH!'
+        : (Number(score) === 180
+          ? 'ONE HUNDRED AND EIGHTY!'
+          : (display || (Number.isFinite(Number(score)) ? `${Math.round(Number(score))}!` : '')));
+    try {
+      const ready = await probeDeepgramReady();
+      if (ready) {
+        const res = await fetch('/api/ref-announce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            score: Number.isFinite(Number(score)) ? Number(score) : 0,
+            bust: !!bust,
+            matchWon: !!matchWon,
+            legWon: !!legWon,
+            display: String(display || ''),
+            locale: voiceLocaleId || 'en-us',
+          }),
+        });
+        if (res.ok) {
+          const buf = await res.arrayBuffer();
+          if (buf?.byteLength) {
+            await playAnnounceBuffer(buf);
+            return;
+          }
+        }
+      }
+    } catch { /* fall back */ }
+    if (fallbackText) {
+      await speakWithBrowserFallback(fallbackText, { cancel: false, rate: 1.05, pitch: 1 });
+    }
+  };
+
+  if (enqueue) {
+    announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
+    return announceSpeakQueue;
+  }
+  announceSpeakQueue = speakNow();
+  return announceSpeakQueue;
+}
+
+function playBoxingBell() {
+  return new Promise((resolve) => {
+    try {
+      unlockCommentaryAudio();
+      if (boxingBellAudio) {
+        try {
+          boxingBellAudio.pause();
+          boxingBellAudio.currentTime = 0;
+        } catch { /* ignore */ }
+      }
+      const audio = new Audio('/sfx/boxing_bell.mp3');
+      boxingBellAudio = audio;
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      audio.onended = done;
+      audio.onerror = done;
+      // Don't block the intro forever if the file is missing — cap wait.
+      setTimeout(done, 1200);
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => done());
+    } catch {
+      resolve();
+    }
+  });
+}
+
+/** Fetch Thunderous Tom generated intro MP3 for the match card. */
+async function fetchGeneratedMatchIntro({ player1, player2, gameType } = {}) {
+  const res = await fetch('/api/match-intro', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      player1: String(player1 || '').slice(0, 40),
+      player2: String(player2 || '').slice(0, 40),
+      gameType: String(gameType || '501').slice(0, 40),
+      locale: voiceLocaleId || 'en-us',
+    }),
+  });
+  if (!res.ok) {
+    const err = new Error('Match intro unavailable');
+    err.status = res.status;
+    throw err;
+  }
+  return res.arrayBuffer();
+}
+
 /** Play Deepgram ring-announcer MP3 (match intros). Falls back to browser TTS. */
 function playIntroBuffer(arrayBuffer, token) {
   return new Promise(async (resolve) => {
@@ -13014,7 +13254,7 @@ function playIntroBuffer(arrayBuffer, token) {
 
 /**
  * Permanent sports-arena ring announcer for match intros / walk-on name calls.
- * Uses Deepgram Zeus when configured; otherwise browser speech.
+ * Uses Deepgram Helios (Thunderous Tom) when configured; otherwise browser speech.
  */
 function announceIntroSpeak(text, { force = false, cancel = false, enqueue = true } = {}) {
   if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
@@ -13034,7 +13274,10 @@ function announceIntroSpeak(text, { force = false, cancel = false, enqueue = tru
         const res = await fetch('/api/match-intro', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: String(text) }),
+          body: JSON.stringify({
+            text: String(text),
+            locale: voiceLocaleId || 'en-us',
+          }),
         });
         if (res.ok) {
           const buf = await res.arrayBuffer();
@@ -13215,13 +13458,19 @@ function announceVisitScore(display, opts = {}) {
   const raw = String(display).trim();
   if (!raw) return;
   const player = resolveCommentaryPlayerName(opts);
-  const visit = opts.visit != null ? opts.visit : (/^bust$/i.test(raw) ? 0 : parseAnnounceVisitTotal(raw));
+  const bust = !!opts.bust || /^bust$/i.test(raw);
+  const visit = opts.visit != null ? opts.visit : (bust ? 0 : parseAnnounceVisitTotal(raw));
   const remaining = opts.remaining;
-  if (/^bust$/i.test(raw)) {
-    announceSpeak('bust', { cancel: false, enqueue: true });
-  } else {
-    announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(), { cancel: false, enqueue: true });
-  }
+  const matchWon = !!opts.matchWon;
+  const legWon = !!opts.legWon;
+  requestAndPlayRefAnnounce({
+    score: Number(visit) || 0,
+    bust,
+    matchWon,
+    legWon,
+    display: raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(),
+    enqueue: true,
+  });
   if (commentaryPersonalityId && commentaryPersonalityId !== 'off') {
     requestAndPlayAiCommentary({
       player,
@@ -13234,9 +13483,9 @@ function announceVisitScore(display, opts = {}) {
     player,
     visit,
     remaining,
-    bust: !!opts.bust || /^bust$/i.test(raw),
-    legWon: !!opts.legWon,
-    matchWon: !!opts.matchWon,
+    bust,
+    legWon,
+    matchWon,
     winner: opts.winner
   });
 }
@@ -13256,7 +13505,14 @@ function announceMatchWin(winner, { forceLine = false } = {}) {
   const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
   if (!forceLine && key === lastAnnounceWinKey) return;
   lastAnnounceWinKey = key;
-  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true });
+  if (winner) {
+    requestAndPlayRefAnnounce({
+      score: 0,
+      matchWon: true,
+      display: 'GAME SHOT AND THE MATCH!',
+      enqueue: true,
+    });
+  }
 }
 
 function maybeAnnounceX01Require() {
@@ -13499,13 +13755,45 @@ function runMatchIntroAnnounce(preview) {
   if (matchIntroAnnounced) return matchIntroPromise;
   matchIntroAnnounced = true;
   const { src, players, game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
+  const gameType = (() => {
+    if (isX01Game(S.game || src?.game)) {
+      return String(resolveX01AnnounceBase(S.game || src?.game, src) || 501);
+    }
+    return String(game || src?.game || 'Match');
+  })();
 
   matchIntroPromise = (async () => {
-    // 1) Big-stage open for every match (bot / casual / tournament).
-    await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
-      cancel: false,
-      enqueue: true,
-    });
+    // 1) Dramatic bell / stadium swell, then Thunderous Tom generated intro.
+    await playBoxingBell();
+    try {
+      const ready = await probeDeepgramReady();
+      if (ready && !announceMuted) {
+        const token = ++introPlayToken;
+        const buf = await fetchGeneratedMatchIntro({
+          player1: a,
+          player2: b,
+          gameType,
+        });
+        if (buf?.byteLength) {
+          await playIntroBuffer(buf, token);
+        } else {
+          await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
+            cancel: false,
+            enqueue: true,
+          });
+        }
+      } else {
+        await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
+          cancel: false,
+          enqueue: true,
+        });
+      }
+    } catch {
+      await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
+        cancel: false,
+        enqueue: true,
+      });
+    }
     // 2) Walk-ons with name calls.
     await playWalkoutSequence(players.length ? players : [{ username: a }, { username: b }]);
     // 3) Title-card close before warm-up / "Game on."

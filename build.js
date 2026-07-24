@@ -131,6 +131,22 @@ async function build() {
     console.warn(`  ! missing walkout clips folder: ${WALKOUT_DIR}`);
   }
 
+  // 7) Copy arena SFX (boxing bell, etc.).
+  const SFX_DIR = 'sfx';
+  let sfxCopied = 0;
+  const sfxFrom = path.join(ROOT, SFX_DIR);
+  if (fs.existsSync(sfxFrom)) {
+    const sfxTo = path.join(PUBLIC_DIR, SFX_DIR);
+    fs.mkdirSync(sfxTo, { recursive: true });
+    for (const name of fs.readdirSync(sfxFrom)) {
+      if (!name.toLowerCase().endsWith('.mp3')) continue;
+      fs.copyFileSync(path.join(sfxFrom, name), path.join(sfxTo, name));
+      sfxCopied++;
+    }
+  } else {
+    console.warn(`  ! missing sfx folder: ${SFX_DIR}`);
+  }
+
   const kb = (p) => (fs.statSync(p).size / 1024).toFixed(1);
   console.log('Build complete -> public/');
   console.log(`  index.html : ${kb(path.join(PUBLIC_DIR, 'index.html'))} KB`);
@@ -138,6 +154,7 @@ async function build() {
   console.log(`  app.js     : ${kb(path.join(PUBLIC_DIR, 'app.js'))} KB (minified)`);
   console.log(`  assets     : ${copied} copied${missing ? `, ${missing} MISSING` : ''}`);
   console.log(`  walkouts   : ${walkoutCopied} mp3 copied`);
+  console.log(`  sfx        : ${sfxCopied} mp3 copied`);
 }
 
 build().catch((err) => { console.error(err); process.exit(1); });
