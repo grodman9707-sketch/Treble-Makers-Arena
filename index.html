@@ -4341,7 +4341,7 @@ body.app-active .arena-bg { animation: none !important; }
                 <label class="profile-setting-field-label" for="pref-commentary-speaker2">Speaker 2</label>
                 <select id="pref-commentary-speaker2" onchange="onCommentarySpeakerChange('pref-commentary-speaker2')"></select>
               </div>
-              <p class="profile-setting-note">
+              <p class="profile-setting-note" id="pref-commentary-status-note">
                 Singles are one voice (faster). Dual team lets you pick any two commentators.
                 Requires <code>GROQ_API_KEY</code> + <code>DEEPGRAM_API_KEY</code>. Default is Off.
               </p>
@@ -12385,10 +12385,27 @@ let commentaryObjectUrl = null;
 let commentaryPlayToken = 0;
 let commentaryConfigured = null; // null unknown, true/false after probe
 let commentaryWarned = false;
+let commentaryAudioUnlocked = false;
 
 function resetCommentaryMemory() {
   commentaryScoreHistory = [];
   commentaryTurnNumber = 0;
+}
+
+/** Resume Web Audio on first gesture so later async TTS clips can still play. */
+function unlockCommentaryAudio() {
+  if (commentaryAudioUnlocked) return;
+  commentaryAudioUnlocked = true;
+  try {
+    const ctx = typeof ensureArenaAudio === 'function' ? ensureArenaAudio() : null;
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+  } catch { /* ignore */ }
+}
+
+if (typeof window !== 'undefined') {
+  const unlockOnce = () => unlockCommentaryAudio();
+  window.addEventListener('pointerdown', unlockOnce, { capture: true, passive: true });
+  window.addEventListener('keydown', unlockOnce, { capture: true, passive: true });
 }
 
 function stopAnnounceAudio() {
@@ -12479,8 +12496,8 @@ function speakWithBrowserFallback(text, { cancel = true, rate = 1.05, pitch = 1 
   });
 }
 
-async function probeCommentaryApi() {
-  if (commentaryConfigured != null) return commentaryConfigured;
+async function probeCommentaryApi({ force = false } = {}) {
+  if (!force && commentaryConfigured != null) return commentaryConfigured;
   try {
     const res = await fetch('/api/commentary-status', { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
@@ -12488,7 +12505,25 @@ async function probeCommentaryApi() {
   } catch {
     commentaryConfigured = false;
   }
+  updateCommentaryStatusNote();
   return commentaryConfigured;
+}
+
+function updateCommentaryStatusNote() {
+  const note = document.getElementById('pref-commentary-status-note');
+  if (!note) return;
+  const base =
+    'Singles are one voice (faster). Dual team lets you pick any two commentators. Default is Off.';
+  if (commentaryConfigured === true) {
+    note.innerHTML = `${base} <strong style="color:var(--green-bright)">Server ready</strong> (Groq + Deepgram).`;
+  } else if (commentaryConfigured === false) {
+    note.innerHTML =
+      `${base} <strong style="color:var(--crimson-bright)">Not configured</strong> — set ` +
+      '<code>GROQ_API_KEY</code> + <code>DEEPGRAM_API_KEY</code> on the server.';
+  } else {
+    note.textContent =
+      `${base} Requires GROQ_API_KEY + DEEPGRAM_API_KEY on the server.`;
+  }
 }
 
 async function loadCommentaryPersonalities() {
@@ -12505,6 +12540,7 @@ async function loadCommentaryPersonalities() {
   } catch { /* ignore */ }
   syncCommentaryPersonalitySelect();
   syncDualSpeakerRow();
+  updateCommentaryStatusNote();
 }
 
 /**
@@ -12575,7 +12611,7 @@ async function fetchCommentaryAudio(payload) {
 }
 
 function playOneCommentaryClip(arrayBuffer, token) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     if (token !== commentaryPlayToken) {
       resolve();
       return;
@@ -12586,6 +12622,40 @@ function playOneCommentaryClip(arrayBuffer, token) {
       settled = true;
       resolve();
     };
+
+    // Prefer Web Audio — once resumed by a user gesture it keeps working after async TTS.
+    try {
+      unlockCommentaryAudio();
+      const ctx = typeof ensureArenaAudio === 'function' ? ensureArenaAudio() : null;
+      if (ctx) {
+        if (ctx.state === 'suspended') await ctx.resume();
+        const copy = arrayBuffer.slice(0);
+        const decoded = await ctx.decodeAudioData(copy);
+        if (token !== commentaryPlayToken) {
+          done();
+          return;
+        }
+        const src = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        gain.gain.value = 1;
+        src.buffer = decoded;
+        src.connect(gain);
+        gain.connect(ctx.destination);
+        src.onended = done;
+        commentaryAudio = {
+          _commentaryDone: done,
+          pause() {
+            try { src.stop(0); } catch { /* ignore */ }
+          },
+          src: '',
+        };
+        src.start(0);
+        return;
+      }
+    } catch {
+      /* fall through to HTMLAudioElement */
+    }
+
     try {
       if (commentaryObjectUrl) {
         try { URL.revokeObjectURL(commentaryObjectUrl); } catch { /* ignore */ }
@@ -12631,17 +12701,18 @@ function requestAndPlayAiCommentary({
   if ((!force && announceMuted) || !persona || persona === 'off') return Promise.resolve();
   if (typeof window === 'undefined') return Promise.resolve();
 
+  unlockCommentaryAudio();
   const payload = buildCommentaryPayload({ player, score, remaining, personality: persona, record });
   const token = ++commentaryPlayToken;
   stopCommentaryAudio();
 
   return (async () => {
     try {
-      const configured = await probeCommentaryApi();
+      const configured = await probeCommentaryApi({ force });
       if (!configured) {
-        if (force && !commentaryWarned) {
+        if (force || !commentaryWarned) {
           commentaryWarned = true;
-          toast('AI commentary is not configured on the server');
+          toast('AI commentary is not configured (need GROQ_API_KEY + DEEPGRAM_API_KEY)');
         }
         return;
       }
@@ -12656,10 +12727,13 @@ function requestAndPlayAiCommentary({
       announceSpeakQueue = announceSpeakQueue.then(play, play);
       await announceSpeakQueue;
     } catch (err) {
-      if (force) toast(err?.message || 'Commentary preview failed');
-      if (!commentaryWarned && (err?.status === 503 || err?.status === 502)) {
+      if (force || !commentaryWarned) {
         commentaryWarned = true;
+        toast(err?.message || 'Commentary failed');
+      }
+      if (err?.status === 503 || err?.status === 502) {
         commentaryConfigured = false;
+        updateCommentaryStatusNote();
       }
     }
   })();
@@ -12784,6 +12858,7 @@ function syncAnnouncePrefsUI() {
 }
 
 function onCommentaryPersonalityChange(selectId) {
+  unlockCommentaryAudio();
   const sel = document.getElementById(selectId || 'pref-commentary-personality')
     || document.getElementById('pref-commentary-personality')
     || document.getElementById('m-commentary-personality');
@@ -12855,6 +12930,7 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false } =
 }
 
 function previewAiCommentary() {
+  unlockCommentaryAudio();
   if (commentaryPersonalityId === 'off') {
     toast('Pick an AI announcer first');
     return;
@@ -12868,6 +12944,7 @@ function previewAiCommentary() {
   const savedTurn = commentaryTurnNumber;
   commentaryScoreHistory = [26, 26, 180];
   commentaryTurnNumber = 4;
+  commentaryWarned = false;
   requestAndPlayAiCommentary({
     player: S.username || 'Dave',
     score: commentaryPersonalityId === 'dual' ? 26 : 140,

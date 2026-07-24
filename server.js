@@ -4509,10 +4509,11 @@ function parseDualCommentaryJson(raw) {
 
 async function synthesizeDeepgramSpeech(text, model) {
   const url = `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(model)}&encoding=mp3`;
+  // Deepgram API keys use "Token", not "Bearer" (Bearer is only for short-lived JWTs).
   const upstream = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${DEEPGRAM_API_KEY}`,
+      Authorization: `Token ${DEEPGRAM_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ text: String(text) }),
