@@ -4241,7 +4241,7 @@ body.app-active .arena-bg { animation: none !important; }
           <button type="button" class="guide-zone west" onclick="goArenaZone('locker')">
             <div class="guide-zone-kicker">West</div>
             <div class="guide-zone-title">Locker Room</div>
-            <div class="guide-zone-desc">Profile, dual AI commentary, and preferred settings.</div>
+            <div class="guide-zone-desc">Profile, walk-out music, and preferred settings.</div>
           </button>
           <div class="guide-center" aria-hidden="true">
             <div class="guide-center-label">You are here</div>
@@ -4330,50 +4330,6 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-stats-title">Preferred Settings</div>
             <div class="profile-setting-row">
               <div class="profile-setting-meta">
-                <span class="profile-setting-label">Announce scores</span>
-                <span class="profile-setting-hint">Speak visit scores and AI commentary aloud</span>
-              </div>
-              <button type="button" class="pref-toggle" id="pref-announce-toggle"
-                role="switch" aria-checked="true" aria-label="Announce scores"
-                onclick="toggleAnnounceMute()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
-            </div>
-            <div class="profile-setting-stack" id="pref-announce-voice-stack">
-              <div class="profile-setting-meta">
-                <span class="profile-setting-label">Arena language / accent</span>
-                <span class="profile-setting-hint">Applies to Ref Russ score calls and AI commentators</span>
-              </div>
-              <div class="profile-setting-controls">
-                <label class="profile-setting-field-label" for="pref-voice-locale">Locale</label>
-                <select id="pref-voice-locale" onchange="onVoiceLocaleChange('pref-voice-locale')">
-                  <option value="en-us">English (US)</option>
-                </select>
-              </div>
-              <div class="profile-setting-meta" style="margin-top:0.55rem">
-                <span class="profile-setting-label">AI announcer</span>
-                <span class="profile-setting-hint">Optional key-moment commentary (ton+, bust, checkout, win). Ref Russ always calls scores when Announce is on.</span>
-              </div>
-              <div class="profile-setting-controls">
-                <label class="profile-setting-field-label" for="pref-commentary-personality">Personality</label>
-                <select id="pref-commentary-personality" onchange="onCommentaryPersonalityChange('pref-commentary-personality')">
-                  <option value="off">Off</option>
-                </select>
-                <div class="profile-setting-actions">
-                  <button type="button" class="btn btn-sm" onclick="previewAiCommentary()">Preview</button>
-                </div>
-              </div>
-              <div class="profile-setting-controls" id="pref-dual-speaker-row" style="display:none;margin-top:0.45rem">
-                <label class="profile-setting-field-label" for="pref-commentary-speaker1">Speaker 1</label>
-                <select id="pref-commentary-speaker1" onchange="onCommentarySpeakerChange('pref-commentary-speaker1')"></select>
-                <label class="profile-setting-field-label" for="pref-commentary-speaker2">Speaker 2</label>
-                <select id="pref-commentary-speaker2" onchange="onCommentarySpeakerChange('pref-commentary-speaker2')"></select>
-              </div>
-              <p class="profile-setting-note" id="pref-commentary-status-note">
-                Ref Russ (Perseus) calls scores. Commentators keep their personalities in any locale.
-                Intros use Thunderous Tom (Helios). Requires <code>GROQ_API_KEY</code> + <code>DEEPGRAM_API_KEY</code>.
-              </p>
-            </div>
-            <div class="profile-setting-row">
-              <div class="profile-setting-meta">
                 <span class="profile-setting-label">Crowd reactions</span>
                 <span class="profile-setting-hint">Cheers and murmurs on big moments</span>
               </div>
@@ -4402,14 +4358,9 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-setting-stack" id="pref-walkout-stack">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Walk-out music</span>
-                <span class="profile-setting-hint">~12–15s arena clip during match preview &amp; announcement. Default: none.</span>
+                <span class="profile-setting-hint">~12–15s intro clip on the match preview. Both players’ clips play before the match starts.</span>
               </div>
               <div class="profile-setting-controls walkout-hear">
-                <label class="profile-setting-field-label" for="pref-walkout-hear">Hear</label>
-                <select id="pref-walkout-hear" onchange="onWalkoutHearChange()">
-                  <option value="mine">Only hear mine</option>
-                  <option value="both">Hear both</option>
-                </select>
                 <button type="button" class="btn btn-sm" onclick="previewSelectedWalkout()">Preview</button>
               </div>
               <div class="walkout-picker" id="walkout-picker" aria-label="Walk-out music snippets"></div>
@@ -4528,30 +4479,6 @@ body.app-active .arena-bg { animation: none !important; }
           </select>
           <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
             Same-device pass-and-play for unlocked games — no camera or online opponent.
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Arena language / accent</label>
-          <select id="m-voice-locale" onchange="onVoiceLocaleChange('m-voice-locale')">
-            <option value="en-us">English (US)</option>
-          </select>
-          <div class="presence-row-meta" style="margin-top:0.45rem">
-            Ref Russ score calls + commentators (saved to locker settings).
-          </div>
-        </div>
-        <div class="form-group">
-          <label>AI Announcer</label>
-          <select id="m-commentary-personality" onchange="onCommentaryPersonalityChange('m-commentary-personality')">
-            <option value="off">Off</option>
-          </select>
-          <div id="m-dual-speaker-row" class="presence-row-meta hidden" style="margin-top:0.45rem;display:none">
-            <label for="m-commentary-speaker1">Speaker 1</label>
-            <select id="m-commentary-speaker1" onchange="onCommentarySpeakerChange('m-commentary-speaker1')"></select>
-            <label for="m-commentary-speaker2" style="margin-left:0.5rem">Speaker 2</label>
-            <select id="m-commentary-speaker2" onchange="onCommentarySpeakerChange('m-commentary-speaker2')"></select>
-          </div>
-          <div class="presence-row-meta" style="margin-top:0.45rem">
-            Optional key-moment commentary (saved to locker settings). Dual = pick two voices.
           </div>
         </div>
         <div class="form-group" id="invite-friend-row">
@@ -7237,7 +7164,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
     hideAllMatchLayouts();
     pendingMatchPreview = enrichPreviewWithLocalPrefs(matchPreview);
     // PvP: host picks who throws first. Bot matches auto-start with you as Player One
-    // after the walk-on / Thunderous Tom intro so test matches stay smooth.
+    // after both walk-out music clips so test matches stay smooth.
     showMatchPreviewOverlay(pendingMatchPreview, { awaitStarter: !S.isBot });
     return;
   }
@@ -7291,10 +7218,10 @@ function hydrateMatchGameState(game, gameState) {
   return Object.keys(gameState).length ? gameState : fresh;
 }
 
-const MATCH_PREVIEW_MS = 17000;
-const MATCH_PREVIEW_BOT_MS = 8000;
 const WALKOUT_CLIP_MS = 15000;
-const MAIN_MATCH_INTRO_SPEECH_MS = 12000;
+// Preview holds long enough for both players' ~15s walk-out clips (+ small buffer).
+const MATCH_PREVIEW_MS = WALKOUT_CLIP_MS * 2 + 2500;
+const MATCH_PREVIEW_BOT_MS = WALKOUT_CLIP_MS * 2 + 2500;
 let matchPreviewTimer = null;
 let pendingMatchPreview = null;
 let starterFlow = {
@@ -7447,19 +7374,24 @@ function showMatchPreviewOverlay(preview, opts = {}) {
         ? 'Tap “You Start” to begin, or use bull / coin / pick'
         : 'Host is deciding who throws first…';
     } else if (starterName) {
-      footerEl.textContent = `${starterName} throws first — walk-ons & intro…`;
+      footerEl.textContent = `${starterName} throws first — walk-out music…`;
     } else {
-      footerEl.textContent = 'Walk-ons & main-event intro…';
+      footerEl.textContent = 'Walk-out music for both players…';
     }
   }
 
   overlay.classList.remove('hidden');
 
-  // Walk-outs + main-event announce during the preview card (awaited before kickoff).
+  // Walk-out music only during the preview card (no voice). Await both clips before kickoff.
   const introPromise = runMatchIntroAnnounce(preview);
 
   if (!awaitStarter) {
-    const holdPromise = new Promise(resolve => setTimeout(resolve, minHoldMs));
+    // First auto-start (bots): hold the full dual-walkout window.
+    // After a starter pick (PvP): only wait for any remaining walk-out music.
+    const holdMs = opts.starterName ? 0 : previewMs;
+    const holdPromise = holdMs > 0
+      ? new Promise(resolve => setTimeout(resolve, holdMs))
+      : Promise.resolve();
     Promise.all([introPromise, holdPromise]).then(() => {
       if (progressEl) {
         progressEl.style.animation = 'none';
@@ -7485,9 +7417,10 @@ function hideMatchPreviewOverlay() {
 function beginMatchAfterPreview() {
   hideMatchPreviewOverlay();
   hideStarterOverlays();
+  stopWalkoutAudio();
   updateMatchUI();
   signalMatchUiReady();
-  // Warm-up countdown before first dart (intro announce already ran on preview).
+  // Warm-up countdown before first dart (walk-out music already ran on preview).
   playCrowdBurst('cheer');
   pulseArenaLighting();
   showArenaBumper('WALK-ON', {
@@ -7501,13 +7434,8 @@ function beginMatchAfterPreview() {
       startAmbientBed();
     };
     if (!matchIntroAnnounced) {
-      runMatchIntroAnnounce(pendingMatchPreview).finally(() => {
-        announceIntroSpeak('GAME ON!', { cancel: false, enqueue: true });
-        afterIntro();
-      });
+      runMatchIntroAnnounce(pendingMatchPreview).finally(afterIntro);
     } else {
-      // Intro already finished before warm-up (preview waited on it).
-      announceIntroSpeak('GAME ON!', { cancel: false, enqueue: true });
       afterIntro();
     }
   });
@@ -12844,55 +12772,9 @@ async function playCommentaryBuffer(result, token) {
  * Fetch Groq+Deepgram commentary and play via HTMLAudioElement.
  * Queued behind Ref/intro so in-progress speech is never cut off mid-line.
  */
-function requestAndPlayAiCommentary({
-  player, score, remaining, personality, force = false, record = true,
-} = {}) {
-  const persona = personality || commentaryPersonalityId;
-  if ((!force && announceMuted) || !persona || persona === 'off') return Promise.resolve();
-  if (typeof window === 'undefined') return Promise.resolve();
-
-  unlockCommentaryAudio();
-  const payload = buildCommentaryPayload({ player, score, remaining, personality: persona, record });
-
-  // Preview / force may replace whatever is playing; normal match speech waits its turn.
-  if (force) {
-    commentaryPlayToken += 1;
-    stopCommentaryAudio();
-  }
-
-  const job = async () => {
-    try {
-      if ((!force && announceMuted)) return;
-      const configured = await probeCommentaryApi({ force });
-      if (!configured) {
-        if (force || !commentaryWarned) {
-          commentaryWarned = true;
-          toast('AI commentary is not configured (need GROQ_API_KEY + DEEPGRAM_API_KEY)');
-        }
-        return;
-      }
-      if ((!force && announceMuted)) return;
-
-      const result = await fetchCommentaryAudio(payload);
-      if ((!force && announceMuted)) return;
-
-      // Take the play token only when we are next in the arena speech queue.
-      const token = ++commentaryPlayToken;
-      await playCommentaryBuffer(result, token);
-    } catch (err) {
-      if (force || !commentaryWarned) {
-        commentaryWarned = true;
-        toast(err?.message || 'Commentary failed');
-      }
-      if (err?.status === 503 || err?.status === 502) {
-        commentaryConfigured = false;
-        updateCommentaryStatusNote();
-      }
-    }
-  };
-
-  announceSpeakQueue = announceSpeakQueue.then(job, job);
-  return announceSpeakQueue;
+function requestAndPlayAiCommentary() {
+  // AI commentary voice removed — walk-out music only.
+  return Promise.resolve();
 }
 
 function resolveCommentaryPlayerName(opts = {}) {
@@ -13002,17 +12884,17 @@ function syncCommentaryPersonalitySelect() {
 function syncAnnouncePrefToggle() {
   const toggle = document.getElementById('pref-announce-toggle');
   if (!toggle) return;
-  const on = !announceMuted;
-  toggle.setAttribute('aria-checked', on ? 'true' : 'false');
-  toggle.title = on ? 'Mute match announcements' : 'Unmute match announcements';
-  const stack = document.getElementById('pref-announce-voice-stack');
-  if (stack) stack.style.opacity = on ? '1' : '0.55';
+  toggle.setAttribute('aria-checked', 'false');
+  toggle.title = 'Voice announcements removed';
 }
 
 function syncAnnouncePrefsUI() {
+  // Voice UI removed — walk-out music settings remain elsewhere in Preferred Settings.
+  announceMuted = true;
+  commentaryPersonalityId = 'off';
+  try { localStorage.setItem(ANNOUNCE_MUTE_KEY, '1'); } catch { /* ignore */ }
+  try { localStorage.setItem(COMMENTARY_PERSONALITY_KEY, 'off'); } catch { /* ignore */ }
   syncAnnouncePrefToggle();
-  syncCommentaryPersonalitySelect();
-  syncVoiceLocaleSelect();
 }
 
 function onCommentaryPersonalityChange(selectId) {
@@ -13059,32 +12941,17 @@ function onCommentarySpeakerChange(selectId) {
 }
 
 function toggleAnnounceMute() {
-  announceMuted = !announceMuted;
-  try { localStorage.setItem(ANNOUNCE_MUTE_KEY, announceMuted ? '1' : '0'); } catch { /* ignore */ }
+  // Voice announcements removed; keep mute flag for any leftover callers.
+  announceMuted = true;
+  try { localStorage.setItem(ANNOUNCE_MUTE_KEY, '1'); } catch { /* ignore */ }
   syncAnnouncePrefToggle();
-  toast(announceMuted ? 'Announcements muted' : 'Announcements on');
-  if (announceMuted) {
-    commentaryPlayToken += 1;
-    stopAllSpokenAudio();
-  } else {
-    announceSpeak('Announcer on');
-  }
+  commentaryPlayToken += 1;
+  stopAllSpokenAudio();
 }
 
-function announceSpeak(text, { force = false, cancel = false, enqueue = false } = {}) {
-  if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
-  if (typeof window === 'undefined') return Promise.resolve();
-
-  const speakNow = async () => {
-    await speakWithBrowserFallback(text, { cancel, rate: 1.05, pitch: 1 });
-  };
-
-  if (enqueue) {
-    announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
-    return announceSpeakQueue;
-  }
-  announceSpeakQueue = speakNow();
-  return announceSpeakQueue;
+function announceSpeak() {
+  // Voice announcements removed — walk-out music only.
+  return Promise.resolve();
 }
 
 /** Play Ref Russ / announce MP3 buffer (Web Audio preferred). */
@@ -13170,64 +13037,9 @@ function scoreToSpokenWordsClient(n) {
   return String(num);
 }
 
-function requestAndPlayRefAnnounce({
-  score, bust = false, matchWon = false, legWon = false, display = '', force = false, enqueue = true,
-} = {}) {
-  if ((!force && announceMuted)) return Promise.resolve();
-  if (typeof window === 'undefined') return Promise.resolve();
-
-  const speakNow = async () => {
-    unlockCommentaryAudio();
-    const spokenScore = scoreToSpokenWordsClient(score);
-    const fallbackText = bust
-      ? 'BUST!'
-      : matchWon
-        ? 'GAME SHOT AND THE MATCH!'
-        : legWon
-          ? 'GAME SHOT!'
-          : (Number(score) === 180
-            ? 'ONE HUNDRED AND EIGHTY!'
-            : (spokenScore
-              ? `${spokenScore}!`
-              : (display
-                ? `${String(display).replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()}!`.replace(/!!+/g, '!')
-                : '')));
-    try {
-      // Always attempt the API — probe can be stale; 503/502 fall through to browser TTS.
-      const res = await fetch('/api/ref-announce', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          score: Number.isFinite(Number(score)) ? Number(score) : 0,
-          bust: !!bust,
-          matchWon: !!matchWon,
-          legWon: !!legWon,
-          display: String(display || ''),
-          locale: voiceLocaleId || 'en-us',
-        }),
-      });
-      if (res.ok) {
-        const buf = await res.arrayBuffer();
-        if (buf?.byteLength) {
-          await playAnnounceBuffer(buf);
-          deepgramReady = true;
-          return;
-        }
-      } else if (res.status === 503) {
-        deepgramReady = false;
-      }
-    } catch { /* fall back */ }
-    if (fallbackText) {
-      await speakWithBrowserFallback(fallbackText, { cancel: false, rate: 1.08, pitch: 1 });
-    }
-  };
-
-  if (enqueue) {
-    announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
-    return announceSpeakQueue;
-  }
-  announceSpeakQueue = speakNow();
-  return announceSpeakQueue;
+function requestAndPlayRefAnnounce() {
+  // Voice score calling removed — walk-out music only.
+  return Promise.resolve();
 }
 
 function playBoxingBell() {
@@ -13346,81 +13158,13 @@ function playIntroBuffer(arrayBuffer, token) {
  * Permanent sports-arena ring announcer for match intros / walk-on name calls.
  * Uses Deepgram Helios (Thunderous Tom) when configured; otherwise browser speech.
  */
-function announceIntroSpeak(text, { force = false, cancel = false, enqueue = true } = {}) {
-  if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
-  if (typeof window === 'undefined') return Promise.resolve();
-
-  const speakNow = async () => {
-    unlockCommentaryAudio();
-    if (cancel) {
-      try {
-        if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
-      } catch { /* ignore */ }
-    }
-    try {
-      const token = ++introPlayToken;
-      const res = await fetch('/api/match-intro', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: String(text),
-          locale: voiceLocaleId || 'en-us',
-        }),
-      });
-      if (res.ok) {
-        const buf = await res.arrayBuffer();
-        if (buf?.byteLength) {
-          await playIntroBuffer(buf, token);
-          deepgramReady = true;
-          return;
-        }
-      } else if (res.status === 503) {
-        deepgramReady = false;
-      }
-    } catch { /* fall back */ }
-    await speakWithBrowserFallback(text, {
-      cancel: false,
-      rate: 0.95,
-      pitch: 0.85,
-    });
-  };
-
-  if (enqueue) {
-    announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
-    return announceSpeakQueue;
-  }
-  announceSpeakQueue = speakNow();
-  return announceSpeakQueue;
+function announceIntroSpeak() {
+  // Ring-announcer voice removed — walk-out music only.
+  return Promise.resolve();
 }
 
 function previewAiCommentary() {
-  unlockCommentaryAudio();
-  if (commentaryPersonalityId === 'off') {
-    toast('Pick an AI announcer first');
-    return;
-  }
-  if (commentaryPersonalityId === 'dual' && commentarySpeaker1Id === commentarySpeaker2Id) {
-    toast('Pick two different dual commentators');
-    return;
-  }
-  const wasMuted = announceMuted;
-  const savedHistory = commentaryScoreHistory.slice();
-  const savedTurn = commentaryTurnNumber;
-  commentaryScoreHistory = [26, 26, 180];
-  commentaryTurnNumber = 4;
-  commentaryWarned = false;
-  requestAndPlayAiCommentary({
-    player: S.username || 'Dave',
-    score: commentaryPersonalityId === 'dual' ? 26 : 140,
-    remaining: commentaryPersonalityId === 'dual' ? 170 : 361,
-    personality: commentaryPersonalityId,
-    force: true,
-    record: false,
-  }).then(() => {
-    commentaryScoreHistory = savedHistory;
-    commentaryTurnNumber = savedTurn;
-    if (wasMuted) toast('Preview only — announcements still muted');
-  });
+  toast('Voice commentary has been removed — use Walk-out music instead');
 }
 
 /** Resolve the on-screen / spoken game title (501 not "X01", etc.). */
@@ -13506,9 +13250,8 @@ function buildMainMatchCloseLine({ game, a, b } = {}) {
 
 /** Fallback one-shot intro when walk-on sequence is unavailable. */
 function announceMatchStart(preview = null) {
-  const { game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
-  const line = `${buildMainMatchOpenLine({ game, tournamentName })} Introducing… ${a}… versus… ${b}!`;
-  return announceIntroSpeak(line, { cancel: false, enqueue: true });
+  // Voice intros removed — walk-out music is handled by runMatchIntroAnnounce.
+  return Promise.resolve();
 }
 
 function announceMatchPreviewIntro(preview = null) {
@@ -13566,39 +13309,16 @@ function announceVisitScore(display, opts = {}) {
   if (display == null || display === '') return;
   const raw = String(display).trim();
   if (!raw) return;
-  const player = resolveCommentaryPlayerName(opts);
   const bust = !!opts.bust || /^bust$/i.test(raw);
   const visit = opts.visit != null ? opts.visit : (bust ? 0 : parseAnnounceVisitTotal(raw));
-  const remaining = opts.remaining;
-  const matchWon = !!opts.matchWon;
-  const legWon = !!opts.legWon;
-  requestAndPlayRefAnnounce({
-    score: Number(visit) || 0,
-    bust,
-    matchWon,
-    legWon,
-    display: raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(),
-    enqueue: true,
-  });
-  if (
-    commentaryPersonalityId &&
-    commentaryPersonalityId !== 'off' &&
-    isCommentaryKeyMoment({ visit, remaining, bust, legWon, matchWon })
-  ) {
-    requestAndPlayAiCommentary({
-      player,
-      score: Number(visit) || 0,
-      remaining: Number.isFinite(Number(remaining)) ? Number(remaining) : 0,
-      personality: commentaryPersonalityId,
-    });
-  }
+  // Visual arena moments only — no spoken score calls or commentary.
   announceVisitCommentary({
-    player,
+    player: resolveCommentaryPlayerName(opts),
     visit,
-    remaining,
+    remaining: opts.remaining,
     bust,
-    legWon,
-    matchWon,
+    legWon: !!opts.legWon,
+    matchWon: !!opts.matchWon,
     winner: opts.winner
   });
 }
@@ -13618,14 +13338,6 @@ function announceMatchWin(winner, { forceLine = false } = {}) {
   const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
   if (!forceLine && key === lastAnnounceWinKey) return;
   lastAnnounceWinKey = key;
-  if (winner) {
-    requestAndPlayRefAnnounce({
-      score: 0,
-      matchWon: true,
-      display: 'GAME SHOT AND THE MATCH!',
-      enqueue: true,
-    });
-  }
 }
 
 function maybeAnnounceX01Require() {
@@ -13641,7 +13353,6 @@ function maybeAnnounceX01Require() {
   if (key === lastX01RequireKey) return;
   lastX01RequireKey = key;
   triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
-  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true });
 }
 
 function announceFromScoreUpdate(msg) {
@@ -13684,8 +13395,8 @@ function announceFromScoreUpdate(msg) {
 }
 
 function initAnnounceVoiceList() {
-  loadCommentaryPersonalities();
-  probeCommentaryApi();
+  // Voice announcers removed — keep prefs forced off.
+  syncAnnouncePrefsUI();
 }
 
 syncAnnouncePrefsUI();
@@ -13699,12 +13410,7 @@ const WALKOUT_ID_KEY = 'tma-walkout-id';
 const WALKOUT_HEAR_KEY = 'tma-walkout-hear';
 let standsOptInOn = (() => { try { return localStorage.getItem(STANDS_OPTIN_KEY) === '1'; } catch { return false; } })();
 let walkoutIdSelected = (() => { try { return localStorage.getItem(WALKOUT_ID_KEY) || ''; } catch { return ''; } })();
-let walkoutHearMode = (() => {
-  try {
-    const v = localStorage.getItem(WALKOUT_HEAR_KEY);
-    return v === 'both' ? 'both' : 'mine';
-  } catch { return 'mine'; }
-})();
+let walkoutHearMode = 'both'; // Match preview always plays both players' walk-outs.
 let matchIntroAnnounced = false;
 let matchIntroPromise = Promise.resolve();
 let walkoutPlayToken = 0;
@@ -13799,24 +13505,23 @@ function toggleStandsOptIn() {
 }
 
 function onWalkoutHearChange() {
-  const el = document.getElementById('pref-walkout-hear');
-  walkoutHearMode = el?.value === 'both' ? 'both' : 'mine';
-  try { localStorage.setItem(WALKOUT_HEAR_KEY, walkoutHearMode); } catch { /* ignore */ }
-  toast(walkoutHearMode === 'both' ? 'Will hear both walk-outs' : 'Will hear only your walk-out');
+  // Match preview always plays both players' walk-outs.
+  walkoutHearMode = 'both';
+  try { localStorage.setItem(WALKOUT_HEAR_KEY, 'both'); } catch { /* ignore */ }
 }
 
 function syncStandsWalkoutPrefsUI() {
   const stands = document.getElementById('pref-stands-optin-toggle');
   if (stands) stands.setAttribute('aria-checked', standsOptInOn ? 'true' : 'false');
   const hear = document.getElementById('pref-walkout-hear');
-  if (hear) hear.value = getWalkoutHearMode();
+  if (hear) hear.value = 'both';
   const picker = document.getElementById('walkout-picker');
   if (!picker) return;
   const noneActive = !getWalkoutId();
   picker.innerHTML = `
     <button type="button" class="walkout-chip${noneActive ? ' active' : ''}" onclick="setWalkoutId('')">
-      <span class="wo-name">None</span>
-      <span class="wo-id">Default — silent</span>
+      <span class="wo-name">Arena default</span>
+      <span class="wo-id">House intro clip</span>
     </button>
     ${WALKOUT_CATALOG.map(w => `
       <button type="button" class="walkout-chip${walkoutIdSelected === w.id ? ' active' : ''}" onclick="setWalkoutId('${w.id}')">
@@ -13847,90 +13552,51 @@ function enrichPreviewWithLocalPrefs(preview) {
 }
 
 function countHeardWalkouts(players) {
-  const hearBoth = getWalkoutHearMode() === 'both';
-  const me = S.user?.username;
+  // Match preview always plays both players' intro music.
   let n = 0;
   for (const p of players || []) {
-    if (!sanitizeClientWalkoutId(p.walkoutId)) continue;
-    if (!hearBoth && p.username !== me) continue;
-    n += 1;
+    if (p?.username) n += 1;
   }
   return n;
 }
 
 function estimateMatchIntroMs(players) {
-  // Open + per-player name calls + close (~speech) + each heard walk-out clip.
-  const nameBeats = Math.max(2, (players || []).length);
-  return MAIN_MATCH_INTRO_SPEECH_MS + nameBeats * 2500 + countHeardWalkouts(players) * WALKOUT_CLIP_MS + 1500;
+  // Enough time for both players' full walk-out clips.
+  const slots = Math.max(2, countHeardWalkouts(players));
+  return slots * WALKOUT_CLIP_MS + 1500;
+}
+
+function defaultWalkoutId() {
+  return WALKOUT_CATALOG[0]?.id || '';
 }
 
 function runMatchIntroAnnounce(preview) {
   if (matchIntroAnnounced) return matchIntroPromise;
   matchIntroAnnounced = true;
-  const { src, players, game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
-  const gameType = (() => {
-    if (isX01Game(S.game || src?.game)) {
-      return String(resolveX01AnnounceBase(S.game || src?.game, src) || 501);
-    }
-    return String(game || src?.game || 'Match');
-  })();
+  const { players, a, b } = matchIntroPlayersAndNames(preview);
 
   matchIntroPromise = (async () => {
-    if (announceMuted) return;
-    // 1) Dramatic bell, then Thunderous Tom generated intro (Helios).
-    await playBoxingBell();
-    let playedGenerated = false;
-    try {
-      const token = ++introPlayToken;
-      const buf = await fetchGeneratedMatchIntro({
-        player1: a,
-        player2: b,
-        gameType,
-      });
-      if (buf?.byteLength) {
-        await playIntroBuffer(buf, token);
-        deepgramReady = true;
-        playedGenerated = true;
-      }
-    } catch {
-      playedGenerated = false;
-    }
-    if (!playedGenerated) {
-      await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
-        cancel: false,
-        enqueue: true,
-      });
-    }
-    // 2) Walk-ons with name calls.
+    // Music only — no bell, ring announcer, or spoken name calls.
     await playWalkoutSequence(players.length ? players : [{ username: a }, { username: b }]);
-    // 3) Title-card close before warm-up / "Game on."
-    await announceIntroSpeak(buildMainMatchCloseLine({ game, a, b }), {
-      cancel: false,
-      enqueue: true,
-    });
-  })().catch(() => announceMatchStart(src));
+  })().catch(() => {});
 
   return matchIntroPromise;
 }
 
 function playWalkoutSequence(players) {
-  const hearBoth = getWalkoutHearMode() === 'both';
-  const me = S.user?.username;
   const list = Array.isArray(players) ? players.filter(p => p?.username) : [];
   if (!list.length) return Promise.resolve();
 
-  // Main-match walk-on: announce each competitor, then play their clip (if heard).
+  // Match preview: play each competitor's walk-out clip back-to-back (both players).
+  const houseId = defaultWalkoutId();
   let chain = Promise.resolve();
-  list.forEach((p, i) => {
+  list.forEach((p) => {
     chain = chain.then(async () => {
-      const label = i === 0 ? 'INTRODUCING' : 'AND THEIR OPPONENT';
-      await announceIntroSpeak(`${label}... ${String(p.username || 'PLAYER').toUpperCase()}!`, { cancel: false, enqueue: true });
-      const id = sanitizeClientWalkoutId(p.walkoutId);
-      const hearThis = hearBoth || p.username === me;
-      if (hearThis && id) {
+      const id = sanitizeClientWalkoutId(p.walkoutId) || houseId;
+      if (id) {
         await playWalkoutSting(id);
       } else {
-        await new Promise(r => setTimeout(r, 650));
+        await new Promise(r => setTimeout(r, WALKOUT_CLIP_MS));
       }
     });
   });
@@ -13989,7 +13655,7 @@ function playWalkoutSting(id) {
         try { audio.pause(); } catch { /* ignore */ }
       }
       finish();
-    }, 16000);
+    }, WALKOUT_CLIP_MS + 1000);
     audio.play().catch(finish);
   });
 }
