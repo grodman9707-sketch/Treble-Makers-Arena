@@ -3110,16 +3110,15 @@ body.app-active .arena-bg { animation: none !important; }
 .x01-layout { height: auto; min-height: calc(100vh - 60px); overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .x01-body { min-height: 0; }
 .x01-center { min-height: 0; }
-/* Fixed square player-cam area: largest square that fits under the score entry */
+/* Fixed square player-cam area under the score entry */
 .x01-center .x01-cam {
-  flex: 1 1 auto; min-height: 0;
+  flex: 0 0 auto;
+  width: 100%;
   display: flex; align-items: center; justify-content: center;
-  container-type: size;
 }
 .x01-center .x01-cam-frame {
-  width: min(100cqw, 100cqh);
+  width: min(100%, var(--cam-box-max, 280px));
   max-width: 100%;
-  max-height: 100%;
   height: auto;
   aspect-ratio: var(--cam-frame-ratio);
   align-self: center;
@@ -3231,15 +3230,15 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .ckt-chat-close:hover { border-color: var(--gold); color: var(--gold-light); }
 
-/* Center column — stretch cam like X01 (largest square in remaining space) */
+/* Center column — camera needs a definite size (scroll layout has no cq height) */
 .ckt-center {
   display: flex; flex-direction: column; gap: 0.7rem; min-height: 0;
 }
 .ckt-turn-line { font-family: 'Cinzel', serif; font-size: 1.08rem; letter-spacing: 0.1em; color: var(--gold-light); text-transform: uppercase; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9); flex-shrink: 0; }
 .ckt-center .ckt-cam {
-  flex: 1 1 auto; min-height: 0;
+  flex: 0 0 auto;
+  width: 100%;
   display: flex; align-items: center; justify-content: center;
-  container-type: size;
 }
 
 /* Marks board */
@@ -3280,45 +3279,37 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-chip.miss { background: rgba(214,69,42,0.18); color: var(--crimson-bright); border-color: rgba(214,69,42,0.4); }
 .ckt-chip.dead { background: rgba(255,255,255,0.04); color: var(--muted); text-decoration: line-through; }
 
-/* Segment button pad — single column, distinct target numbers */
+/* Segment button pad — original compact size, legible Exo 2 font */
 .ckt-pad {
-  display: flex; flex-direction: column; gap: 0.35rem;
-  background: rgba(10,10,16,0.92); border: 1px solid rgba(201,168,76,0.45); border-radius: 12px;
-  padding: 0.65rem; box-shadow: 0 6px 22px rgba(0,0,0,0.55);
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.4rem 0.55rem;
+  background: rgba(10,10,16,0.9); border: 1px solid rgba(201,168,76,0.45); border-radius: 12px;
+  padding: 0.6rem; box-shadow: 0 6px 22px rgba(0,0,0,0.55);
 }
 .ckt-pad.waiting { opacity: 0.5; }
 .ckt-pad-row {
-  display: grid; grid-template-columns: 3.5rem 1fr; align-items: stretch; gap: 0.45rem;
-  padding: 0.28rem 0.2rem; border-radius: 8px;
+  display: grid; grid-template-columns: 2.1rem 1fr; align-items: center; gap: 0.4rem;
 }
-.ckt-pad-row:nth-child(odd) { background: rgba(255,255,255,0.035); }
-.ckt-pad-row:nth-child(even) { background: rgba(0,0,0,0.22); }
 .ckt-pad-label {
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Exo 2', 'Segoe UI', sans-serif;
-  font-size: 1.4rem; font-weight: 800; letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums lining-nums;
-  color: #fff;
-  background: linear-gradient(160deg, #3a3a4c, #1a1a26);
-  border: 2px solid rgba(201,168,76,0.55);
-  border-radius: 8px;
-  text-shadow: 0 1px 2px rgba(0,0,0,.95);
-  min-height: 2.7rem;
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.95rem; font-weight: 800; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-light);
+  text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9);
 }
-.ckt-pad-row[data-target="15"] .ckt-pad-label { border-color: #6ec6ff; color: #bfe6ff; }
-.ckt-pad-row[data-target="16"] .ckt-pad-label { border-color: #ffb86b; color: #ffe0b8; }
-.ckt-pad-row[data-target="17"] .ckt-pad-label { border-color: #9dffb0; color: #d2ffd9; }
-.ckt-pad-row[data-target="18"] .ckt-pad-label { border-color: #ff8fab; color: #ffd0dc; }
-.ckt-pad-row[data-target="19"] .ckt-pad-label { border-color: #d4a1ff; color: #ecd9ff; }
-.ckt-pad-row[data-target="20"] .ckt-pad-label { border-color: var(--gold); color: var(--gold-light); }
+.ckt-pad-row[data-target="15"] .ckt-pad-label { color: #9ad7ff; }
+.ckt-pad-row[data-target="16"] .ckt-pad-label { color: #ffb86b; }
+.ckt-pad-row[data-target="17"] .ckt-pad-label { color: #9dffb0; }
+.ckt-pad-row[data-target="18"] .ckt-pad-label { color: #ff8fab; }
+.ckt-pad-row[data-target="19"] .ckt-pad-label { color: #d4a1ff; }
+.ckt-pad-row[data-target="20"] .ckt-pad-label { color: var(--gold-light); }
 .ckt-pad-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; }
 .ckt-pad-bull .ckt-pad-btns { grid-template-columns: repeat(2, 1fr); }
 .ckt-seg {
   border: 1px solid rgba(201,168,76,0.35); border-radius: 7px; cursor: pointer;
   background: linear-gradient(160deg, #2a2a38, #15151f); color: var(--silver-light);
-  font-family: 'Exo 2', 'Segoe UI', sans-serif; font-weight: 800; font-size: 0.95rem;
-  padding: 0.42rem 0.15rem 0.38rem; text-shadow: 0 1px 2px rgba(0,0,0,.9);
-  transition: all 0.15s; line-height: 1.15; text-align: center;
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif; font-weight: 800; font-size: 0.92rem;
+  padding: 0.5rem 0.2rem; text-shadow: 0 1px 2px rgba(0,0,0,.9);
+  transition: all 0.15s; line-height: 1.1; text-align: center;
 }
 .ckt-seg:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-light); filter: brightness(1.15); }
 .ckt-seg:active:not(:disabled) { transform: translateY(1px); }
@@ -3327,16 +3318,18 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-seg-t { color: var(--green-bright); }
 .ckt-seg-ob, .ckt-seg-ib { color: var(--gold-light); }
 .ckt-seg .ckt-seg-num {
-  display: block; font-size: 0.78rem; opacity: 0.95; font-weight: 800;
-  font-variant-numeric: tabular-nums; letter-spacing: 0.04em; margin-top: 0.1rem;
+  display: block; font-size: 0.6rem; opacity: 0.85; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.02em; margin-top: 0.08rem;
 }
-.ckt-seg span.ckt-seg-sub { display: block; font-size: 0.56rem; opacity: 0.7; font-weight: 600; margin-top: 0.06rem; }
-.ckt-pad-miss { grid-template-columns: 1fr; }
+.ckt-seg span.ckt-seg-sub { display: block; font-size: 0.55rem; opacity: 0.7; font-weight: 600; margin-top: 0.04rem; }
+.ckt-pad-miss { grid-column: 1 / -1; grid-template-columns: 1fr; }
 .ckt-seg-miss {
+  grid-column: 1 / -1;
   background: linear-gradient(160deg, #5a2a22, #3a1812); border-color: rgba(214,69,42,0.5);
-  color: var(--crimson-bright); padding: 0.65rem;
+  color: var(--crimson-bright); padding: 0.5rem;
 }
 .ckt-pad-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 0.55rem; }
+@media (max-width: 720px) { .ckt-pad { grid-template-columns: 1fr; } }
 .ckt-side .ckt-pad { flex: 0 0 auto; }
 .ckt-side .ckt-pad-actions { flex: 0 0 auto; }
 .ckt-side .ckt-hint { padding: 0; }
@@ -3387,11 +3380,10 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .ckt-cam-badge.bot { background: rgba(232,144,42,0.85); color: #1a0e00; font-weight: 700; }
-/* Cricket/Tactics: camera in center column — same stretch square as X01 */
+/* Cricket/Tactics: fixed square player-cam (do not use cqh — scroll layout has no height) */
 .ckt-center .ckt-cam-frame {
-  width: min(100cqw, 100cqh);
+  width: min(100%, var(--cam-box-max, 280px));
   max-width: 100%;
-  max-height: 100%;
   height: auto;
   aspect-ratio: var(--cam-frame-ratio);
   align-self: center;
@@ -9154,10 +9146,10 @@ function cktRenderPad(gs, isMyTurn) {
     if (t === CRICKET_BULL) {
       return `
       <div class="ckt-pad-row ckt-pad-bull${dead ? ' dead' : ''}" data-target="bull">
-        <div class="ckt-pad-label">B</div>
+        <div class="ckt-pad-label">BULL</div>
         <div class="ckt-pad-btns">
-          <button class="ckt-seg ckt-seg-ob" onclick="cktAddDart('25')"${dis}>OB<span class="ckt-seg-num">25</span><span class="ckt-seg-sub">1 mark</span></button>
-          <button class="ckt-seg ckt-seg-ib" onclick="cktAddDart('50')"${dis}>IB<span class="ckt-seg-num">50</span><span class="ckt-seg-sub">2 marks</span></button>
+          <button class="ckt-seg ckt-seg-ob" onclick="cktAddDart('25')"${dis}>OB<span class="ckt-seg-num">25 · 1</span></button>
+          <button class="ckt-seg ckt-seg-ib" onclick="cktAddDart('50')"${dis}>IB<span class="ckt-seg-num">50 · 2</span></button>
         </div>
       </div>`;
     }
