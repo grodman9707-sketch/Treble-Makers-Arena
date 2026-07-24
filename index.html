@@ -4350,7 +4350,7 @@ body.app-active .arena-bg { animation: none !important; }
               </div>
               <div class="profile-setting-meta" style="margin-top:0.55rem">
                 <span class="profile-setting-label">AI announcer</span>
-                <span class="profile-setting-hint">Optional visit commentary (Groq + Deepgram). Ref Russ always calls scores when Announce is on.</span>
+                <span class="profile-setting-hint">Optional key-moment commentary (ton+, bust, checkout, win). Ref Russ always calls scores when Announce is on.</span>
               </div>
               <div class="profile-setting-controls">
                 <label class="profile-setting-field-label" for="pref-commentary-personality">Personality</label>
@@ -4551,7 +4551,7 @@ body.app-active .arena-bg { animation: none !important; }
             <select id="m-commentary-speaker2" onchange="onCommentarySpeakerChange('m-commentary-speaker2')"></select>
           </div>
           <div class="presence-row-meta" style="margin-top:0.45rem">
-            Optional visit commentary (saved to locker settings). Dual = pick two voices.
+            Optional key-moment commentary (saved to locker settings). Dual = pick two voices.
           </div>
         </div>
         <div class="form-group" id="invite-friend-row">
@@ -13102,8 +13102,12 @@ function playAnnounceBuffer(arrayBuffer) {
         if (ctx.state === 'suspended') await ctx.resume();
         const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
         const src = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        // Ref Russ: slightly louder than unity for clear arena callouts.
+        gain.gain.value = 1.28;
         src.buffer = decoded;
-        src.connect(ctx.destination);
+        src.connect(gain);
+        gain.connect(ctx.destination);
         src.onended = done;
         announceAudio = {
           _announceDone: done,
@@ -13123,6 +13127,7 @@ function playAnnounceBuffer(arrayBuffer) {
       const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
       announceObjectUrl = URL.createObjectURL(blob);
       const audio = new Audio(announceObjectUrl);
+      audio.volume = Math.min(1, 1.0);
       audio._announceDone = done;
       announceAudio = audio;
       audio.onended = done;
@@ -13139,6 +13144,31 @@ function playAnnounceBuffer(arrayBuffer) {
  * Ref Russ score callout via Groq + Deepgram (aura-2-perseus-en / aura-perseus-en).
  * Falls back to browser TTS if the API is unavailable.
  */
+function scoreToSpokenWordsClient(n) {
+  const num = Math.round(Number(n));
+  if (!Number.isFinite(num) || num < 0) return '';
+  if (num === 0) return 'ZERO';
+  if (num === 180) return 'ONE HUNDRED AND EIGHTY';
+  const ones = [
+    '', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+    'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN',
+    'SEVENTEEN', 'EIGHTEEN', 'NINETEEN',
+  ];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+  const under100 = (v) => {
+    if (v < 20) return ones[v];
+    const t = Math.floor(v / 10);
+    const o = v % 10;
+    return o ? `${tens[t]}-${ones[o]}` : tens[t];
+  };
+  if (num < 100) return under100(num);
+  if (num < 200) {
+    const rest = num - 100;
+    return rest ? `ONE HUNDRED AND ${under100(rest)}` : 'ONE HUNDRED';
+  }
+  return String(num);
+}
+
 function requestAndPlayRefAnnounce({
   score, bust = false, matchWon = false, legWon = false, display = '', force = false, enqueue = true,
 } = {}) {
@@ -13147,15 +13177,20 @@ function requestAndPlayRefAnnounce({
 
   const speakNow = async () => {
     unlockCommentaryAudio();
+    const spokenScore = scoreToSpokenWordsClient(score);
     const fallbackText = bust
       ? 'BUST!'
-      : (matchWon || legWon)
+      : matchWon
         ? 'GAME SHOT AND THE MATCH!'
-        : (Number(score) === 180
-          ? 'ONE HUNDRED AND EIGHTY!'
-          : (display
-            ? `${String(display).replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()}!`.replace(/!!+/g, '!')
-            : (Number.isFinite(Number(score)) ? `${Math.round(Number(score))}!` : '')));
+        : legWon
+          ? 'GAME SHOT!'
+          : (Number(score) === 180
+            ? 'ONE HUNDRED AND EIGHTY!'
+            : (spokenScore
+              ? `${spokenScore}!`
+              : (display
+                ? `${String(display).replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()}!`.replace(/!!+/g, '!')
+                : '')));
     try {
       // Always attempt the API — probe can be stale; 503/502 fall through to browser TTS.
       const res = await fetch('/api/ref-announce', {
@@ -13268,8 +13303,12 @@ function playIntroBuffer(arrayBuffer, token) {
           return;
         }
         const src = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        // Thunderous Tom: loud fight-night intro presence.
+        gain.gain.value = 1.45;
         src.buffer = decoded;
-        src.connect(ctx.destination);
+        src.connect(gain);
+        gain.connect(ctx.destination);
         src.onended = done;
         introAudio = {
           _introDone: done,
@@ -13289,6 +13328,7 @@ function playIntroBuffer(arrayBuffer, token) {
       const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
       introObjectUrl = URL.createObjectURL(blob);
       const audio = new Audio(introObjectUrl);
+      audio.volume = 1;
       audio._introDone = done;
       introAudio = audio;
       audio.onended = done;
@@ -13502,6 +13542,25 @@ function detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon } = {}) 
   return null;
 }
 
+/**
+ * AI color commentary only at key moments — not every visit.
+ * Ref Russ still calls every score separately.
+ */
+function isCommentaryKeyMoment({ visit, remaining, bust, legWon, matchWon } = {}) {
+  if (matchWon || legWon) return true;
+  if (bust) return true;
+  const score = Number(visit);
+  if (Number.isFinite(score)) {
+    if (score === 180) return true;
+    if (score >= 100) return true; // ton or better
+  }
+  const rem = Number(remaining);
+  // After a visit that leaves a short finish, or closes out.
+  if (Number.isFinite(rem) && rem === 0) return true;
+  if (Number.isFinite(rem) && rem > 0 && rem <= 40) return true;
+  return false;
+}
+
 function announceVisitScore(display, opts = {}) {
   if (display == null || display === '') return;
   const raw = String(display).trim();
@@ -13520,7 +13579,11 @@ function announceVisitScore(display, opts = {}) {
     display: raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(),
     enqueue: true,
   });
-  if (commentaryPersonalityId && commentaryPersonalityId !== 'off') {
+  if (
+    commentaryPersonalityId &&
+    commentaryPersonalityId !== 'off' &&
+    isCommentaryKeyMoment({ visit, remaining, bust, legWon, matchWon })
+  ) {
     requestAndPlayAiCommentary({
       player,
       score: Number(visit) || 0,
@@ -13588,7 +13651,7 @@ function announceFromScoreUpdate(msg) {
   }
   const note = String(msg.history?.[0]?.note || '');
   const matchWon = /wins the match/i.test(note);
-  const legWon = /wins leg/i.test(note);
+  const legWon = /wins(?:\s+the)?\s+leg\b/i.test(note);
   const bust = /^bust$/i.test(String(display).trim()) || /bust/i.test(note);
   let visit = parseAnnounceVisitTotal(display);
   let remaining;

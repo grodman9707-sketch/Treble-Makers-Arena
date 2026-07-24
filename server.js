@@ -4592,19 +4592,49 @@ function clampIntroWords(text, maxWords = 25) {
   return words.length <= maxWords ? cleaned : words.slice(0, maxWords).join(' ');
 }
 
-function clampRefWords(text, maxWords = 5) {
+function clampRefWords(text, maxWords = 6) {
   return clampCommentaryWords(text, maxWords);
 }
 
-/** Deterministic Ref Russ fallbacks when Groq is slow/unavailable. */
+/** Spoken English for dart visit totals (0–180) — clear Ref Russ callouts. */
+function scoreToSpokenWords(n) {
+  const num = Math.round(Number(n));
+  if (!Number.isFinite(num) || num < 0) return '';
+  if (num === 0) return 'ZERO';
+  if (num === 180) return 'ONE HUNDRED AND EIGHTY';
+
+  const ones = [
+    '', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+    'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN',
+    'SEVENTEEN', 'EIGHTEEN', 'NINETEEN',
+  ];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+
+  const under100 = (v) => {
+    if (v < 20) return ones[v];
+    const t = Math.floor(v / 10);
+    const o = v % 10;
+    return o ? `${tens[t]}-${ones[o]}` : tens[t];
+  };
+
+  if (num < 100) return under100(num);
+  if (num < 200) {
+    const rest = num - 100;
+    return rest ? `ONE HUNDRED AND ${under100(rest)}` : 'ONE HUNDRED';
+  }
+  return String(num);
+}
+
+/** Deterministic Ref Russ callouts — preferred for correct English scoring. */
 function fallbackRefCallout({ score, bust, matchWon, legWon } = {}) {
   if (bust) return 'BUST!';
-  if (matchWon || legWon) return 'GAME SHOT AND THE MATCH!';
+  if (matchWon) return 'GAME SHOT AND THE MATCH!';
+  if (legWon) return 'GAME SHOT!';
   const n = Number(score);
   if (n === 180) return 'ONE HUNDRED AND EIGHTY!';
   if (Number.isFinite(n)) {
-    // Russ Bray energy: shouted digits with bang.
-    return `${Math.round(n)}!`;
+    const spoken = scoreToSpokenWords(n);
+    return spoken ? `${spoken}!` : `${Math.round(n)}!`;
   }
   return '';
 }
@@ -4617,6 +4647,24 @@ function energizeRefLine(line) {
   if (!cleaned) return '';
   const upper = cleaned.toUpperCase();
   return /[!?]$/.test(upper) ? upper : `${upper}!`;
+}
+
+/** True when Groq's ref line is safe to speak (matches the visit facts). */
+function isValidRefCallout(line, { score, bust, matchWon, legWon } = {}) {
+  const upper = String(line || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!upper) return false;
+  if (bust) return /\bBUST\b/.test(upper);
+  if (matchWon) return /GAME SHOT/.test(upper) && /\bMATCH\b/.test(upper);
+  if (legWon) return /GAME SHOT/.test(upper) && !/\bMATCH\b/.test(upper);
+  const n = Math.round(Number(score));
+  if (!Number.isFinite(n)) return false;
+  if (n === 180) return /ONE HUNDRED AND EIGHTY|HUNDRED AND EIGHTY|\b180\b/.test(upper);
+  // Reject clearly wrong invented totals (e.g. calling 26 as SIXTY).
+  const expected = scoreToSpokenWords(n).replace(/-/g, ' ');
+  const compact = upper.replace(/-/g, ' ');
+  if (expected && compact.includes(expected)) return true;
+  if (new RegExp(`\\b${n}\\b`).test(compact)) return true;
+  return false;
 }
 
 app.get('/api/personalities', (req, res) => {
@@ -4704,7 +4752,7 @@ app.post('/api/match-intro', async (req, res) => {
               },
             ],
           });
-          text = clampIntroWords(completion?.choices?.[0]?.message?.content || '', 25);
+          text = clampIntroWords(completion?.choices?.[0]?.message?.content || '', 30);
         } catch (err) {
           log('warn', 'Thunderous Tom Groq failed, using fallback line:', err.message);
         }
@@ -4757,33 +4805,41 @@ app.post('/api/ref-announce', async (req, res) => {
     }
 
     const score = Number.isFinite(scoreNum) ? Math.round(scoreNum) : 0;
-    let line = '';
-    const groq = getGroqClient();
-    if (groq) {
-      try {
-        const completion = await groq.chat.completions.create({
-          model: 'llama-3.1-8b-instant',
-          temperature: 0.2,
-          max_tokens: 24,
-          messages: [
-            {
-              role: 'system',
-              content: PERSONALITIES.getRefSystemPrompt(locale.id),
-            },
-            {
-              role: 'user',
-              content: JSON.stringify({
-                score,
-                bust,
-                matchWon,
-                legWon,
-              }),
-            },
-          ],
-        });
-        line = clampRefWords(completion?.choices?.[0]?.message?.content || '', 5);
-      } catch (err) {
-        log('warn', 'Ref Russ Groq failed, using fallback:', err.message);
+    // English locales: deterministic spoken totals so Ref Russ never invents a wrong score.
+    // Non-English: Groq may translate, but only if the callout validates against the facts.
+    const preferDeterministic = !locale?.language || locale.language === 'en';
+    let line = preferDeterministic ? fallbackRefCallout({ score, bust, matchWon, legWon }) : '';
+    if (!preferDeterministic) {
+      const groq = getGroqClient();
+      if (groq) {
+        try {
+          const completion = await groq.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            temperature: 0.1,
+            max_tokens: 24,
+            messages: [
+              {
+                role: 'system',
+                content: PERSONALITIES.getRefSystemPrompt(locale.id),
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  score,
+                  bust,
+                  matchWon,
+                  legWon,
+                }),
+              },
+            ],
+          });
+          const candidate = clampRefWords(completion?.choices?.[0]?.message?.content || '', 6);
+          if (isValidRefCallout(candidate, { score, bust, matchWon, legWon })) {
+            line = candidate;
+          }
+        } catch (err) {
+          log('warn', 'Ref Russ Groq failed, using fallback:', err.message);
+        }
       }
     }
     if (!line) line = fallbackRefCallout({ score, bust, matchWon, legWon });
