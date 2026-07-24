@@ -4544,8 +4544,14 @@ app.get('/api/personalities', (req, res) => {
   res.json({
     ok: true,
     configured: commentaryConfigured(),
+    deepgram: !!DEEPGRAM_API_KEY,
     personalities: PERSONALITIES.listPersonalities(),
     speakers: PERSONALITIES.listSpeakers(),
+    introAnnouncer: {
+      id: PERSONALITIES.INTRO_ANNOUNCER.id,
+      name: PERSONALITIES.INTRO_ANNOUNCER.name,
+      voice: PERSONALITIES.INTRO_ANNOUNCER.voice,
+    },
   });
 });
 
@@ -4558,7 +4564,36 @@ app.get('/api/commentary-status', (req, res) => {
     deepgram: !!DEEPGRAM_API_KEY,
     personalities: PERSONALITIES.listPersonalities().map((p) => p.id),
     speakers: PERSONALITIES.listSpeakers().map((s) => s.id),
+    introVoice: PERSONALITIES.INTRO_ANNOUNCER.voice,
   });
+});
+
+/** Fixed ring-announcer TTS for match intros / walk-on name calls (Deepgram only). */
+app.post('/api/match-intro', async (req, res) => {
+  try {
+    const text = String(req.body?.text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 320);
+    if (!text) return res.status(400).json({ ok: false, error: 'Missing text.' });
+    if (!DEEPGRAM_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Intro announcer is not configured (set DEEPGRAM_API_KEY).',
+      });
+    }
+    const buf = await synthesizeDeepgramSpeech(text, PERSONALITIES.INTRO_ANNOUNCER.voice);
+    if (!buf.length) {
+      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('X-Intro-Voice', PERSONALITIES.INTRO_ANNOUNCER.voice);
+    res.send(buf);
+  } catch (err) {
+    log('error', 'Match intro TTS failed:', err.message);
+    res.status(502).json({ ok: false, error: 'Intro voice unavailable.' });
+  }
 });
 
 app.post('/api/commentary', async (req, res) => {
