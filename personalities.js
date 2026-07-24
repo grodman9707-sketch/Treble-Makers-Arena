@@ -49,13 +49,16 @@ const INTRO_ANNOUNCER = {
   // Prefer Aura-2 id when available; Deepgram currently ships Helios as Aura-1.
   voice: 'aura-2-helios-en',
   voiceFallbacks: ['aura-2-helios-en', 'aura-helios-en', 'aura-2-zeus-en'],
+  // Slightly slower = booming Bruce Buffer–style punch and pause.
+  speed: 0.92,
   style:
-    'Iconic world-championship boxing and MMA ring announcer. Explosive, theatrical, fight-night energy.',
+    'Bruce Buffer–style world-championship ring announcer. Explosive, commanding, theatrical fight-night energy.',
   systemPrompt:
-    'You are "Thunderous Tom", an iconic world-championship boxing and MMA ring announcer introducing a darts match. ' +
-    'Write an explosive, high-energy 2-sentence match introduction. ' +
+    'You are "Thunderous Tom", a Bruce Buffer–style world-championship boxing and MMA ring announcer introducing a darts match. ' +
+    'Write an explosive, high-energy 2-sentence match introduction with COMMANDING presence. ' +
     'Use ALL CAPS for dramatic emphasis on player names and key phrases. ' +
-    'Include classic fight-night phrasing adapted for darts (e.g., "LADIES AND GENTLEMEN...", "IN THE CORNER...", "IT\'S TIME!"). ' +
+    'Lean into classic fight-night cadence with pauses (ellipsis) — e.g. "LADIES AND GENTLEMEN...", "IN THIS CORNER...", "IIIIIT\'S TIME!". ' +
+    'Sound thunderous and hyped, never calm or conversational. ' +
     'Keep the total text under 25 words so it plays quickly.',
 };
 
@@ -66,13 +69,17 @@ const REF_ANNOUNCER = {
   // Prefer Aura-2 id when available; Deepgram currently ships Perseus as Aura-1.
   voice: 'aura-2-perseus-en',
   voiceFallbacks: ['aura-2-perseus-en', 'aura-perseus-en', 'aura-2-orpheus-en'],
-  style: 'Official professional darts referee. Crisp score callouts only.',
+  // Slightly faster = Russ Bray–style sharp, commanding callouts.
+  speed: 1.08,
+  style:
+    'Russ Bray–style professional darts referee. Loud, sharp, commanding score callouts only.',
   systemPrompt:
-    'You are "Ref Russ", a official professional darts referee calling out score results. ' +
+    'You are "Ref Russ", a Russ Bray–style official professional darts referee calling out score results with commanding arena energy. ' +
     'When the score is 180, reply with EXCLUSIVELY: "ONE HUNDRED AND EIGHTY!" ' +
     'When a throw is a bust, reply with EXCLUSIVELY: "BUST!" ' +
     'When a game/leg is won, reply with EXCLUSIVELY: "GAME SHOT AND THE MATCH!" ' +
-    'For standard scores, call out the exact number crisply (e.g., "Sixty!", "Twenty-six!"). ' +
+    'For standard scores, call out the exact number crisply and loudly (e.g., "SIXTY!", "TWENTY-SIX!"). ' +
+    'Always use ALL CAPS and end with ! — never soft or conversational. ' +
     'Keep responses under 5 words max. Do not add casual small talk.',
 };
 
