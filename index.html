@@ -545,6 +545,12 @@ body.app-active .arena-bg { animation: none !important; }
 .app-content { flex: 1; position: relative; z-index: 1; }
 .page { display: none; }
 .page.active { display: block; }
+#page-match.active {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(100vh - 54px);
+}
 
 /* ════════════════════════════════════════════
    ██ LOBBY PAGE
@@ -667,9 +673,14 @@ body.app-active .arena-bg { animation: none !important; }
 ════════════════════════════════════════════ */
 .match-layout {
   display: grid; grid-template-columns: 1fr 340px;
-  height: calc(100vh - 54px); overflow: hidden;
+  min-height: calc(100vh - 54px);
+  height: auto;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
-.match-main { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+.match-main { display: flex; flex-direction: column; overflow: visible; border-right: 1px solid var(--border); min-height: 0; }
 .match-header {
   display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--border); background: var(--deep); flex-shrink: 0;
@@ -3096,7 +3107,7 @@ body.app-active .arena-bg { animation: none !important; }
    whole match view growing as turns accumulate. */
 /* Bound the whole X01 view to the viewport so the columns have a definite
    height — this lets the score log scroll internally and the cam use a fixed square. */
-.x01-layout { height: calc(100vh - 60px); overflow: hidden; }
+.x01-layout { height: auto; min-height: calc(100vh - 60px); overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .x01-body { min-height: 0; }
 .x01-center { min-height: 0; }
 /* Fixed square player-cam area: largest square that fits under the score entry */
@@ -3122,8 +3133,11 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-layout {
   display: flex; flex-direction: column; gap: 0.75rem;
   padding: 0.75rem 1rem 1.25rem;
-  height: calc(100vh - 60px); overflow: hidden;
-  min-height: 0;
+  height: auto;
+  min-height: calc(100vh - 60px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .ckt-topbar { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; flex-shrink: 0; }
 .ckt-icon-btn {
@@ -3141,7 +3155,10 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 1.02rem; color: var(--silver-light); letter-spacing: 0.1em; margin-top: 2px;
   text-shadow: 0 1px 6px rgba(0,0,0,0.85);
 }
-.ckt-body { display: grid; grid-template-columns: 230px 1fr 360px; gap: 1rem; align-items: stretch; flex: 1; min-height: 0; }
+.ckt-body {
+  display: grid; grid-template-columns: 230px 1fr 380px; gap: 1rem;
+  align-items: start; flex: 1 0 auto; min-height: min-content;
+}
 @media (max-width: 1100px) { .ckt-body { grid-template-columns: 200px 1fr; } .ckt-side { grid-column: 1 / -1; } }
 @media (max-width: 720px) {
   .ckt-body { grid-template-columns: 1fr; }
@@ -3249,6 +3266,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-mk-0 { color: rgba(255,255,255,0.18); text-shadow: none; }
 .ckt-mk-1, .ckt-mk-2 { color: var(--gold-light); font-weight: 700; }
 .ckt-mk-3 { color: var(--green-bright); font-weight: 800; }
+.ckt-mk-pending { color: #7ec8ff; font-weight: 800; filter: drop-shadow(0 0 6px rgba(126,200,255,0.45)); }
 
 /* Pending visit chips */
 .ckt-visit { display: flex; gap: 0.5rem; justify-content: center; }
@@ -3262,27 +3280,45 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-chip.miss { background: rgba(214,69,42,0.18); color: var(--crimson-bright); border-color: rgba(214,69,42,0.4); }
 .ckt-chip.dead { background: rgba(255,255,255,0.04); color: var(--muted); text-decoration: line-through; }
 
-/* Segment button pad */
+/* Segment button pad — single column, distinct target numbers */
 .ckt-pad {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.4rem 0.55rem;
-  background: rgba(10,10,16,0.9); border: 1px solid rgba(201,168,76,0.45); border-radius: 12px;
-  padding: 0.6rem; box-shadow: 0 6px 22px rgba(0,0,0,0.55);
+  display: flex; flex-direction: column; gap: 0.35rem;
+  background: rgba(10,10,16,0.92); border: 1px solid rgba(201,168,76,0.45); border-radius: 12px;
+  padding: 0.65rem; box-shadow: 0 6px 22px rgba(0,0,0,0.55);
 }
 .ckt-pad.waiting { opacity: 0.5; }
 .ckt-pad-row {
-  display: grid; grid-template-columns: 2.1rem 1fr; align-items: center; gap: 0.4rem;
+  display: grid; grid-template-columns: 3.5rem 1fr; align-items: stretch; gap: 0.45rem;
+  padding: 0.28rem 0.2rem; border-radius: 8px;
 }
+.ckt-pad-row:nth-child(odd) { background: rgba(255,255,255,0.035); }
+.ckt-pad-row:nth-child(even) { background: rgba(0,0,0,0.22); }
 .ckt-pad-label {
-  font-family: 'Orbitron', monospace; font-size: 0.95rem; font-weight: 700; color: var(--gold-light);
-  text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  font-size: 1.4rem; font-weight: 800; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: #fff;
+  background: linear-gradient(160deg, #3a3a4c, #1a1a26);
+  border: 2px solid rgba(201,168,76,0.55);
+  border-radius: 8px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.95);
+  min-height: 2.7rem;
 }
+.ckt-pad-row[data-target="15"] .ckt-pad-label { border-color: #6ec6ff; color: #bfe6ff; }
+.ckt-pad-row[data-target="16"] .ckt-pad-label { border-color: #ffb86b; color: #ffe0b8; }
+.ckt-pad-row[data-target="17"] .ckt-pad-label { border-color: #9dffb0; color: #d2ffd9; }
+.ckt-pad-row[data-target="18"] .ckt-pad-label { border-color: #ff8fab; color: #ffd0dc; }
+.ckt-pad-row[data-target="19"] .ckt-pad-label { border-color: #d4a1ff; color: #ecd9ff; }
+.ckt-pad-row[data-target="20"] .ckt-pad-label { border-color: var(--gold); color: var(--gold-light); }
 .ckt-pad-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; }
 .ckt-pad-bull .ckt-pad-btns { grid-template-columns: repeat(2, 1fr); }
 .ckt-seg {
   border: 1px solid rgba(201,168,76,0.35); border-radius: 7px; cursor: pointer;
   background: linear-gradient(160deg, #2a2a38, #15151f); color: var(--silver-light);
-  font-family: 'Orbitron', monospace; font-weight: 700; font-size: 0.92rem; padding: 0.5rem 0.2rem;
-  text-shadow: 0 1px 2px rgba(0,0,0,.9); transition: all 0.15s; line-height: 1.1;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif; font-weight: 800; font-size: 0.95rem;
+  padding: 0.42rem 0.15rem 0.38rem; text-shadow: 0 1px 2px rgba(0,0,0,.9);
+  transition: all 0.15s; line-height: 1.15; text-align: center;
 }
 .ckt-seg:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-light); filter: brightness(1.15); }
 .ckt-seg:active:not(:disabled) { transform: translateY(1px); }
@@ -3290,11 +3326,17 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-seg-d { color: #9ad7ff; }
 .ckt-seg-t { color: var(--green-bright); }
 .ckt-seg-ob, .ckt-seg-ib { color: var(--gold-light); }
-.ckt-seg span { display: block; font-size: 0.6rem; opacity: 0.75; font-weight: 600; }
-.ckt-pad-miss { grid-column: 1 / -1; grid-template-columns: 1fr; }
-.ckt-seg-miss { grid-column: 1 / -1; background: linear-gradient(160deg, #5a2a22, #3a1812); border-color: rgba(214,69,42,0.5); color: var(--crimson-bright); }
+.ckt-seg .ckt-seg-num {
+  display: block; font-size: 0.78rem; opacity: 0.95; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.04em; margin-top: 0.1rem;
+}
+.ckt-seg span.ckt-seg-sub { display: block; font-size: 0.56rem; opacity: 0.7; font-weight: 600; margin-top: 0.06rem; }
+.ckt-pad-miss { grid-template-columns: 1fr; }
+.ckt-seg-miss {
+  background: linear-gradient(160deg, #5a2a22, #3a1812); border-color: rgba(214,69,42,0.5);
+  color: var(--crimson-bright); padding: 0.65rem;
+}
 .ckt-pad-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 0.55rem; }
-@media (max-width: 720px) { .ckt-pad { grid-template-columns: 1fr; } }
 .ckt-side .ckt-pad { flex: 0 0 auto; }
 .ckt-side .ckt-pad-actions { flex: 0 0 auto; }
 .ckt-side .ckt-hint { padding: 0; }
@@ -3334,7 +3376,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-hint { font-size: 0.66rem; color: var(--muted); line-height: 1.5; text-align: center; padding: 0 0.4rem; }
 
 /* Right column: marks board + scoring pad */
-.ckt-side { display: flex; flex-direction: column; gap: 0.7rem; align-self: stretch; min-height: 0; }
+.ckt-side { display: flex; flex-direction: column; gap: 0.7rem; align-self: start; min-height: 0; }
 .ckt-cam-frame {
   position: relative; width: 100%; aspect-ratio: var(--cam-frame-ratio); border-radius: 12px; overflow: hidden;
   border: 1px solid var(--border); background: #000; flex-shrink: 0;
@@ -4183,7 +4225,7 @@ body.app-active .arena-bg { animation: none !important; }
           <button type="button" class="guide-zone west" onclick="goArenaZone('locker')">
             <div class="guide-zone-kicker">West</div>
             <div class="guide-zone-title">Locker Room</div>
-            <div class="guide-zone-desc">Profile, announcer voice, commentary pack, and preferred settings.</div>
+            <div class="guide-zone-desc">Profile, dual AI commentary, and preferred settings.</div>
           </button>
           <div class="guide-center" aria-hidden="true">
             <div class="guide-center-label">You are here</div>
@@ -4213,7 +4255,7 @@ body.app-active .arena-bg { animation: none !important; }
     <div class="page" id="page-profile">
       <div class="profile-page">
         <div class="page-section-title">Locker Room</div>
-        <div class="page-section-sub">Your avatar, info, and preferred announcer settings for the Arena.</div>
+        <div class="page-section-sub">Your avatar, info, and preferred AI announcer for the Arena.</div>
         <div class="profile-layout">
           <div class="profile-card">
             <div class="profile-avatar-wrap">
@@ -4273,7 +4315,7 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-setting-row">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Announce scores</span>
-                <span class="profile-setting-hint">Speak visit scores and match cues aloud</span>
+                <span class="profile-setting-hint">Speak visit scores and AI commentary aloud</span>
               </div>
               <button type="button" class="pref-toggle" id="pref-announce-toggle"
                 role="switch" aria-checked="true" aria-label="Announce scores"
@@ -4281,35 +4323,19 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
             <div class="profile-setting-stack" id="pref-announce-voice-stack">
               <div class="profile-setting-meta">
-                <span class="profile-setting-label">Announcer voice</span>
-                <span class="profile-setting-hint">Arena neural voices + commentary packs</span>
+                <span class="profile-setting-label">Dual AI commentary</span>
+                <span class="profile-setting-hint">Jack (hype) + Sam (cynical) with game memory</span>
               </div>
               <div class="profile-setting-controls">
-                <label class="profile-setting-field-label" for="pref-announce-voice">Voice</label>
-                <select id="pref-announce-voice" onchange="onAnnounceVoiceChange()">
-                  <option value="en-US-ChristopherNeural">Christopher (Arena)</option>
-                  <option value="en-US-DavisNeural">Davis (Mythic)</option>
-                  <option value="en-US-GuyNeural">Guy (Chaotic)</option>
-                  <option value="en-US-AndrewNeural">Andrew (Sarcasm)</option>
-                  <option value="en-US-BrandonNeural">Brandon (Dark)</option>
-                  <option value="en-US-AriaNeural">Aria (Female)</option>
-                </select>
-                <label class="profile-setting-field-label" for="pref-announce-pack">Pack</label>
-                <select id="pref-announce-pack" onchange="onAnnouncePackChange()">
-                  <option value="bigMatchAnnouncer">Big Match</option>
-                  <option value="lokiHybrid">Loki Hybrid</option>
-                  <option value="femaleArenaAnnouncer">Arena Voice</option>
-                  <option value="off">Scores only</option>
-                </select>
                 <div class="profile-setting-actions">
-                  <button type="button" class="btn btn-sm" onclick="previewAnnounceVoice()">Preview</button>
+                  <button type="button" class="btn btn-sm" onclick="previewAiCommentary()">Preview</button>
                 </div>
               </div>
               <p class="profile-setting-note">
-                Arena neural callers play through Azure when configured
-                (<code>AZURE_SPEECH_KEY</code> / <code>AZURE_SPEECH_REGION</code>).
-                Until then, the browser speaks as a fallback so matches stay audible.
-                Loki Hybrid still switches mood lines per moment.
+                Each visit posts throw history to <code>POST /api/commentary</code>
+                (Groq dual lines + Deepgram Aura TTS). Requires
+                <code>GROQ_API_KEY</code> + <code>DEEPGRAM_API_KEY</code>.
+                Only one stacked clip plays at a time.
               </p>
             </div>
             <div class="profile-setting-row">
@@ -4467,7 +4493,7 @@ body.app-active .arena-bg { animation: none !important; }
             <option value="local">Play Local (same device)</option>
           </select>
           <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
-            Same-device play for X01 and Cricket/Tactics — no camera or online opponent.
+            Same-device pass-and-play for unlocked games — no camera or online opponent.
           </div>
         </div>
         <div class="form-group" id="invite-friend-row">
@@ -6830,13 +6856,14 @@ function startMatchFromModal() {
 }
 
 function supportsLocalPlay(game) {
-  return isX01Game(game) || isCricketGame(game);
+  // Any unlocked game (or admin-preview construction game) can be played locally.
+  return canPlayGame(game || S.game, S.user);
 }
 
 /** Same-device pass-and-play — no camera, WebRTC, or online opponent. */
 function startLocalMatch() {
   if (!supportsLocalPlay(S.game)) {
-    toast('Play Local is available for X01 and Cricket/Tactics only for now.');
+    toast('This game is under construction. Admin access only.');
     return;
   }
   closeModal('create-match-modal');
@@ -7106,6 +7133,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   setChatEnabled(!spectating && !S.isLocal);
   applySpectatingMode(spectating);
   resetMatchDrama();
+  resetCommentaryMemory();
   // Online / bot matches clear any leftover local-play flags.
   if (S.roomId) {
     S.isLocal = false;
@@ -8494,6 +8522,7 @@ function submitX01() {
   }
   if (S.isLocal) {
     announceVisitScore(display, {
+      player: names[p],
       visit: total,
       remaining: (res.legWon || res.matchOver) ? 0 : gs.remaining[p],
       bust: !!res.bust,
@@ -8924,12 +8953,7 @@ function cktVariationLabel(v) {
 function cktTargetLabel(t) { return t === CRICKET_BULL ? 'BULL' : String(t); }
 
 // Marks glyph: 0=blank, 1=/, 2=X, 3=Ⓧ (circled X = closed by that player)
-function cktMarkGlyph(n) {
-  if (n >= 3) return '<span class="ckt-mk ckt-mk-3">Ⓧ</span>';
-  if (n === 2) return '<span class="ckt-mk ckt-mk-2">✕</span>';
-  if (n === 1) return '<span class="ckt-mk ckt-mk-1">/</span>';
-  return '<span class="ckt-mk ckt-mk-0">·</span>';
-}
+// (see cktMarkGlyph below — supports pending preview styling)
 
 let cktUndoStack = [];
 let cktVisit = [];        // pending darts (parsed) for the current visit
@@ -9039,6 +9063,9 @@ function cktSubmitVisit() {
   }
   if (S.isLocal) {
     announceVisitScore(display, {
+      player: names[p] || S.username || 'Player',
+      visit: Number(res.points) || 0,
+      remaining: 0,
       legWon: !!res.legWon,
       matchWon: !!res.matchOver,
       winner
@@ -9067,6 +9094,33 @@ function cktUndo() {
   toast('Last visit reverted.');
 }
 
+function cktMarkGlyph(n, pending = false) {
+  const pend = pending ? ' ckt-mk-pending' : '';
+  if (n >= 3) return `<span class="ckt-mk ckt-mk-3${pend}">Ⓧ</span>`;
+  if (n === 2) return `<span class="ckt-mk ckt-mk-2${pend}">✕</span>`;
+  if (n === 1) return `<span class="ckt-mk ckt-mk-1${pend}">/</span>`;
+  return '<span class="ckt-mk ckt-mk-0">·</span>';
+}
+
+/** Preview marks for the active player including pending visit darts (not yet submitted). */
+function cktPreviewMarksForPlayer(gs, playerIdx) {
+  const base = { ...(gs.marks?.[playerIdx] || {}) };
+  if (!cktVisit.length || playerIdx !== S.turn) return { marks: base, pendingTargets: new Set() };
+  const pendingTargets = new Set();
+  for (const d of cktVisit) {
+    if (!d || d.miss || d.dead || d.target == null) continue;
+    const t = d.target;
+    const before = base[t] || 0;
+    const needed = Math.max(0, 3 - before);
+    const applied = Math.max(0, Math.min(Number(d.marks) || 0, needed));
+    if (applied > 0) {
+      base[t] = before + applied;
+      pendingTargets.add(t);
+    }
+  }
+  return { marks: base, pendingTargets };
+}
+
 // Render the segment-button pad from the active target set (Cricket vs Tactics).
 function cktRenderPad(gs, isMyTurn) {
   const padEl = document.getElementById('ckt-pad');
@@ -9076,21 +9130,21 @@ function cktRenderPad(gs, isMyTurn) {
     const dis = (!isMyTurn || dead) ? ' disabled' : '';
     if (t === CRICKET_BULL) {
       return `
-      <div class="ckt-pad-row ckt-pad-bull${dead ? ' dead' : ''}">
-        <div class="ckt-pad-label">BULL</div>
+      <div class="ckt-pad-row ckt-pad-bull${dead ? ' dead' : ''}" data-target="bull">
+        <div class="ckt-pad-label">B</div>
         <div class="ckt-pad-btns">
-          <button class="ckt-seg ckt-seg-ob" onclick="cktAddDart('25')"${dis}>OB<span>25 · 1</span></button>
-          <button class="ckt-seg ckt-seg-ib" onclick="cktAddDart('50')"${dis}>IB<span>50 · 2</span></button>
+          <button class="ckt-seg ckt-seg-ob" onclick="cktAddDart('25')"${dis}>OB<span class="ckt-seg-num">25</span><span class="ckt-seg-sub">1 mark</span></button>
+          <button class="ckt-seg ckt-seg-ib" onclick="cktAddDart('50')"${dis}>IB<span class="ckt-seg-num">50</span><span class="ckt-seg-sub">2 marks</span></button>
         </div>
       </div>`;
     }
     return `
-      <div class="ckt-pad-row${dead ? ' dead' : ''}">
+      <div class="ckt-pad-row${dead ? ' dead' : ''}" data-target="${t}">
         <div class="ckt-pad-label">${t}</div>
         <div class="ckt-pad-btns">
-          <button class="ckt-seg" onclick="cktAddDart('${t}')"${dis}>S</button>
-          <button class="ckt-seg ckt-seg-d" onclick="cktAddDart('D${t}')"${dis}>D</button>
-          <button class="ckt-seg ckt-seg-t" onclick="cktAddDart('T${t}')"${dis}>T</button>
+          <button class="ckt-seg" onclick="cktAddDart('${t}')"${dis}>S<span class="ckt-seg-num">${t}</span></button>
+          <button class="ckt-seg ckt-seg-d" onclick="cktAddDart('D${t}')"${dis}>D<span class="ckt-seg-num">${t}</span></button>
+          <button class="ckt-seg ckt-seg-t" onclick="cktAddDart('T${t}')"${dis}>T<span class="ckt-seg-num">${t}</span></button>
         </div>
       </div>`;
   }).join('');
@@ -9143,8 +9197,10 @@ function renderCricketMatch() {
       </div>`;
   }).join('');
 
-  // Marks board
+  // Marks board (includes live preview of pending pad presses for the thrower)
   const boardEl = document.getElementById('ckt-board');
+  const preview0 = cktPreviewMarksForPlayer(gs, 0);
+  const preview1 = cktPreviewMarksForPlayer(gs, 1);
   const headRow = `
     <div class="ckt-row ckt-row-head">
       <div class="ckt-mkcell">${escapeX01(names[0] || 'P1')}</div>
@@ -9158,12 +9214,14 @@ function renderCricketMatch() {
       <div class="ckt-mkcell"><b>${gs.score[1] || 0}</b></div>
     </div>`;
   const rows = gs.targets.map(t => {
-    const dead = (gs.marks[0][t] || 0) >= 3 && (gs.marks[1][t] || 0) >= 3;
+    const m0 = preview0.marks[t] || 0;
+    const m1 = preview1.marks[t] || 0;
+    const dead = m0 >= 3 && m1 >= 3;
     return `
       <div class="ckt-row${dead ? ' dead' : ''}">
-        <div class="ckt-mkcell">${cktMarkGlyph(gs.marks[0][t] || 0)}</div>
+        <div class="ckt-mkcell">${cktMarkGlyph(m0, preview0.pendingTargets.has(t))}</div>
         <div class="ckt-num">${cktTargetLabel(t)}</div>
-        <div class="ckt-mkcell">${cktMarkGlyph(gs.marks[1][t] || 0)}</div>
+        <div class="ckt-mkcell">${cktMarkGlyph(m1, preview1.pendingTargets.has(t))}</div>
       </div>`;
   }).join('');
   boardEl.innerHTML = headRow + scoreRow + rows;
@@ -9227,15 +9285,17 @@ function updateCricketCamera() {
 //  SCORE SUBMISSION
 // ═══════════════════════════════════════════════════════════
 function determineWinner(game, scores, gameState) {
+  const name0 = S.isLocal ? (S.localNames?.[0] || S.user.username || 'Player 1') : (S.user.username || 'You');
+  const name1 = S.isLocal ? (S.localNames?.[1] || 'Player 2') : 'Opponent';
   if (game === 'Golf Darts' || game === 'Golf Checkouts') {
     if (scores[0] === scores[1]) return null;
-    return scores[0] < scores[1] ? S.user.username : 'Opponent';
+    return scores[0] < scores[1] ? name0 : name1;
   }
   if (game === 'Snakes & Ladders') {
-    if (gameState?.pos?.[0] === 100) return S.user.username;
-    if (gameState?.pos?.[1] === 100) return 'Opponent';
+    if (gameState?.pos?.[0] === 100) return name0;
+    if (gameState?.pos?.[1] === 100) return name1;
   }
-  return scores[0] === scores[1] ? null : (scores[0] > scores[1] ? S.user.username : 'Opponent');
+  return scores[0] === scores[1] ? null : (scores[0] > scores[1] ? name0 : name1);
 }
 
 function parseDartInput(raw) {
@@ -9643,19 +9703,24 @@ function submitScore(opts = {}) {
   if (!winner) winner = determineWinner(g, S.scores, gs);
 
   const newGs = JSON.parse(JSON.stringify(gs));
-  wsSend({
-    type: 'submit_score', delta, absoluteScore, displayScore, note,
-    gameState: newGs, gameOver,
-    winner: gameOver ? winner : null,
-    highScore: S.stats.highScore,
-    matchStats: { scores: S.scores, time: Math.floor((Date.now()-S.stats.startTime)/1000), bestRound: S.stats.bestRound }
-  });
+  if (!S.isLocal) {
+    wsSend({
+      type: 'submit_score', delta, absoluteScore, displayScore, note,
+      gameState: newGs, gameOver,
+      winner: gameOver ? winner : null,
+      highScore: S.stats.highScore,
+      matchStats: { scores: S.scores, time: Math.floor((Date.now()-S.stats.startTime)/1000), bestRound: S.stats.bestRound }
+    });
+  }
 
-  // Local optimistic update
+  // Local optimistic update (also the sole path for same-device Play Local)
   const localIdx = myPlayerIdx();
+  const scorerName = S.isLocal
+    ? (S.localNames?.[localIdx] || S.user.username || `Player ${localIdx + 1}`)
+    : (S.user.username || 'You');
   if (absoluteScore !== undefined) S.scores[localIdx] = absoluteScore;
   else S.scores[localIdx] += delta;
-  S.history.unshift({ player: S.user.username, score: displayScore, note });
+  S.history.unshift({ player: scorerName, score: displayScore, note });
   if (gs.turnEnded) {
     if (g === 'Golf Checkouts') {
       S.turn = gcSkipWaitingTurn(1 - localIdx, gs);
@@ -9663,6 +9728,15 @@ function submitScore(opts = {}) {
       S.turn = 1 - localIdx;
     }
     gs.turnEnded = false;
+  }
+  if (S.isLocal) {
+    announceVisitScore(displayScore, {
+      player: scorerName,
+      visit: Number.isFinite(Number(val)) ? Number(val) : 0,
+      remaining: 0,
+      matchWon: !!gameOver,
+      winner: gameOver ? winner : null
+    });
   }
   updateMatchUI();
 
@@ -9871,17 +9945,26 @@ function updateMatchUI() {
   const isGolfDarts = g === 'Golf Darts';
   const isGolfCheckouts = g === 'Golf Checkouts';
   const isFootballDarts = g === 'Football Darts';
-  const me = myPlayerIdx();
+  // Local pass-and-play: keep seats fixed (P1 left / P2 right); highlight by turn.
+  const me = S.isLocal ? 0 : myPlayerIdx();
   const opp = 1 - me;
   const sbYou = gid('sb-score-you'), sbOpp = gid('sb-score-opp');
   sbYou.textContent = S.scores[me];
   sbOpp.textContent = S.scores[opp];
-  sbYou.className = 'sb-score' + (isMyTurn ? ' active' : '');
-  sbOpp.className = 'sb-score' + (!isMyTurn ? ' active' : '');
+  sbYou.className = 'sb-score' + (S.turn === me ? ' active' : '');
+  sbOpp.className = 'sb-score' + (S.turn === opp ? ' active' : '');
+  if (S.isLocal) {
+    const n0 = (S.localNames?.[0] || 'Player 1').toUpperCase();
+    const n1 = (S.localNames?.[1] || 'Player 2').toUpperCase();
+    gid('sb-name-you').textContent = n0;
+    gid('sb-name-opp').textContent = n1;
+    gid('cam-label-you').textContent = n0;
+    gid('cam-label-opp').textContent = n1;
+  }
   gid('cam-score-you').textContent = S.scores[me];
   gid('cam-score-opp').textContent = S.scores[opp];
-  gid('cam-score-you-wrap').className = 'cam-score-box you' + (isMyTurn ? ' active' : '');
-  gid('cam-score-opp-wrap').className = 'cam-score-box opp' + (!isMyTurn ? ' active' : '');
+  gid('cam-score-you-wrap').className = 'cam-score-box you' + (S.turn === me ? ' active' : '');
+  gid('cam-score-opp-wrap').className = 'cam-score-box opp' + (S.turn === opp ? ' active' : '');
   gid('scoreboard').classList.toggle('halveit-hidden', isHalveIt || isGolfDarts || isFootballDarts);
   gid('visualizer').classList.toggle('halveit-arena', isHalveIt);
   gid('visualizer').classList.toggle('golf-darts-arena', isGolfDarts);
@@ -12240,457 +12323,41 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  ANNOUNCE — Azure neural voices + commentary packs (PR #20+)
+//  ANNOUNCE — Dual Jack+Sam commentary (Groq + Deepgram TTS)
 // ═══════════════════════════════════════════════════════════
 const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
-const ANNOUNCE_VOICE_KEY = 'tma-announce-voice';
-const ANNOUNCE_PACK_KEY = 'tma-announce-pack';
-// Legacy style key — migrated once to a commentary pack.
-const ANNOUNCE_STYLE_KEY = 'tma-announce-style';
-
-// Curated Arena voices (Azure Neural). Browser/OS Microsoft lists are not used.
-const ANNOUNCE_VOICES = [
-  { id: 'en-US-ChristopherNeural', label: 'Christopher (Arena)' },
-  { id: 'en-US-DavisNeural', label: 'Davis (Mythic)' },
-  { id: 'en-US-GuyNeural', label: 'Guy (Chaotic)' },
-  { id: 'en-US-AndrewNeural', label: 'Andrew (Sarcasm)' },
-  { id: 'en-US-BrandonNeural', label: 'Brandon (Dark)' },
-  { id: 'en-US-AriaNeural', label: 'Aria (Female)' },
-];
-const ANNOUNCE_VOICE_IDS = new Set(ANNOUNCE_VOICES.map(v => v.id));
-
-const ANNOUNCE_PACKS = {
-  lokiHybrid: {
-    label: 'Loki Hybrid',
-    rate: 1.02,
-    pitch: 0.88,
-    defaultVoice: 'en-US-GuyNeural',
-    eventVoices: {
-      BIG_SCORE: 'en-US-GuyNeural',
-      MOMENTUM_LOSS: 'en-US-AndrewNeural',
-      CHECKOUT_CHANCE: 'en-US-DavisNeural',
-      WIN: 'en-US-DavisNeural'
-    },
-    bigScore: [
-      "Chaos unleashed! A monstrous visit!",
-      "Thunder cracks — the gods awaken!",
-      "A surge of power shakes the Arena!",
-      "The runes flare with raw fury!",
-      "A strike worthy of ancient legends!",
-      "Power tears through the board!",
-      "The Arena shudders under that score!",
-      "Mischief explodes in a storm of steel!",
-      "That visit carves a mark into destiny!",
-      "The gods lean forward in approval.",
-      "A roar of numbers — pure devastation!",
-      "The board sings with that impact!",
-      "A visit forged in fire and shadow!",
-      "The trickster laughs — that was brutal!",
-      "A thunderous answer to doubt!",
-      "The realms echo with that score!",
-      "A hammer blow to the opponent's hopes!",
-      "Runes ignite — the Arena is alive!",
-      "A surge of chaos, perfectly aimed!",
-      "That visit rewrites the story of this leg!",
-      "The crowd of unseen spirits erupts!",
-      "A storm of points crashes down!",
-      "The gods whisper: again.",
-      "A visit that bends fate itself!"
-    ],
-    momentumLoss: [
-      "The trickster smiles… momentum fades.",
-      "A stumble — fate twists sharply.",
-      "Weakness whispers through the Arena.",
-      "The gods turn their gaze away.",
-      "Mischief coils around this misstep.",
-      "The storm calms — too calm.",
-      "Power drains from the thrower's hand.",
-      "The runes dim, sensing doubt.",
-      "Chaos pauses, watching the slip.",
-      "The Arena grows colder after that visit.",
-      "A crack appears in their resolve.",
-      "The spirits murmur — not impressed.",
-      "Momentum bleeds out onto the floor.",
-      "The tide of battle shifts away.",
-      "A misstep in the dance of destiny.",
-      "The trickster tilts the scales the other way.",
-      "The board feels that hesitation.",
-      "A soft visit in a hard moment.",
-      "The gods arch an eyebrow at that.",
-      "The Arena sighs — pressure mounts.",
-      "A lull in the storm — dangerous.",
-      "Chaos waits for a stronger offering.",
-      "The runes flicker, uncertain.",
-      "The path to glory grows steeper."
-    ],
-    checkout: [
-      "Destiny calls… a finish glimmers.",
-      "The runes align — the end is near.",
-      "A chance to end the battle right here.",
-      "The Arena holds its breath…",
-      "Power gathers behind this moment.",
-      "One throw to carve fate in stone.",
-      "The gods watch this visit closely.",
-      "Chaos circles, hungry for an ending.",
-      "The board waits for the killing blow.",
-      "A finish hangs in the air like thunder.",
-      "This dart could seal the saga.",
-      "Runes burn brighter — the moment is ripe.",
-      "The trickster whispers: take it.",
-      "A single dart to silence doubt.",
-      "The Arena narrows to this one throw.",
-      "Every breath in the realms pauses.",
-      "The path to victory stands open.",
-      "A finish glows at the edge of vision.",
-      "This is a blade poised above destiny.",
-      "The gods lean in, eyes fixed.",
-      "Chaos demands a decisive strike.",
-      "The board begs for a final number.",
-      "This moment weighs more than all before.",
-      "A chance to write legend in one motion."
-    ],
-    win: [
-      "Victory claimed! The Arena roars!",
-      "Triumph ascends in thunder!",
-      "The final blow lands — glory is theirs!",
-      "The gods salute this conquest!",
-      "Chaos bows to the victor!",
-      "A saga ends in blazing triumph!",
-      "The runes glow with satisfaction.",
-      "The Arena echoes with their name.",
-      "Fate kneels before that final dart.",
-      "The storm breaks into radiant victory.",
-      "The trickster smirks — well played.",
-      "A legend is etched into the board.",
-      "The realms remember this finish.",
-      "Glory crashes down like a wave.",
-      "The last dart sings of dominance.",
-      "The gods raise a toast to this win.",
-      "Chaos retreats, beaten for now.",
-      "The Arena stands in awe of that ending.",
-      "A crown of numbers rests upon them.",
-      "The match ends in mythic fashion.",
-      "The runes whisper: champion.",
-      "The story closes on a perfect note.",
-      "Victory burns bright in the dark.",
-      "This win will echo through future battles."
-    ]
-  },
-
-  bigMatchAnnouncer: {
-    label: 'Big Match',
-    rate: 0.95,
-    pitch: 0.9,
-    defaultVoice: 'en-US-ChristopherNeural',
-    bigScore: [
-      "What a visit! That is world-class darts!",
-      "Huge score! That changes everything!",
-      "A massive hit — the crowd erupts!",
-      "That is exceptional scoring!",
-      "A brilliant visit under pressure!",
-      "That's a huge moment in this leg!",
-      "Superb scoring — exactly what was needed.",
-      "They pile on the pressure with that visit.",
-      "That's a statement score right there.",
-      "Top-tier darts — fantastic visit.",
-      "They answer the pressure in style.",
-      "That visit could turn the match around.",
-      "Outstanding scoring — right back in it.",
-      "That's a hammer blow to the opponent.",
-      "They've found their scoring power now.",
-      "That's a visit the crowd will remember.",
-      "They load the board with points again.",
-      "Relentless scoring — this is quality.",
-      "Firing on all cylinders now.",
-      "That's a professional response to pressure.",
-      "They punish every mistake with visits like that.",
-      "That's the kind of scoring champions produce.",
-      "They're building a serious platform here.",
-      "That visit sends a clear message."
-    ],
-    momentumLoss: [
-      "That's a slip — pressure now shifts.",
-      "Momentum swings toward the other player.",
-      "A costly visit… they'll want that back.",
-      "That opens the door for their opponent.",
-      "A dip in scoring at the worst moment.",
-      "They've lost a bit of rhythm there.",
-      "That visit invites pressure.",
-      "They'll be disappointed with that outcome.",
-      "The scoring has dropped off at a key time.",
-      "That could be a turning point — in the wrong direction.",
-      "They've given their opponent a chance to breathe.",
-      "That's not the visit they were looking for.",
-      "The momentum they had is fading.",
-      "They're struggling to maintain the pace.",
-      "That visit hands the initiative over.",
-      "They'll need to reset after that.",
-      "The match tempo is slipping away.",
-      "That's a missed opportunity to press on.",
-      "They've opened the door for a comeback.",
-      "That visit may haunt them later.",
-      "They've let the pressure ease off their opponent.",
-      "That's a soft visit in a hard moment.",
-      "They'll know that wasn't good enough.",
-      "The crowd senses a shift in momentum."
-    ],
-    checkout: [
-      "Checkout opportunity here — can they take it?",
-      "This is a crucial moment in the match.",
-      "A chance to close the leg right now.",
-      "Pressure rising — finish required.",
-      "This could be the turning point.",
-      "They're lining up a key finish.",
-      "This is a massive dart in the context of the match.",
-      "They have a real chance to steal the leg.",
-      "This is where champions show their nerve.",
-      "They've got a look at the finish — big moment.",
-      "The match could swing on this checkout.",
-      "They step up with a chance to end it.",
-      "This is a test of composure and precision.",
-      "They're eyeing up the winning combination.",
-      "One clean visit could seal the leg.",
-      "This is a high-pressure checkout.",
-      "They know how important this finish is.",
-      "The crowd leans in for this moment.",
-      "They've got the opportunity — can they deliver?",
-      "This dart could change everything.",
-      "They're on a finish — tension is building.",
-      "This is a pivotal checkout attempt.",
-      "They're within striking distance of the leg.",
-      "This is where the match can be decided."
-    ],
-    win: [
-      "Game, shot, and the match!",
-      "A brilliant finish to seal the victory!",
-      "That's the winning dart — superb performance!",
-      "Match won in style!",
-      "A commanding victory from start to finish!",
-      "They take the match with authority.",
-      "That's a well-deserved win.",
-      "They close it out with real class.",
-      "A strong performance from the very first dart.",
-      "They've been the better player and it shows.",
-      "They wrap up the match with a clinical finish.",
-      "That's a professional job done.",
-      "They've earned every bit of that victory.",
-      "A decisive result in a high-quality match.",
-      "They finish the contest in emphatic fashion.",
-      "That's a statement win.",
-      "They've shown real composure to get over the line.",
-      "The match ends with a superb checkout.",
-      "They walk away the clear winner.",
-      "That's a big win in this Arena.",
-      "They've proven their quality on this stage.",
-      "A memorable victory tonight.",
-      "They seal the match with a dart of pure precision.",
-      "That's the perfect way to end a great match."
-    ]
-  },
-
-  femaleArenaAnnouncer: {
-    label: 'Arena Voice',
-    rate: 1.0,
-    pitch: 1.12,
-    defaultVoice: 'en-US-AriaNeural',
-    bigScore: [
-      "A powerful visit! The Arena feels it!",
-      "Exceptional scoring — beautifully done!",
-      "A commanding hit — momentum rises!",
-      "Precision and power in perfect harmony!",
-      "That is a statement visit!",
-      "A huge score under pressure.",
-      "That visit sends a clear message.",
-      "Beautifully struck — that's top-level scoring.",
-      "Loading the board with points again.",
-      "A strong visit that shifts the balance.",
-      "Finding a rhythm now.",
-      "That's a brilliant response to the situation.",
-      "Answering the pressure with pure quality.",
-      "That visit could reshape this leg.",
-      "Building a serious platform here.",
-      "A confident, controlled scoring visit.",
-      "Showing real scoring power.",
-      "That's the kind of visit champions produce.",
-      "Turning up the heat on the opponent.",
-      "The Arena comes alive after that score.",
-      "Asserting control with visits like that.",
-      "That's a big moment in this match.",
-      "Right back in the contest with that.",
-      "A visit that demands respect."
-    ],
-    momentumLoss: [
-      "A dip in rhythm — pressure builds.",
-      "Momentum slips away… can they recover?",
-      "That visit opens the door for their opponent.",
-      "A costly moment — tension rises.",
-      "They'll want that visit back.",
-      "Scoring drops at a difficult time.",
-      "That's not the visit needed there.",
-      "The match tilts slightly away.",
-      "The opponent has room to breathe.",
-      "That's a missed chance to keep control.",
-      "Momentum has slowed noticeably.",
-      "Frustration after that outcome.",
-      "The Arena feels the shift in energy.",
-      "A bit of scoring edge lost there.",
-      "That visit invites pressure from the other side.",
-      "Time to reset and refocus.",
-      "The match tempo is slipping from their grasp.",
-      "That's a softer visit in a hard moment.",
-      "The door opens to a possible comeback.",
-      "The pressure now leans their way.",
-      "That wasn't enough.",
-      "The crowd senses a change in momentum.",
-      "The initiative slips slightly.",
-      "That visit may prove costly later."
-    ],
-    checkout: [
-      "A finish is within reach… focus now.",
-      "This is a pivotal moment — can they take it?",
-      "The match could turn right here.",
-      "A chance to close the leg in style.",
-      "Pressure peaks — finish required.",
-      "Stepping up with a chance to win the leg.",
-      "This is a huge moment.",
-      "Lining up a key checkout.",
-      "One composed visit could seal it.",
-      "The opportunity is there — can they deliver?",
-      "The Arena holds its breath for this finish.",
-      "Eyeing the winning combination.",
-      "This checkout could define the match.",
-      "They know how important this moment is.",
-      "A successful finish here changes everything.",
-      "On a finish — tension rises.",
-      "This is a test of nerve and precision.",
-      "Standing on the edge of victory.",
-      "This dart could close the leg.",
-      "Within striking distance of the win.",
-      "This is a critical checkout attempt.",
-      "Poised to end the leg.",
-      "The match hangs on this opportunity.",
-      "Seize control with this finish."
-    ],
-    win: [
-      "Victory secured — an outstanding performance!",
-      "The match is claimed with style!",
-      "A decisive finish — beautifully executed!",
-      "Match won — a brilliant display!",
-      "A powerful victory from start to finish!",
-      "They take the win with real authority.",
-      "That's a well-earned triumph.",
-      "Closing out the match with confidence.",
-      "A superb performance throughout.",
-      "Quality proven on this stage.",
-      "The Arena celebrates this victory.",
-      "The match ends with a clinical checkout.",
-      "That's a memorable win.",
-      "The stronger player, and it shows.",
-      "A commanding result in a high-pressure match.",
-      "Finishing the contest in style.",
-      "Composure under pressure has paid off.",
-      "The match ends with a beautiful final dart.",
-      "Walking away the clear winner.",
-      "This victory will stand out in the Arena's history.",
-      "Every point of that win was earned.",
-      "A fitting end to a strong performance.",
-      "Sealing the match with precision and poise.",
-      "That's the perfect conclusion tonight."
-    ]
-  }
-};
-
-const ANNOUNCE_PACK_IDS = Object.keys(ANNOUNCE_PACKS);
-
-function migrateAnnouncePackId(raw) {
-  if (raw === 'off') return 'off';
-  if (ANNOUNCE_PACKS[raw]) return raw;
-  if (raw === 'oche' || raw === 'arena') return 'bigMatchAnnouncer';
-  if (raw === 'rapid') return 'lokiHybrid';
-  if (raw === 'calm') return 'femaleArenaAnnouncer';
-  return 'bigMatchAnnouncer';
-}
-
-function migrateAnnounceVoiceId(raw) {
-  if (ANNOUNCE_VOICE_IDS.has(raw)) return raw;
-  // Legacy browser voiceURI / empty → pack default or Christopher.
-  return '';
-}
 
 let announceMuted = (() => {
   try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
 })();
-let announceVoiceId = (() => {
-  try {
-    return migrateAnnounceVoiceId(localStorage.getItem(ANNOUNCE_VOICE_KEY) || '');
-  } catch { return ''; }
-})();
-let announcePackId = (() => {
-  try {
-    const pack = localStorage.getItem(ANNOUNCE_PACK_KEY);
-    if (pack != null) return migrateAnnouncePackId(pack);
-    const legacy = localStorage.getItem(ANNOUNCE_STYLE_KEY);
-    if (legacy != null) return migrateAnnouncePackId(legacy);
-    return 'bigMatchAnnouncer';
-  } catch { return 'bigMatchAnnouncer'; }
-})();
+/** Recent visit scores for dual-announcer game memory (last 3–5). */
+let commentaryScoreHistory = [];
+let commentaryTurnNumber = 0;
 let lastX01RequireKey = '';
 let lastAnnounceWinKey = '';
 let announceSpeakQueue = Promise.resolve();
 let announceAudio = null;
 let announceObjectUrl = null;
-let announceTtsConfigured = null; // null unknown, true/false after probe
-let announceTtsWarned = false;
+let commentaryAudio = null;
+let commentaryObjectUrl = null;
+let commentaryPlayToken = 0;
+let commentaryConfigured = null; // null unknown, true/false after probe
+let commentaryWarned = false;
 
-function getAnnouncePack() {
-  if (announcePackId === 'off') return null;
-  return ANNOUNCE_PACKS[announcePackId] || ANNOUNCE_PACKS.bigMatchAnnouncer;
-}
-
-function announceRandomLine(lines) {
-  if (!Array.isArray(lines) || !lines.length) return '';
-  return lines[Math.floor(Math.random() * lines.length)];
-}
-
-function detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon } = {}) {
-  if (matchWon || legWon || remaining === 0) return { type: 'WIN' };
-  if (bust) return { type: 'MOMENTUM_LOSS' };
-  const score = Number(visit);
-  if (Number.isFinite(score)) {
-    if (score >= 140) return { type: 'BIG_SCORE' };
-    if (score < 40) return { type: 'MOMENTUM_LOSS' };
-  }
-  return null;
-}
-
-function getAnnounceCommentary(event, pack) {
-  if (!event || !pack) return '';
-  switch (event.type) {
-    case 'BIG_SCORE': return announceRandomLine(pack.bigScore);
-    case 'MOMENTUM_LOSS': return announceRandomLine(pack.momentumLoss);
-    case 'CHECKOUT_CHANCE': return announceRandomLine(pack.checkout);
-    case 'WIN': return announceRandomLine(pack.win);
-    default: return '';
-  }
-}
-
-function resolveAnnounceVoiceId(eventType) {
-  const pack = getAnnouncePack();
-  if (pack?.eventVoices && eventType && pack.eventVoices[eventType]) {
-    return pack.eventVoices[eventType];
-  }
-  if (announceVoiceId && ANNOUNCE_VOICE_IDS.has(announceVoiceId)) return announceVoiceId;
-  if (pack?.defaultVoice && ANNOUNCE_VOICE_IDS.has(pack.defaultVoice)) return pack.defaultVoice;
-  return 'en-US-ChristopherNeural';
+function resetCommentaryMemory() {
+  commentaryScoreHistory = [];
+  commentaryTurnNumber = 0;
 }
 
 function stopAnnounceAudio() {
   try {
     if (announceAudio) {
+      const done = announceAudio._announceDone;
       announceAudio.onended = null;
       announceAudio.onerror = null;
       announceAudio.pause();
       announceAudio.src = '';
+      if (typeof done === 'function') done();
     }
   } catch { /* ignore */ }
   announceAudio = null;
@@ -12705,26 +12372,116 @@ function stopAnnounceAudio() {
   } catch { /* ignore */ }
 }
 
-async function probeAnnounceTts() {
-  if (announceTtsConfigured != null) return announceTtsConfigured;
+function stopCommentaryAudio() {
   try {
-    const res = await fetch('/api/tts-status', { cache: 'no-store' });
-    const data = await res.json().catch(() => ({}));
-    announceTtsConfigured = !!(res.ok && data.configured);
-  } catch {
-    announceTtsConfigured = false;
+    if (commentaryAudio) {
+      const done = commentaryAudio._commentaryDone;
+      commentaryAudio.onended = null;
+      commentaryAudio.onerror = null;
+      commentaryAudio.pause();
+      commentaryAudio.src = '';
+      if (typeof done === 'function') done();
+    }
+  } catch { /* ignore */ }
+  commentaryAudio = null;
+  if (commentaryObjectUrl) {
+    try { URL.revokeObjectURL(commentaryObjectUrl); } catch { /* ignore */ }
+    commentaryObjectUrl = null;
   }
-  return announceTtsConfigured;
 }
 
-async function fetchAnnounceAudio(text, voice) {
-  const res = await fetch('/api/tts', {
+function stopAllSpokenAudio() {
+  stopAnnounceAudio();
+  stopCommentaryAudio();
+}
+
+function pickBrowserFallbackVoice() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  let voices = [];
+  try { voices = window.speechSynthesis.getVoices() || []; } catch { return null; }
+  if (!voices.length) return null;
+  const scored = voices.map(v => {
+    const lang = String(v.lang || '').toLowerCase();
+    const name = String(v.name || '').toLowerCase();
+    let s = 0;
+    if (lang.startsWith('en')) s += 40;
+    if (lang.startsWith('en-us')) s += 10;
+    if (lang.startsWith('en-gb')) s += 8;
+    if (/male|david|mark|guy|george|daniel|james|ryan/.test(name)) s += 12;
+    if (v.localService) s += 3;
+    return { v, s };
+  });
+  scored.sort((a, b) => b.s - a.s);
+  return scored[0]?.v || voices[0] || null;
+}
+
+function speakWithBrowserFallback(text, { cancel = true, rate = 1.05, pitch = 1 } = {}) {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+    try {
+      if (cancel) stopAllSpokenAudio();
+      const u = new SpeechSynthesisUtterance(String(text));
+      u.rate = rate;
+      u.pitch = pitch;
+      const voice = pickBrowserFallbackVoice();
+      if (voice) u.voice = voice;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      window.speechSynthesis.speak(u);
+    } catch {
+      resolve();
+    }
+  });
+}
+
+async function probeCommentaryApi() {
+  if (commentaryConfigured != null) return commentaryConfigured;
+  try {
+    const res = await fetch('/api/commentary-status', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    commentaryConfigured = !!(res.ok && data.configured);
+  } catch {
+    commentaryConfigured = false;
+  }
+  return commentaryConfigured;
+}
+
+/**
+ * Build dual-announcer payload with game memory (last 3–5 visit scores).
+ * Mutates commentaryScoreHistory / commentaryTurnNumber when record=true.
+ */
+function buildCommentaryPayload({ player, score, remaining, record = true } = {}) {
+  const scoreNum = Number(score) || 0;
+  const remainingNum = Number.isFinite(Number(remaining)) ? Number(remaining) : 0;
+  if (record) {
+    commentaryTurnNumber += 1;
+    commentaryScoreHistory.push(scoreNum);
+    if (commentaryScoreHistory.length > 5) {
+      commentaryScoreHistory = commentaryScoreHistory.slice(-5);
+    }
+  }
+  const history = commentaryScoreHistory.slice(-5);
+  return {
+    player: String(player || 'Player').slice(0, 40),
+    score: scoreNum,
+    remaining: remainingNum,
+    turnNumber: commentaryTurnNumber || 1,
+    checkout: remainingNum > 0 && remainingNum <= 170,
+    history,
+  };
+}
+
+async function fetchCommentaryAudio(payload) {
+  const res = await fetch('/api/commentary', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: String(text), voice }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    let msg = 'Voice service unavailable.';
+    let msg = 'Commentary unavailable.';
     try {
       const data = await res.json();
       if (data?.error) msg = data.error;
@@ -12736,83 +12493,89 @@ async function fetchAnnounceAudio(text, voice) {
   return res.arrayBuffer();
 }
 
-/** Browser TTS fallback when Azure Speech is not configured (no OS voice list in UI). */
-function pickBrowserFallbackVoice(preferredId) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-  let voices = [];
-  try { voices = window.speechSynthesis.getVoices() || []; } catch { return null; }
-  if (!voices.length) return null;
-  const wantFemale = /Aria/i.test(preferredId || '');
-  const scored = voices.map(v => {
-    const lang = String(v.lang || '').toLowerCase();
-    const name = String(v.name || '').toLowerCase();
-    let s = 0;
-    if (lang.startsWith('en')) s += 40;
-    if (lang.startsWith('en-us')) s += 10;
-    if (lang.startsWith('en-gb')) s += 8;
-    if (wantFemale && /female|woman|zira|samantha|victoria|aria|jenny|sara/.test(name)) s += 20;
-    if (!wantFemale && /male|david|mark|guy|george|daniel|james|ryan/.test(name)) s += 12;
-    if (v.localService) s += 3;
-    return { v, s };
-  });
-  scored.sort((a, b) => b.s - a.s);
-  return scored[0]?.v || voices[0] || null;
-}
-
-function speakWithBrowserFallback(text, { cancel = true, voiceId = null, rate = 1.05, pitch = 1 } = {}) {
+/** Play stacked Jack+Sam MP3; cancels any prior clip so audio never overlaps. */
+function playCommentaryBuffer(arrayBuffer, token) {
   return new Promise((resolve) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
+    if (token !== commentaryPlayToken) {
       resolve();
       return;
     }
-    try {
-      if (cancel) {
-        stopAnnounceAudio();
-      }
-      const u = new SpeechSynthesisUtterance(String(text));
-      u.rate = rate;
-      u.pitch = pitch;
-      const voice = pickBrowserFallbackVoice(voiceId);
-      if (voice) u.voice = voice;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
-      window.speechSynthesis.speak(u);
-    } catch {
+    stopAllSpokenAudio();
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
       resolve();
+    };
+    try {
+      const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+      commentaryObjectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(commentaryObjectUrl);
+      audio._commentaryDone = done;
+      commentaryAudio = audio;
+      audio.onended = done;
+      audio.onerror = done;
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => done());
+      }
+    } catch {
+      done();
     }
   });
 }
 
-function populateAnnounceVoiceSelect() {
-  const sel = document.getElementById('pref-announce-voice');
-  if (!sel) return;
-  const prev = announceVoiceId || sel.value;
-  sel.innerHTML = '';
-  ANNOUNCE_VOICES.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v.id;
-    opt.textContent = v.label;
-    sel.appendChild(opt);
-  });
-  sel.disabled = false;
-  const pack = getAnnouncePack();
-  const fallback = pack?.defaultVoice || 'en-US-ChristopherNeural';
-  if (prev && ANNOUNCE_VOICE_IDS.has(prev)) {
-    sel.value = prev;
-    announceVoiceId = prev;
-  } else {
-    sel.value = fallback;
-    announceVoiceId = fallback;
-  }
+/**
+ * Fetch dual Groq+Deepgram commentary and play via HTMLAudioElement.
+ * Newer visits bump commentaryPlayToken so stale responses never overlap.
+ */
+function requestAndPlayAiCommentary({ player, score, remaining, force = false, record = true } = {}) {
+  if ((!force && announceMuted)) return Promise.resolve();
+  if (typeof window === 'undefined') return Promise.resolve();
+
+  const payload = buildCommentaryPayload({ player, score, remaining, record });
+  const token = ++commentaryPlayToken;
+  stopCommentaryAudio();
+
+  return (async () => {
+    try {
+      const configured = await probeCommentaryApi();
+      if (!configured) return;
+      if (token !== commentaryPlayToken) return;
+      if ((!force && announceMuted)) return;
+
+      const buf = await fetchCommentaryAudio(payload);
+      if (token !== commentaryPlayToken) return;
+      if ((!force && announceMuted)) return;
+
+      const play = () => playCommentaryBuffer(buf, token);
+      announceSpeakQueue = announceSpeakQueue.then(play, play);
+      await announceSpeakQueue;
+    } catch (err) {
+      if (!commentaryWarned && (err?.status === 503 || err?.status === 502)) {
+        commentaryWarned = true;
+        commentaryConfigured = false;
+      }
+    }
+  })();
 }
 
-function syncAnnouncePackSelect() {
-  const sel = document.getElementById('pref-announce-pack');
-  if (!sel) return;
-  const ok = announcePackId === 'off' || ANNOUNCE_PACKS[announcePackId];
-  if (!ok) announcePackId = 'bigMatchAnnouncer';
-  if (![...sel.options].some(o => o.value === announcePackId)) announcePackId = 'bigMatchAnnouncer';
-  sel.value = announcePackId;
+function resolveCommentaryPlayerName(opts = {}) {
+  if (opts.player) return String(opts.player).trim().slice(0, 40) || 'Player';
+  if (opts.winner) return String(opts.winner).trim().slice(0, 40) || 'Player';
+  try {
+    if (isX01Game(S.game) && typeof x01PlayerNames === 'function') {
+      const names = x01PlayerNames();
+      const idx = typeof S.turn === 'number' ? S.turn : myPlayerIdx();
+      if (names?.[idx]) return String(names[idx]).slice(0, 40);
+    }
+    if (isCricketGame(S.game) && typeof cktPlayerNames === 'function') {
+      const names = cktPlayerNames();
+      const idx = typeof S.turn === 'number' ? S.turn : myPlayerIdx();
+      if (names?.[idx]) return String(names[idx]).slice(0, 40);
+    }
+  } catch { /* ignore */ }
+  return (S.username || S.players?.[0]?.username || 'Player').slice(0, 40);
 }
 
 function syncAnnouncePrefToggle() {
@@ -12827,38 +12590,6 @@ function syncAnnouncePrefToggle() {
 
 function syncAnnouncePrefsUI() {
   syncAnnouncePrefToggle();
-  populateAnnounceVoiceSelect();
-  syncAnnouncePackSelect();
-}
-
-function persistAnnounceVoice() {
-  try { localStorage.setItem(ANNOUNCE_VOICE_KEY, announceVoiceId || ''); } catch { /* ignore */ }
-}
-
-function persistAnnouncePack() {
-  try { localStorage.setItem(ANNOUNCE_PACK_KEY, announcePackId); } catch { /* ignore */ }
-}
-
-function onAnnounceVoiceChange() {
-  const sel = document.getElementById('pref-announce-voice');
-  const id = sel?.value || '';
-  announceVoiceId = ANNOUNCE_VOICE_IDS.has(id) ? id : 'en-US-ChristopherNeural';
-  persistAnnounceVoice();
-  if (!announceMuted) previewAnnounceVoice();
-}
-
-function onAnnouncePackChange() {
-  const sel = document.getElementById('pref-announce-pack');
-  announcePackId = migrateAnnouncePackId(sel?.value || 'bigMatchAnnouncer');
-  persistAnnouncePack();
-  const pack = getAnnouncePack();
-  if (pack?.defaultVoice && ANNOUNCE_VOICE_IDS.has(pack.defaultVoice)) {
-    announceVoiceId = pack.defaultVoice;
-    persistAnnounceVoice();
-    const voiceSel = document.getElementById('pref-announce-voice');
-    if (voiceSel) voiceSel.value = announceVoiceId;
-  }
-  if (!announceMuted) previewAnnounceVoice();
 }
 
 function toggleAnnounceMute() {
@@ -12866,52 +12597,20 @@ function toggleAnnounceMute() {
   try { localStorage.setItem(ANNOUNCE_MUTE_KEY, announceMuted ? '1' : '0'); } catch { /* ignore */ }
   syncAnnouncePrefToggle();
   toast(announceMuted ? 'Announcements muted' : 'Announcements on');
-  if (announceMuted) stopAnnounceAudio();
-  else announceSpeak('Announcer on');
+  if (announceMuted) {
+    commentaryPlayToken += 1;
+    stopAllSpokenAudio();
+  } else {
+    announceSpeak('Announcer on');
+  }
 }
 
-function announceSpeak(text, { force = false, cancel = true, enqueue = false, eventType = null } = {}) {
+function announceSpeak(text, { force = false, cancel = true, enqueue = false } = {}) {
   if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
   if (typeof window === 'undefined') return Promise.resolve();
 
   const speakNow = async () => {
-    const voice = resolveAnnounceVoiceId(eventType);
-    const pack = getAnnouncePack();
-    const rate = pack?.rate ?? 1.05;
-    const pitch = pack?.pitch ?? 1;
-    try {
-      const configured = await probeAnnounceTts();
-      if (!configured) {
-        // No Azure keys yet — keep matches audible with browser TTS.
-        await speakWithBrowserFallback(text, { cancel, voiceId: voice, rate, pitch });
-        return;
-      }
-      if (cancel) stopAnnounceAudio();
-      const buf = await fetchAnnounceAudio(text, voice);
-      if ((!force && announceMuted)) return;
-      const blob = new Blob([buf], { type: 'audio/mpeg' });
-      if (announceObjectUrl) {
-        try { URL.revokeObjectURL(announceObjectUrl); } catch { /* ignore */ }
-      }
-      announceObjectUrl = URL.createObjectURL(blob);
-      const audio = new Audio(announceObjectUrl);
-      announceAudio = audio;
-      await new Promise((resolve) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
-        const playPromise = audio.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(() => resolve());
-        }
-      });
-    } catch (err) {
-      // Azure configured but request failed — still announce via browser.
-      if (!announceTtsWarned && (err?.status === 503 || err?.status === 502)) {
-        announceTtsWarned = true;
-        toast('Azure voice unavailable — using browser fallback');
-      }
-      await speakWithBrowserFallback(text, { cancel, voiceId: voice, rate, pitch });
-    }
+    await speakWithBrowserFallback(text, { cancel, rate: 1.05, pitch: 1 });
   };
 
   if (enqueue) {
@@ -12922,15 +12621,24 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false, ev
   return announceSpeakQueue;
 }
 
-function previewAnnounceVoice() {
-  const pack = getAnnouncePack();
+function previewAiCommentary() {
   const wasMuted = announceMuted;
-  const sample = pack
-    ? announceRandomLine(pack.bigScore) || 'Welcome to Treble-Makers Arena!'
-    : 'One hundred and eighty. Scores only.';
-  const eventType = pack ? 'BIG_SCORE' : null;
-  announceSpeak(sample, { force: true, eventType });
-  if (wasMuted) toast('Preview only — announcements still muted');
+  // Preview without mutating match memory.
+  const savedHistory = commentaryScoreHistory.slice();
+  const savedTurn = commentaryTurnNumber;
+  commentaryScoreHistory = [26, 26, 180];
+  commentaryTurnNumber = 4;
+  requestAndPlayAiCommentary({
+    player: S.username || 'Dave',
+    score: 26,
+    remaining: 170,
+    force: true,
+    record: false,
+  }).then(() => {
+    commentaryScoreHistory = savedHistory;
+    commentaryTurnNumber = savedTurn;
+    if (wasMuted) toast('Preview only — announcements still muted');
+  });
 }
 
 /** Resolve the on-screen / spoken game title (501 not "X01", etc.). */
@@ -12968,65 +12676,41 @@ function announceGameLabel(preview = null, { spoken = false } = {}) {
     const base = resolveX01AnnounceBase(game, src);
     if (base) return spoken ? speakX01Base(base) : String(base);
   }
-  if (game === 'Halve-It') return 'Halve It';
-  return game;
+  return String(game);
 }
 
-function matchIntroPlayersAndNames(preview = null) {
+function matchIntroNames(preview = null) {
   const src = preview || pendingMatchPreview;
-  const players = src?.players?.length ? src.players : null;
-  const fromPreview = players?.length >= 2
-    ? [players[0]?.username, players[1]?.username]
-    : null;
-  const names = fromPreview || seatPlayerNames();
   return {
-    src,
-    players: players || [],
-    // Spoken label for announcer lines (five-oh-one, Cricket, …).
     game: announceGameLabel(src, { spoken: true }),
-    // Numeric / display label for UI (501, Cricket, …).
     gameDisplay: announceGameLabel(src, { spoken: false }),
-    a: names[0] || 'Player 1',
-    b: names[1] || 'Player 2',
-    tournamentName: src?.tournamentName || S.tournamentName || '',
+    a: src?.hostName || S.localNames?.[0] || S.username || 'Player 1',
+    b: src?.guestName || S.localNames?.[1] || S.opponentName || 'Player 2',
   };
 }
 
 function buildMainMatchOpenLine({ game, tournamentName = '' } = {}) {
-  const eventBit = tournamentName
-    ? `this ${tournamentName} ${game} main event`
-    : `this ${game} main event`;
-  const lines = [
-    `Ladies and gentlemen… welcome to Treble-Makers Arena for ${eventBit}!`,
-    `From Treble-Makers Arena… it's ${eventBit}!`,
-    `Welcome to Treble-Makers Arena — ${eventBit} is about to begin!`,
-    `It's main-event time in Treble-Makers Arena for ${eventBit}!`,
-  ];
-  return lines[Math.floor(Math.random() * lines.length)];
+  const g = game || announceGameLabel(null, { spoken: true });
+  if (tournamentName) return `Welcome to ${tournamentName}. This is ${g}.`;
+  return `Welcome to Treble-Makers Arena. This is ${g}.`;
 }
 
 function buildMainMatchCloseLine({ game, a, b } = {}) {
-  const lines = [
-    `${game}! ${a} versus ${b}!`,
-    `Your main event — ${a} versus ${b}!`,
-    `${a} versus ${b}… for the ${game}!`,
-  ];
-  return lines[Math.floor(Math.random() * lines.length)];
+  return `${a} versus ${b}. Let's play ${game || announceGameLabel(null, { spoken: true })}!`;
 }
 
-/** Fallback one-shot intro when walk-on sequence is unavailable. */
-function announceMatchStart(preview = null) {
-  const { game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
+function announceMatchPreviewIntro(preview = null) {
+  const { game, a, b } = matchIntroNames(preview);
+  const tournamentName = preview?.tournamentName || '';
   const line = `${buildMainMatchOpenLine({ game, tournamentName })} Introducing… ${a}… versus… ${b}!`;
   return announceSpeak(line, { cancel: false, enqueue: true });
 }
 
 function parseAnnounceVisitTotal(display) {
-  if (display == null) return NaN;
-  if (typeof display === 'number') return display;
-  const raw = String(display).trim();
+  const raw = String(display || '').trim();
   if (!raw || /^bust$/i.test(raw)) return NaN;
-  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  const m = raw.match(/(-?\d+)/);
+  if (m) return parseInt(m[1], 10);
   return NaN;
 }
 
@@ -13039,28 +12723,39 @@ function x01LastVisitEntry(gs) {
   return null;
 }
 
+function detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon } = {}) {
+  if (matchWon || legWon || remaining === 0) return { type: 'WIN' };
+  if (bust) return { type: 'MOMENTUM_LOSS' };
+  const score = Number(visit);
+  if (Number.isFinite(score)) {
+    if (score >= 140) return { type: 'BIG_SCORE' };
+    if (score < 40) return { type: 'MOMENTUM_LOSS' };
+  }
+  return null;
+}
+
 function announceVisitScore(display, opts = {}) {
   if (display == null || display === '') return;
   const raw = String(display).trim();
   if (!raw) return;
-  // Enqueue so player + bot visits are both spoken (bot is also paced server-side).
+  const player = resolveCommentaryPlayerName(opts);
+  const visit = opts.visit != null ? opts.visit : (/^bust$/i.test(raw) ? 0 : parseAnnounceVisitTotal(raw));
+  const remaining = opts.remaining;
   if (/^bust$/i.test(raw)) {
-    announceSpeak('bust', { cancel: false, enqueue: true, eventType: 'MOMENTUM_LOSS' });
-    announceVisitCommentary({
-      visit: 0,
-      bust: true,
-      remaining: opts.remaining,
-      legWon: !!opts.legWon,
-      matchWon: !!opts.matchWon,
-      winner: opts.winner
-    });
-    return;
+    announceSpeak('bust', { cancel: false, enqueue: true });
+  } else {
+    announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(), { cancel: false, enqueue: true });
   }
-  announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(), { cancel: false, enqueue: true });
+  requestAndPlayAiCommentary({
+    player,
+    score: Number(visit) || 0,
+    remaining: Number.isFinite(Number(remaining)) ? Number(remaining) : 0,
+  });
   announceVisitCommentary({
-    visit: opts.visit != null ? opts.visit : parseAnnounceVisitTotal(raw),
-    remaining: opts.remaining,
-    bust: !!opts.bust,
+    player,
+    visit,
+    remaining,
+    bust: !!opts.bust || /^bust$/i.test(raw),
     legWon: !!opts.legWon,
     matchWon: !!opts.matchWon,
     winner: opts.winner
@@ -13068,33 +12763,21 @@ function announceVisitScore(display, opts = {}) {
 }
 
 function announceVisitCommentary({ visit, remaining, bust, legWon, matchWon, winner } = {}) {
-  const pack = getAnnouncePack();
   const event = detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon });
   if (!event) return;
   noteDramaFromVisit({ visit, bust, legWon, matchWon });
   triggerArenaMoment(event, { visit, bust, legWon, matchWon, winner });
   if (event.type === 'WIN') {
-    announceMatchWin(winner, { forceLine: true });
-    return;
+    const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
+    lastAnnounceWinKey = key;
   }
-  if (!pack) return;
-  const line = getAnnounceCommentary(event, pack);
-  if (line) announceSpeak(line, { cancel: false, enqueue: true, eventType: event.type });
 }
 
 function announceMatchWin(winner, { forceLine = false } = {}) {
-  const pack = getAnnouncePack();
   const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
   if (!forceLine && key === lastAnnounceWinKey) return;
   lastAnnounceWinKey = key;
-  if (pack) {
-    const line = getAnnounceCommentary({ type: 'WIN' }, pack);
-    if (line) {
-      announceSpeak(line, { cancel: false, enqueue: true, eventType: 'WIN' });
-      return;
-    }
-  }
-  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true, eventType: 'WIN' });
+  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true });
 }
 
 function maybeAnnounceX01Require() {
@@ -13109,18 +12792,8 @@ function maybeAnnounceX01Require() {
   const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${active}|${rem}`;
   if (key === lastX01RequireKey) return;
   lastX01RequireKey = key;
-
-  const pack = getAnnouncePack();
-  if (pack && rem <= 40) {
-    const line = getAnnounceCommentary({ type: 'CHECKOUT_CHANCE' }, pack);
-    if (line) {
-      triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
-      announceSpeak(line, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
-      return;
-    }
-  }
   triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
-  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
+  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true });
 }
 
 function announceFromScoreUpdate(msg) {
@@ -13151,6 +12824,7 @@ function announceFromScoreUpdate(msg) {
   }
 
   announceVisitScore(display, {
+    player: msg.history?.[0]?.player || null,
     visit,
     remaining,
     bust,
@@ -13162,15 +12836,11 @@ function announceFromScoreUpdate(msg) {
 }
 
 function initAnnounceVoiceList() {
-  populateAnnounceVoiceSelect();
-  probeAnnounceTts();
+  probeCommentaryApi();
 }
 
 syncAnnouncePrefsUI();
 initAnnounceVoiceList();
-persistAnnouncePack();
-persistAnnounceVoice();
-
 
 // ═══════════════════════════════════════════════════════════
 //  STANDS OPT-IN + WALK-OUT MUSIC + MATCH INTRO

@@ -5,10 +5,11 @@
 Treble-Makers Arena is a **single Node.js process** (`server.js`): Express serves the
 built `public/` bundle, exposes a few `/api/*` routes, and runs the WebSocket game
 server. Almost all app behavior (register, login, matches, gameplay) happens over
-**WebSocket**, not REST — REST endpoints include `/healthz`, `/api/tts`,
-`/api/commentary`, `/api/wdl-standings`, and `/api/lazy-standings`. There is no
-external DB, no test suite, and no lint config; state lives in a single JSON file.
-Standard commands are in `README.md` / `package.json`.
+**WebSocket**, not REST — REST endpoints include `/healthz`, `/api/personalities`,
+`/api/commentary`, `/api/wdl-standings`, and `/api/lazy-standings`. Dual
+commentary uses Groq + Deepgram TTS. There is no external DB, no test suite,
+and no lint config; state lives in a single JSON file. Standard commands are
+in `README.md` / `package.json`.
 
 ### Running the app
 - `npm start` (or `npm run dev`) builds `public/` then starts the server; `npm run serve`

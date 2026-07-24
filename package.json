@@ -13,7 +13,6 @@
     "serve": "node server.js"
   },
   "dependencies": {
-    "@deepgram/sdk": "^5.7.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
     "dotenv": "^17.4.2",
