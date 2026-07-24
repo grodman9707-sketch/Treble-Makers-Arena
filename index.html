@@ -12378,13 +12378,10 @@ let commentaryPlayToken = 0;
 let commentaryConfigured = null; // null unknown, true/false after probe
 let commentaryWarned = false;
 let commentaryAudioUnlocked = false;
-<<<<<<< HEAD
 let deepgramReady = null; // Deepgram-only (ring intro can work without Groq)
 let introAudio = null;
 let introObjectUrl = null;
 let introPlayToken = 0;
-=======
->>>>>>> origin/main
 
 function resetCommentaryMemory() {
   commentaryScoreHistory = [];
@@ -12530,15 +12527,12 @@ async function probeCommentaryApi({ force = false } = {}) {
   return commentaryConfigured;
 }
 
-<<<<<<< HEAD
 async function probeDeepgramReady({ force = false } = {}) {
   if (!force && deepgramReady != null) return deepgramReady;
   await probeCommentaryApi({ force: true });
   return !!deepgramReady;
 }
 
-=======
->>>>>>> origin/main
 function updateCommentaryStatusNote() {
   const note = document.getElementById('pref-commentary-status-note');
   if (!note) return;
