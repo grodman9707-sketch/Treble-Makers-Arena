@@ -21,6 +21,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const Groq = require('groq-sdk');
+const { DeepgramClient } = require('@deepgram/sdk');
 
 const app = express();
 const server = http.createServer(app);
@@ -4528,6 +4530,149 @@ app.post('/api/tts', async (req, res) => {
   } catch (err) {
     log('error', 'TTS proxy failed:', err.message);
     res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+  }
+});
+
+// ─── AI match commentary (Groq text → Deepgram Aura TTS) ───
+const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
+const DEEPGRAM_API_KEY = (process.env.DEEPGRAM_API_KEY || '').trim();
+const COMMENTARY_PERSONALITIES = {
+  sarcastic: {
+    voice: 'aura-2-orion-en',
+    system:
+      'You are a sarcastic darts commentator. Reply with one dry, witty line only. ' +
+      'Maximum 12 words. No quotes, emojis, or stage directions.',
+  },
+  hyped: {
+    voice: 'aura-2-apollo-en',
+    system:
+      'You are a hyped darts arena announcer. Reply with one explosive hype line only. ' +
+      'Maximum 12 words. No quotes, emojis, or stage directions.',
+  },
+  coach: {
+    voice: 'aura-2-asteria-en',
+    system:
+      'You are a supportive darts coach. Reply with one short encouraging tip or praise. ' +
+      'Maximum 12 words. No quotes, emojis, or stage directions.',
+  },
+};
+let groqClient = null;
+let deepgramClient = null;
+
+function getGroqClient() {
+  if (!GROQ_API_KEY) return null;
+  if (!groqClient) groqClient = new Groq({ apiKey: GROQ_API_KEY });
+  return groqClient;
+}
+
+function getDeepgramClient() {
+  if (!DEEPGRAM_API_KEY) return null;
+  if (!deepgramClient) deepgramClient = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY });
+  return deepgramClient;
+}
+
+/** Keep spoken lines short for TTS latency / cost. */
+function clampCommentaryWords(text, maxWords = 12) {
+  const cleaned = String(text || '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+  const words = cleaned.split(' ');
+  return words.length <= maxWords ? cleaned : words.slice(0, maxWords).join(' ');
+}
+
+app.get('/api/commentary-status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    configured: !!(GROQ_API_KEY && DEEPGRAM_API_KEY),
+    groq: !!GROQ_API_KEY,
+    deepgram: !!DEEPGRAM_API_KEY,
+    personalities: Object.keys(COMMENTARY_PERSONALITIES),
+    voices: Object.fromEntries(
+      Object.entries(COMMENTARY_PERSONALITIES).map(([k, v]) => [k, v.voice])
+    ),
+  });
+});
+
+app.post('/api/commentary', async (req, res) => {
+  try {
+    const player = typeof req.body?.player === 'string' ? req.body.player.trim().slice(0, 40) : '';
+    const personalityRaw = typeof req.body?.personality === 'string'
+      ? req.body.personality.trim().toLowerCase()
+      : '';
+    const scoreNum = Number(req.body?.score);
+    const remainingNum = Number(req.body?.remaining);
+
+    if (!player) return res.status(400).json({ ok: false, error: 'Missing player.' });
+    if (!Number.isFinite(scoreNum)) {
+      return res.status(400).json({ ok: false, error: 'Invalid score.' });
+    }
+    if (!Number.isFinite(remainingNum)) {
+      return res.status(400).json({ ok: false, error: 'Invalid remaining.' });
+    }
+    const pack = COMMENTARY_PERSONALITIES[personalityRaw];
+    if (!pack) {
+      return res.status(400).json({
+        ok: false,
+        error: `Invalid personality. Use one of: ${Object.keys(COMMENTARY_PERSONALITIES).join(', ')}.`,
+      });
+    }
+
+    const groq = getGroqClient();
+    const deepgram = getDeepgramClient();
+    if (!groq || !deepgram) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Commentary is not configured (set GROQ_API_KEY and DEEPGRAM_API_KEY).',
+      });
+    }
+
+    const score = Math.round(scoreNum);
+    const remaining = Math.round(remainingNum);
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.9,
+      max_tokens: 40,
+      messages: [
+        { role: 'system', content: pack.system },
+        {
+          role: 'user',
+          content:
+            `Player "${player}" just scored ${score} points and has ${remaining} remaining. ` +
+            'Give one short commentary line.',
+        },
+      ],
+    });
+
+    const rawLine = completion?.choices?.[0]?.message?.content || '';
+    const commentary = clampCommentaryWords(rawLine, 12);
+    if (!commentary) {
+      log('warn', 'Groq commentary returned empty text');
+      return res.status(502).json({ ok: false, error: 'Commentary generation failed.' });
+    }
+
+    const audio = await deepgram.speak.v1.audio.generate({
+      text: commentary,
+      model: pack.voice,
+      encoding: 'mp3',
+    });
+    const buf = Buffer.from(await audio.arrayBuffer());
+    if (!buf.length) {
+      log('warn', 'Deepgram TTS returned empty audio');
+      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+    }
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('X-Commentary-Text', encodeURIComponent(commentary));
+    res.setHeader('X-Commentary-Personality', personalityRaw);
+    res.setHeader('X-Commentary-Voice', pack.voice);
+    res.send(buf);
+  } catch (err) {
+    log('error', 'Commentary endpoint failed:', err.message);
+    res.status(502).json({ ok: false, error: 'Commentary service unavailable.' });
   }
 });
 
