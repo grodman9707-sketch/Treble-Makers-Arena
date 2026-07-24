@@ -7131,7 +7131,9 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   }
   if (!spectating) attachLocalCamera();
 
-  document.getElementById('mh-game').textContent = game;
+  document.getElementById('mh-game').textContent = announceGameLabel(
+    matchPreview || { game, x01Base: gameState?.base || S.matchVariation?.x01Base }
+  );
   document.getElementById('sb-name-you').textContent = (S.user.username || 'You').toUpperCase();
   document.getElementById('sb-name-opp').textContent = (opponentName || 'Opponent').toUpperCase();
   document.getElementById('cam-label-you').textContent = S.user.username?.toUpperCase() || 'YOU';
@@ -7315,7 +7317,12 @@ function showMatchPreviewOverlay(preview, opts = {}) {
   const players = preview.players || [];
   const you = players.find(p => p.username === S.user.username) || players[0];
   const opp = players.find(p => p.username !== S.user.username) || players[1];
-  if (gameEl) gameEl.textContent = preview.game || S.game || 'Match';
+  if (gameEl) {
+    gameEl.textContent = announceGameLabel({
+      ...(preview || {}),
+      x01Base: preview?.x01Base || S.gameState?.base || S.matchVariation?.x01Base,
+    });
+  }
   renderMatchPreviewPlayer(youEl, you, true);
   renderMatchPreviewPlayer(oppEl, opp, false);
 
@@ -12926,6 +12933,45 @@ function previewAnnounceVoice() {
   if (wasMuted) toast('Preview only — announcements still muted');
 }
 
+/** Resolve the on-screen / spoken game title (501 not "X01", etc.). */
+function resolveX01AnnounceBase(game, preview = null) {
+  const candidates = [
+    S.gameState?.base,
+    S.matchVariation?.x01Base,
+    preview?.x01Base,
+    pendingMatchPreview?.x01Base,
+  ];
+  for (const c of candidates) {
+    const n = parseInt(c, 10);
+    if (Number.isFinite(n) && n >= 101 && n <= 1001) return n;
+  }
+  const fromName = parseInt(game, 10);
+  if (Number.isFinite(fromName) && fromName >= 101) return fromName;
+  return isX01Game(game) ? 501 : null;
+}
+
+function speakX01Base(base) {
+  const map = {
+    101: 'one-oh-one',
+    301: 'three-oh-one',
+    501: 'five-oh-one',
+    701: 'seven-oh-one',
+    1001: 'one thousand and one',
+  };
+  return map[base] || String(base);
+}
+
+function announceGameLabel(preview = null, { spoken = false } = {}) {
+  const src = preview || pendingMatchPreview;
+  const game = S.game || src?.game || 'Match';
+  if (isX01Game(game)) {
+    const base = resolveX01AnnounceBase(game, src);
+    if (base) return spoken ? speakX01Base(base) : String(base);
+  }
+  if (game === 'Halve-It') return 'Halve It';
+  return game;
+}
+
 function matchIntroPlayersAndNames(preview = null) {
   const src = preview || pendingMatchPreview;
   const players = src?.players?.length ? src.players : null;
@@ -12936,7 +12982,10 @@ function matchIntroPlayersAndNames(preview = null) {
   return {
     src,
     players: players || [],
-    game: S.game || src?.game || 'Match',
+    // Spoken label for announcer lines (five-oh-one, Cricket, …).
+    game: announceGameLabel(src, { spoken: true }),
+    // Numeric / display label for UI (501, Cricket, …).
+    gameDisplay: announceGameLabel(src, { spoken: false }),
     a: names[0] || 'Player 1',
     b: names[1] || 'Player 2',
     tournamentName: src?.tournamentName || S.tournamentName || '',

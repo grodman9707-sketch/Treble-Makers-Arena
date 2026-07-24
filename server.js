@@ -803,7 +803,14 @@ function buildMatchPreview(game, hostName, guestName, room = null) {
       players[1].standsOptIn = room.config.guestStandsOptIn;
     }
   }
-  return { game, players };
+  const preview = { game, players };
+  // So the client can announce "501" / "301" instead of the family name "X01".
+  const base = parseInt(room?.config?.x01Base, 10);
+  if (Number.isFinite(base) && base >= 101 && base <= 1001) preview.x01Base = base;
+  else if (room?.gameState && Number.isFinite(parseInt(room.gameState.base, 10))) {
+    preview.x01Base = parseInt(room.gameState.base, 10);
+  }
+  return preview;
 }
 
 function roomStandsOptInMap(room) {
