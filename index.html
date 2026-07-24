@@ -13070,7 +13070,7 @@ function toggleAnnounceMute() {
   }
 }
 
-function announceSpeak(text, { force = false, cancel = true, enqueue = false } = {}) {
+function announceSpeak(text, { force = false, cancel = false, enqueue = false } = {}) {
   if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
   if (typeof window === 'undefined') return Promise.resolve();
 
@@ -13859,8 +13859,8 @@ function playWalkoutSequence(players) {
   let chain = Promise.resolve();
   list.forEach((p, i) => {
     chain = chain.then(async () => {
-      const label = i === 0 ? 'Introducing' : 'And their opponent';
-      await announceIntroSpeak(`${label}… ${p.username}!`, { cancel: false, enqueue: true });
+      const label = i === 0 ? 'INTRODUCING' : 'AND THEIR OPPONENT';
+      await announceIntroSpeak(`${label}... ${String(p.username || 'PLAYER').toUpperCase()}!`, { cancel: false, enqueue: true });
       const id = sanitizeClientWalkoutId(p.walkoutId);
       const hearThis = hearBoth || p.username === me;
       if (hearThis && id) {
