@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const Groq = require('groq-sdk');
-const PERSONALITIES = require('./personalities');
+const DUAL_ANNOUNCERS = require('./personalities');
 
 const app = express();
 const server = http.createServer(app);
@@ -4465,13 +4465,9 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
-// Curated Azure Neural voices removed — AI announcers use Groq + OpenAI TTS.
-// See personalities.js and POST /api/commentary.
-
-// ─── AI match commentary (Groq text → OpenAI TTS) ───
+// ─── Dual AI commentary (Groq JSON → Deepgram Aura TTS ×2) ───
 const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
-const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
-const OPENAI_TTS_MODEL = (process.env.OPENAI_TTS_MODEL || 'tts-1').trim() || 'tts-1';
+const DEEPGRAM_API_KEY = (process.env.DEEPGRAM_API_KEY || '').trim();
 let groqClient = null;
 
 function getGroqClient() {
@@ -4480,21 +4476,12 @@ function getGroqClient() {
   return groqClient;
 }
 
-function listPersonalities() {
-  return Object.values(PERSONALITIES).map((p) => ({
-    id: p.id,
-    name: p.name,
-    voice: p.voice,
-  }));
+function commentaryConfigured() {
+  return !!(GROQ_API_KEY && DEEPGRAM_API_KEY);
 }
 
-function getPersonality(id) {
-  const key = String(id || '').trim().toLowerCase();
-  return PERSONALITIES[key] || null;
-}
-
-/** Keep spoken lines short for TTS latency / cost. */
-function clampCommentaryWords(text, maxWords = 12) {
+/** Keep each speaker line short for TTS latency / cost. */
+function clampCommentaryWords(text, maxWords = 10) {
   const cleaned = String(text || '')
     .replace(/^["'`]+|["'`]+$/g, '')
     .replace(/\s+/g, ' ')
@@ -4504,23 +4491,36 @@ function clampCommentaryWords(text, maxWords = 12) {
   return words.length <= maxWords ? cleaned : words.slice(0, maxWords).join(' ');
 }
 
-async function synthesizeOpenAiSpeech(text, voice) {
-  const upstream = await fetch('https://api.openai.com/v1/audio/speech', {
+function parseDualCommentaryJson(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return null;
+  // Strip markdown fences if the model wraps JSON anyway.
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) text = fenced[1].trim();
+  try {
+    const parsed = JSON.parse(text);
+    const speaker1 = clampCommentaryWords(parsed?.speaker1, 10);
+    const speaker2 = clampCommentaryWords(parsed?.speaker2, 10);
+    if (!speaker1 || !speaker2) return null;
+    return { speaker1, speaker2 };
+  } catch {
+    return null;
+  }
+}
+
+async function synthesizeDeepgramSpeech(text, model) {
+  const url = `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(model)}&encoding=mp3`;
+  const upstream = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${DEEPGRAM_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: OPENAI_TTS_MODEL,
-      input: text,
-      voice,
-      response_format: 'mp3',
-    }),
+    body: JSON.stringify({ text: String(text) }),
   });
   if (!upstream.ok) {
     const detail = await upstream.text().catch(() => '');
-    const err = new Error(`OpenAI TTS failed (${upstream.status}): ${detail.slice(0, 200)}`);
+    const err = new Error(`Deepgram TTS failed (${upstream.status}): ${detail.slice(0, 200)}`);
     err.status = upstream.status;
     throw err;
   }
@@ -4531,8 +4531,22 @@ app.get('/api/personalities', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
-    configured: !!(GROQ_API_KEY && OPENAI_API_KEY),
-    personalities: listPersonalities(),
+    configured: commentaryConfigured(),
+    mode: 'dual',
+    personalities: [
+      {
+        id: DUAL_ANNOUNCERS.speaker1.id,
+        name: DUAL_ANNOUNCERS.speaker1.name,
+        role: 'speaker1',
+        voice: DUAL_ANNOUNCERS.speaker1.voice,
+      },
+      {
+        id: DUAL_ANNOUNCERS.speaker2.id,
+        name: DUAL_ANNOUNCERS.speaker2.name,
+        role: 'speaker2',
+        voice: DUAL_ANNOUNCERS.speaker2.voice,
+      },
+    ],
   });
 });
 
@@ -4540,21 +4554,27 @@ app.get('/api/commentary-status', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
-    configured: !!(GROQ_API_KEY && OPENAI_API_KEY),
+    configured: commentaryConfigured(),
     groq: !!GROQ_API_KEY,
-    openai: !!OPENAI_API_KEY,
-    personalities: listPersonalities(),
+    deepgram: !!DEEPGRAM_API_KEY,
+    mode: 'dual',
+    voices: {
+      speaker1: DUAL_ANNOUNCERS.speaker1.voice,
+      speaker2: DUAL_ANNOUNCERS.speaker2.voice,
+    },
   });
 });
 
 app.post('/api/commentary', async (req, res) => {
   try {
     const player = typeof req.body?.player === 'string' ? req.body.player.trim().slice(0, 40) : '';
-    const personalityRaw = typeof req.body?.personality === 'string'
-      ? req.body.personality.trim().toLowerCase()
-      : '';
     const scoreNum = Number(req.body?.score);
     const remainingNum = Number(req.body?.remaining);
+    const turnNum = Number(req.body?.turnNumber);
+    const checkout = req.body?.checkout === true
+      || req.body?.checkout === 'true'
+      || req.body?.checkout === 1;
+    const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
 
     if (!player) return res.status(400).json({ ok: false, error: 'Missing player.' });
     if (!Number.isFinite(scoreNum)) {
@@ -4563,59 +4583,70 @@ app.post('/api/commentary', async (req, res) => {
     if (!Number.isFinite(remainingNum)) {
       return res.status(400).json({ ok: false, error: 'Invalid remaining.' });
     }
-    const pack = getPersonality(personalityRaw);
-    if (!pack) {
-      return res.status(400).json({
-        ok: false,
-        error: `Invalid personality. Use one of: ${Object.keys(PERSONALITIES).join(', ')}.`,
-      });
-    }
 
     const groq = getGroqClient();
-    if (!groq || !OPENAI_API_KEY) {
+    if (!groq || !DEEPGRAM_API_KEY) {
       return res.status(503).json({
         ok: false,
-        error: 'Commentary is not configured (set GROQ_API_KEY and OPENAI_API_KEY).',
+        error: 'Commentary is not configured (set GROQ_API_KEY and DEEPGRAM_API_KEY).',
       });
     }
 
     const score = Math.round(scoreNum);
     const remaining = Math.round(remainingNum);
+    const turnNumber = Number.isFinite(turnNum) && turnNum > 0 ? Math.round(turnNum) : 1;
+    const history = historyRaw
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n))
+      .slice(-5)
+      .map((n) => Math.round(n));
+    const onCheckout = checkout || (remaining > 0 && remaining <= 170);
+
     const completion = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       temperature: 0.9,
-      max_tokens: 40,
+      max_tokens: 120,
+      response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: pack.systemPrompt },
+        { role: 'system', content: DUAL_ANNOUNCERS.systemPrompt },
         {
           role: 'user',
-          content:
-            `Player "${player}" just scored ${score} points and has ${remaining} remaining. ` +
-            'Give one short commentary line.',
+          content: JSON.stringify({
+            player,
+            score,
+            remaining,
+            turnNumber,
+            checkout: onCheckout,
+            history,
+          }),
         },
       ],
     });
 
-    const rawLine = completion?.choices?.[0]?.message?.content || '';
-    const commentary = clampCommentaryWords(rawLine, 12);
-    if (!commentary) {
-      log('warn', 'Groq commentary returned empty text');
+    const dual = parseDualCommentaryJson(completion?.choices?.[0]?.message?.content || '');
+    if (!dual) {
+      log('warn', 'Groq dual commentary JSON parse failed:',
+        String(completion?.choices?.[0]?.message?.content || '').slice(0, 200));
       return res.status(502).json({ ok: false, error: 'Commentary generation failed.' });
     }
 
-    const buf = await synthesizeOpenAiSpeech(commentary, pack.voice);
-    if (!buf.length) {
-      log('warn', 'OpenAI TTS returned empty audio');
+    const [audioBuffer1, audioBuffer2] = await Promise.all([
+      synthesizeDeepgramSpeech(dual.speaker1, DUAL_ANNOUNCERS.speaker1.voice),
+      synthesizeDeepgramSpeech(dual.speaker2, DUAL_ANNOUNCERS.speaker2.voice),
+    ]);
+    if (!audioBuffer1.length || !audioBuffer2.length) {
+      log('warn', 'Deepgram TTS returned empty audio');
       return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
     }
 
+    const combined = Buffer.concat([audioBuffer1, audioBuffer2]);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('X-Commentary-Text', encodeURIComponent(commentary));
-    res.setHeader('X-Commentary-Personality', pack.id);
-    res.setHeader('X-Commentary-Voice', pack.voice);
-    res.setHeader('X-Commentary-Name', encodeURIComponent(pack.name));
-    res.send(buf);
+    res.setHeader('X-Commentary-Speaker1', encodeURIComponent(dual.speaker1));
+    res.setHeader('X-Commentary-Speaker2', encodeURIComponent(dual.speaker2));
+    res.setHeader('X-Commentary-Voice1', DUAL_ANNOUNCERS.speaker1.voice);
+    res.setHeader('X-Commentary-Voice2', DUAL_ANNOUNCERS.speaker2.voice);
+    res.send(combined);
   } catch (err) {
     log('error', 'Commentary endpoint failed:', err.message);
     res.status(502).json({ ok: false, error: 'Commentary service unavailable.' });

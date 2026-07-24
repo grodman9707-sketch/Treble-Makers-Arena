@@ -4183,7 +4183,7 @@ body.app-active .arena-bg { animation: none !important; }
           <button type="button" class="guide-zone west" onclick="goArenaZone('locker')">
             <div class="guide-zone-kicker">West</div>
             <div class="guide-zone-title">Locker Room</div>
-            <div class="guide-zone-desc">Profile, AI announcer personality, and preferred settings.</div>
+            <div class="guide-zone-desc">Profile, dual AI commentary, and preferred settings.</div>
           </button>
           <div class="guide-center" aria-hidden="true">
             <div class="guide-center-label">You are here</div>
@@ -4281,23 +4281,19 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
             <div class="profile-setting-stack" id="pref-announce-voice-stack">
               <div class="profile-setting-meta">
-                <span class="profile-setting-label">AI announcer</span>
-                <span class="profile-setting-hint">Personality for visit commentary (Groq + OpenAI TTS)</span>
+                <span class="profile-setting-label">Dual AI commentary</span>
+                <span class="profile-setting-hint">Jack (hype) + Sam (cynical) with game memory</span>
               </div>
               <div class="profile-setting-controls">
-                <label class="profile-setting-field-label" for="pref-commentary-personality">Personality</label>
-                <select id="pref-commentary-personality" onchange="onCommentaryPersonalityChange('pref-commentary-personality')">
-                  <option value="off">Off</option>
-                </select>
                 <div class="profile-setting-actions">
                   <button type="button" class="btn btn-sm" onclick="previewAiCommentary()">Preview</button>
                 </div>
               </div>
               <p class="profile-setting-note">
-                Announcers load from <code>GET /api/personalities</code>.
-                Each visit calls <code>POST /api/commentary</code> when a personality is selected
-                (<code>GROQ_API_KEY</code> + <code>OPENAI_API_KEY</code>).
-                Only one commentary clip plays at a time.
+                Each visit posts throw history to <code>POST /api/commentary</code>
+                (Groq dual lines + Deepgram Aura TTS). Requires
+                <code>GROQ_API_KEY</code> + <code>DEEPGRAM_API_KEY</code>.
+                Only one stacked clip plays at a time.
               </p>
             </div>
             <div class="profile-setting-row">
@@ -4456,15 +4452,6 @@ body.app-active .arena-bg { animation: none !important; }
           </select>
           <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
             Same-device play for X01 and Cricket/Tactics — no camera or online opponent.
-          </div>
-        </div>
-        <div class="form-group">
-          <label>AI Announcer</label>
-          <select id="m-commentary-personality" onchange="onCommentaryPersonalityChange('m-commentary-personality')">
-            <option value="off">Off</option>
-          </select>
-          <div class="presence-row-meta" style="margin-top:0.45rem">
-            Visit commentary personality (saved to your locker settings).
           </div>
         </div>
         <div class="form-group" id="invite-friend-row">
@@ -6410,7 +6397,6 @@ function updateCamNavButton() {
 
 function openCreateMatch() {
   updateGameAccessUI();
-  syncCommentaryPersonalitySelect();
   openModal('create-match-modal');
 }
 
@@ -7104,6 +7090,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   setChatEnabled(!spectating && !S.isLocal);
   applySpectatingMode(spectating);
   resetMatchDrama();
+  resetCommentaryMemory();
   // Online / bot matches clear any leftover local-play flags.
   if (S.roomId) {
     S.isLocal = false;
@@ -12242,22 +12229,16 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  ANNOUNCE — AI personalities (Groq + OpenAI TTS)
+//  ANNOUNCE — Dual Jack+Sam commentary (Groq + Deepgram TTS)
 // ═══════════════════════════════════════════════════════════
 const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
-const COMMENTARY_PERSONALITY_KEY = 'tma-commentary-personality';
 
 let announceMuted = (() => {
   try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
 })();
-let commentaryPersonalityId = (() => {
-  try {
-    const raw = (localStorage.getItem(COMMENTARY_PERSONALITY_KEY) || 'off').trim().toLowerCase();
-    return raw || 'off';
-  } catch { return 'off'; }
-})();
-/** @type {{ id: string, name: string, voice?: string }[]} */
-let commentaryPersonalityList = [];
+/** Recent visit scores for dual-announcer game memory (last 3–5). */
+let commentaryScoreHistory = [];
+let commentaryTurnNumber = 0;
 let lastX01RequireKey = '';
 let lastAnnounceWinKey = '';
 let announceSpeakQueue = Promise.resolve();
@@ -12268,6 +12249,11 @@ let commentaryObjectUrl = null;
 let commentaryPlayToken = 0;
 let commentaryConfigured = null; // null unknown, true/false after probe
 let commentaryWarned = false;
+
+function resetCommentaryMemory() {
+  commentaryScoreHistory = [];
+  commentaryTurnNumber = 0;
+}
 
 function stopAnnounceAudio() {
   try {
@@ -12360,42 +12346,45 @@ function speakWithBrowserFallback(text, { cancel = true, rate = 1.05, pitch = 1 
 async function probeCommentaryApi() {
   if (commentaryConfigured != null) return commentaryConfigured;
   try {
-    const res = await fetch('/api/personalities', { cache: 'no-store' });
+    const res = await fetch('/api/commentary-status', { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     commentaryConfigured = !!(res.ok && data.configured);
-    if (Array.isArray(data.personalities)) {
-      commentaryPersonalityList = data.personalities.filter(p => p && p.id && p.name);
-    }
   } catch {
     commentaryConfigured = false;
   }
   return commentaryConfigured;
 }
 
-async function loadCommentaryPersonalities() {
-  try {
-    const res = await fetch('/api/personalities', { cache: 'no-store' });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && Array.isArray(data.personalities)) {
-      commentaryPersonalityList = data.personalities.filter(p => p && p.id && p.name);
-      commentaryConfigured = !!data.configured;
+/**
+ * Build dual-announcer payload with game memory (last 3–5 visit scores).
+ * Mutates commentaryScoreHistory / commentaryTurnNumber when record=true.
+ */
+function buildCommentaryPayload({ player, score, remaining, record = true } = {}) {
+  const scoreNum = Number(score) || 0;
+  const remainingNum = Number.isFinite(Number(remaining)) ? Number(remaining) : 0;
+  if (record) {
+    commentaryTurnNumber += 1;
+    commentaryScoreHistory.push(scoreNum);
+    if (commentaryScoreHistory.length > 5) {
+      commentaryScoreHistory = commentaryScoreHistory.slice(-5);
     }
-  } catch {
-    /* keep prior list */
   }
-  syncCommentaryPersonalitySelect();
+  const history = commentaryScoreHistory.slice(-5);
+  return {
+    player: String(player || 'Player').slice(0, 40),
+    score: scoreNum,
+    remaining: remainingNum,
+    turnNumber: commentaryTurnNumber || 1,
+    checkout: remainingNum > 0 && remainingNum <= 170,
+    history,
+  };
 }
 
-async function fetchCommentaryAudio({ player, score, remaining, personality }) {
+async function fetchCommentaryAudio(payload) {
   const res = await fetch('/api/commentary', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      player: String(player || 'Player').slice(0, 40),
-      score: Number(score) || 0,
-      remaining: Number.isFinite(Number(remaining)) ? Number(remaining) : 0,
-      personality: String(personality || 'coach'),
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     let msg = 'Commentary unavailable.';
@@ -12410,7 +12399,7 @@ async function fetchCommentaryAudio({ player, score, remaining, personality }) {
   return res.arrayBuffer();
 }
 
-/** Play one AI commentary clip; cancels any prior clip so audio never overlaps. */
+/** Play stacked Jack+Sam MP3; cancels any prior clip so audio never overlaps. */
 function playCommentaryBuffer(arrayBuffer, token) {
   return new Promise((resolve) => {
     if (token !== commentaryPlayToken) {
@@ -12443,14 +12432,14 @@ function playCommentaryBuffer(arrayBuffer, token) {
 }
 
 /**
- * Fetch Groq+OpenAI commentary for a visit and play it via HTMLAudioElement.
- * Newer visits bump commentaryPlayToken so stale responses never start overlapping audio.
+ * Fetch dual Groq+Deepgram commentary and play via HTMLAudioElement.
+ * Newer visits bump commentaryPlayToken so stale responses never overlap.
  */
-function requestAndPlayAiCommentary({ player, score, remaining, personality, force = false } = {}) {
-  const persona = personality || commentaryPersonalityId;
-  if ((!force && announceMuted) || !persona || persona === 'off') return Promise.resolve();
+function requestAndPlayAiCommentary({ player, score, remaining, force = false, record = true } = {}) {
+  if ((!force && announceMuted)) return Promise.resolve();
   if (typeof window === 'undefined') return Promise.resolve();
 
+  const payload = buildCommentaryPayload({ player, score, remaining, record });
   const token = ++commentaryPlayToken;
   stopCommentaryAudio();
 
@@ -12461,12 +12450,7 @@ function requestAndPlayAiCommentary({ player, score, remaining, personality, for
       if (token !== commentaryPlayToken) return;
       if ((!force && announceMuted)) return;
 
-      const buf = await fetchCommentaryAudio({
-        player,
-        score,
-        remaining,
-        personality: persona,
-      });
+      const buf = await fetchCommentaryAudio(payload);
       if (token !== commentaryPlayToken) return;
       if ((!force && announceMuted)) return;
 
@@ -12500,38 +12484,6 @@ function resolveCommentaryPlayerName(opts = {}) {
   return (S.username || S.players?.[0]?.username || 'Player').slice(0, 40);
 }
 
-function syncCommentaryPersonalitySelect() {
-  const known = new Set(commentaryPersonalityList.map(p => p.id));
-  if (commentaryPersonalityId !== 'off' && !known.has(commentaryPersonalityId)) {
-    if (commentaryPersonalityList.length) commentaryPersonalityId = 'off';
-  }
-  const ids = ['pref-commentary-personality', 'm-commentary-personality'];
-  ids.forEach((id) => {
-    const sel = document.getElementById(id);
-    if (!sel) return;
-    const prev = commentaryPersonalityId;
-    sel.innerHTML = '';
-    const off = document.createElement('option');
-    off.value = 'off';
-    off.textContent = 'Off';
-    sel.appendChild(off);
-    commentaryPersonalityList.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      sel.appendChild(opt);
-    });
-    if (prev === 'off' || known.has(prev) || !commentaryPersonalityList.length) {
-      sel.value = prev;
-    } else {
-      sel.value = 'off';
-    }
-  });
-  if (commentaryPersonalityList.length && commentaryPersonalityId !== 'off' && !known.has(commentaryPersonalityId)) {
-    commentaryPersonalityId = 'off';
-  }
-}
-
 function syncAnnouncePrefToggle() {
   const toggle = document.getElementById('pref-announce-toggle');
   if (!toggle) return;
@@ -12544,25 +12496,6 @@ function syncAnnouncePrefToggle() {
 
 function syncAnnouncePrefsUI() {
   syncAnnouncePrefToggle();
-  syncCommentaryPersonalitySelect();
-}
-
-function persistCommentaryPersonality() {
-  try { localStorage.setItem(COMMENTARY_PERSONALITY_KEY, commentaryPersonalityId || 'off'); } catch { /* ignore */ }
-}
-
-function onCommentaryPersonalityChange(selectId) {
-  const sel = document.getElementById(selectId || 'pref-commentary-personality')
-    || document.getElementById('pref-commentary-personality')
-    || document.getElementById('m-commentary-personality');
-  const raw = (sel?.value || 'off').trim().toLowerCase();
-  const known = new Set(commentaryPersonalityList.map(p => p.id));
-  commentaryPersonalityId = (raw === 'off' || known.has(raw)) ? raw : 'off';
-  persistCommentaryPersonality();
-  syncCommentaryPersonalitySelect();
-  if (commentaryPersonalityId !== 'off' && !announceMuted && selectId !== 'm-commentary-personality') {
-    previewAiCommentary();
-  }
 }
 
 function toggleAnnounceMute() {
@@ -12595,18 +12528,21 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false } =
 }
 
 function previewAiCommentary() {
-  if (commentaryPersonalityId === 'off') {
-    toast('Pick an AI announcer first');
-    return;
-  }
   const wasMuted = announceMuted;
+  // Preview without mutating match memory.
+  const savedHistory = commentaryScoreHistory.slice();
+  const savedTurn = commentaryTurnNumber;
+  commentaryScoreHistory = [26, 26, 180];
+  commentaryTurnNumber = 4;
   requestAndPlayAiCommentary({
-    player: S.username || 'Player',
-    score: 140,
-    remaining: 361,
-    personality: commentaryPersonalityId,
+    player: S.username || 'Dave',
+    score: 26,
+    remaining: 170,
     force: true,
+    record: false,
   }).then(() => {
+    commentaryScoreHistory = savedHistory;
+    commentaryTurnNumber = savedTurn;
     if (wasMuted) toast('Preview only — announcements still muted');
   });
 }
@@ -12720,7 +12656,6 @@ function announceVisitScore(display, opts = {}) {
     player,
     score: Number(visit) || 0,
     remaining: Number.isFinite(Number(remaining)) ? Number(remaining) : 0,
-    personality: commentaryPersonalityId,
   });
   announceVisitCommentary({
     player,
@@ -12741,10 +12676,6 @@ function announceVisitCommentary({ visit, remaining, bust, legWon, matchWon, win
   if (event.type === 'WIN') {
     const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
     lastAnnounceWinKey = key;
-    // AI personality covers color; still speak a short win cue if AI is off.
-    if (!commentaryPersonalityId || commentaryPersonalityId === 'off') {
-      announceMatchWin(winner, { forceLine: true });
-    }
   }
 }
 
@@ -12811,12 +12742,11 @@ function announceFromScoreUpdate(msg) {
 }
 
 function initAnnounceVoiceList() {
-  loadCommentaryPersonalities();
+  probeCommentaryApi();
 }
 
 syncAnnouncePrefsUI();
 initAnnounceVoiceList();
-persistCommentaryPersonality();
 
 // ═══════════════════════════════════════════════════════════
 //  STANDS OPT-IN + WALK-OUT MUSIC + MATCH INTRO
