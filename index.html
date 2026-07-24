@@ -4301,8 +4301,16 @@ body.app-active .arena-bg { animation: none !important; }
                   <option value="femaleArenaAnnouncer">Arena Voice</option>
                   <option value="off">Scores only</option>
                 </select>
+                <label class="profile-setting-field-label" for="pref-commentary-personality">AI personality</label>
+                <select id="pref-commentary-personality" onchange="onCommentaryPersonalityChange()">
+                  <option value="off">Off</option>
+                  <option value="sarcastic">Sarcastic</option>
+                  <option value="hyped">Hyped</option>
+                  <option value="coach">Coach</option>
+                </select>
                 <div class="profile-setting-actions">
                   <button type="button" class="btn btn-sm" onclick="previewAnnounceVoice()">Preview</button>
+                  <button type="button" class="btn btn-sm" onclick="previewAiCommentary()">Preview AI</button>
                 </div>
               </div>
               <p class="profile-setting-note">
@@ -4310,6 +4318,8 @@ body.app-active .arena-bg { animation: none !important; }
                 (<code>AZURE_SPEECH_KEY</code> / <code>AZURE_SPEECH_REGION</code>).
                 Until then, the browser speaks as a fallback so matches stay audible.
                 Loki Hybrid still switches mood lines per moment.
+                AI personality calls Groq + Deepgram on each visit
+                (<code>GROQ_API_KEY</code> / <code>DEEPGRAM_API_KEY</code>) and plays one clip at a time.
               </p>
             </div>
             <div class="profile-setting-row">
@@ -8494,6 +8504,7 @@ function submitX01() {
   }
   if (S.isLocal) {
     announceVisitScore(display, {
+      player: names[p],
       visit: total,
       remaining: (res.legWon || res.matchOver) ? 0 : gs.remaining[p],
       bust: !!res.bust,
@@ -9039,6 +9050,9 @@ function cktSubmitVisit() {
   }
   if (S.isLocal) {
     announceVisitScore(display, {
+      player: names[p] || S.username || 'Player',
+      visit: Number(res.points) || 0,
+      remaining: 0,
       legWon: !!res.legWon,
       matchWon: !!res.matchOver,
       winner
@@ -12247,6 +12261,12 @@ const ANNOUNCE_VOICE_KEY = 'tma-announce-voice';
 const ANNOUNCE_PACK_KEY = 'tma-announce-pack';
 // Legacy style key — migrated once to a commentary pack.
 const ANNOUNCE_STYLE_KEY = 'tma-announce-style';
+const COMMENTARY_PERSONALITY_KEY = 'tma-commentary-personality';
+const COMMENTARY_PERSONALITIES = {
+  sarcastic: { label: 'Sarcastic' },
+  hyped: { label: 'Hyped' },
+  coach: { label: 'Coach' },
+};
 
 // Curated Arena voices (Azure Neural). Browser/OS Microsoft lists are not used.
 const ANNOUNCE_VOICES = [
@@ -12634,6 +12654,13 @@ let announcePackId = (() => {
     return 'bigMatchAnnouncer';
   } catch { return 'bigMatchAnnouncer'; }
 })();
+let commentaryPersonalityId = (() => {
+  try {
+    const raw = (localStorage.getItem(COMMENTARY_PERSONALITY_KEY) || 'off').trim().toLowerCase();
+    if (raw === 'off' || !raw) return 'off';
+    return COMMENTARY_PERSONALITIES[raw] ? raw : 'off';
+  } catch { return 'off'; }
+})();
 let lastX01RequireKey = '';
 let lastAnnounceWinKey = '';
 let announceSpeakQueue = Promise.resolve();
@@ -12641,6 +12668,11 @@ let announceAudio = null;
 let announceObjectUrl = null;
 let announceTtsConfigured = null; // null unknown, true/false after probe
 let announceTtsWarned = false;
+let commentaryAudio = null;
+let commentaryObjectUrl = null;
+let commentaryPlayToken = 0;
+let commentaryConfigured = null; // null unknown, true/false after probe
+let commentaryWarned = false;
 
 function getAnnouncePack() {
   if (announcePackId === 'off') return null;
@@ -12687,10 +12719,12 @@ function resolveAnnounceVoiceId(eventType) {
 function stopAnnounceAudio() {
   try {
     if (announceAudio) {
+      const done = announceAudio._announceDone;
       announceAudio.onended = null;
       announceAudio.onerror = null;
       announceAudio.pause();
       announceAudio.src = '';
+      if (typeof done === 'function') done();
     }
   } catch { /* ignore */ }
   announceAudio = null;
@@ -12703,6 +12737,29 @@ function stopAnnounceAudio() {
       window.speechSynthesis.cancel();
     }
   } catch { /* ignore */ }
+}
+
+function stopCommentaryAudio() {
+  try {
+    if (commentaryAudio) {
+      const done = commentaryAudio._commentaryDone;
+      commentaryAudio.onended = null;
+      commentaryAudio.onerror = null;
+      commentaryAudio.pause();
+      commentaryAudio.src = '';
+      if (typeof done === 'function') done();
+    }
+  } catch { /* ignore */ }
+  commentaryAudio = null;
+  if (commentaryObjectUrl) {
+    try { URL.revokeObjectURL(commentaryObjectUrl); } catch { /* ignore */ }
+    commentaryObjectUrl = null;
+  }
+}
+
+function stopAllSpokenAudio() {
+  stopAnnounceAudio();
+  stopCommentaryAudio();
 }
 
 async function probeAnnounceTts() {
@@ -12736,6 +12793,151 @@ async function fetchAnnounceAudio(text, voice) {
   return res.arrayBuffer();
 }
 
+async function probeCommentaryApi() {
+  if (commentaryConfigured != null) return commentaryConfigured;
+  try {
+    const res = await fetch('/api/commentary-status', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    commentaryConfigured = !!(res.ok && data.configured);
+  } catch {
+    commentaryConfigured = false;
+  }
+  return commentaryConfigured;
+}
+
+async function fetchCommentaryAudio({ player, score, remaining, personality }) {
+  const res = await fetch('/api/commentary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      player: String(player || 'Player').slice(0, 40),
+      score: Number(score) || 0,
+      remaining: Number.isFinite(Number(remaining)) ? Number(remaining) : 0,
+      personality: String(personality || 'coach'),
+    }),
+  });
+  if (!res.ok) {
+    let msg = 'Commentary unavailable.';
+    try {
+      const data = await res.json();
+      if (data?.error) msg = data.error;
+    } catch { /* ignore */ }
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  return res.arrayBuffer();
+}
+
+/** Play one AI commentary clip; cancels any prior clip so audio never overlaps. */
+function playCommentaryBuffer(arrayBuffer, token) {
+  return new Promise((resolve) => {
+    if (token !== commentaryPlayToken) {
+      resolve();
+      return;
+    }
+    stopAllSpokenAudio();
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    try {
+      const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+      commentaryObjectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(commentaryObjectUrl);
+      audio._commentaryDone = done;
+      commentaryAudio = audio;
+      audio.onended = done;
+      audio.onerror = done;
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => done());
+      }
+    } catch {
+      done();
+    }
+  });
+}
+
+/**
+ * Fetch Groq+Deepgram commentary for a visit and play it via HTMLAudioElement.
+ * Newer visits bump commentaryPlayToken so stale responses never start overlapping audio.
+ */
+function requestAndPlayAiCommentary({ player, score, remaining, personality, force = false } = {}) {
+  const persona = personality || commentaryPersonalityId;
+  if ((!force && announceMuted) || !persona || persona === 'off') return Promise.resolve();
+  if (typeof window === 'undefined') return Promise.resolve();
+
+  const token = ++commentaryPlayToken;
+  // Stop any prior AI clip immediately so rapid throws don't layer.
+  stopCommentaryAudio();
+
+  return (async () => {
+    try {
+      const configured = await probeCommentaryApi();
+      if (!configured) return;
+      if (token !== commentaryPlayToken) return;
+      if ((!force && announceMuted)) return;
+
+      const buf = await fetchCommentaryAudio({
+        player,
+        score,
+        remaining,
+        personality: persona,
+      });
+      if (token !== commentaryPlayToken) return;
+      if ((!force && announceMuted)) return;
+
+      // Enqueue only playback so fetches stay parallel but audio stays exclusive.
+      const play = () => playCommentaryBuffer(buf, token);
+      announceSpeakQueue = announceSpeakQueue.then(play, play);
+      await announceSpeakQueue;
+    } catch (err) {
+      if (!commentaryWarned && (err?.status === 503 || err?.status === 502)) {
+        commentaryWarned = true;
+        commentaryConfigured = false;
+      }
+    }
+  })();
+}
+
+function resolveCommentaryPlayerName(opts = {}) {
+  if (opts.player) return String(opts.player).trim().slice(0, 40) || 'Player';
+  if (opts.winner) return String(opts.winner).trim().slice(0, 40) || 'Player';
+  try {
+    if (isX01Game(S.game) && typeof x01PlayerNames === 'function') {
+      const names = x01PlayerNames();
+      const idx = typeof S.turn === 'number' ? S.turn : myPlayerIdx();
+      if (names?.[idx]) return String(names[idx]).slice(0, 40);
+    }
+    if (isCricketGame(S.game) && typeof cktPlayerNames === 'function') {
+      const names = cktPlayerNames();
+      const idx = typeof S.turn === 'number' ? S.turn : myPlayerIdx();
+      if (names?.[idx]) return String(names[idx]).slice(0, 40);
+    }
+  } catch { /* ignore */ }
+  return (S.username || S.players?.[0]?.username || 'Player').slice(0, 40);
+}
+
+function previewAiCommentary() {
+  if (commentaryPersonalityId === 'off') {
+    toast('Pick an AI personality first');
+    return;
+  }
+  const wasMuted = announceMuted;
+  requestAndPlayAiCommentary({
+    player: S.username || 'Player',
+    score: 140,
+    remaining: 361,
+    personality: commentaryPersonalityId,
+    force: true,
+  }).then(() => {
+    if (wasMuted) toast('Preview only — announcements still muted');
+  });
+}
+
 /** Browser TTS fallback when Azure Speech is not configured (no OS voice list in UI). */
 function pickBrowserFallbackVoice(preferredId) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return null;
@@ -12767,7 +12969,7 @@ function speakWithBrowserFallback(text, { cancel = true, voiceId = null, rate = 
     }
     try {
       if (cancel) {
-        stopAnnounceAudio();
+        stopAllSpokenAudio();
       }
       const u = new SpeechSynthesisUtterance(String(text));
       u.rate = rate;
@@ -12815,6 +13017,18 @@ function syncAnnouncePackSelect() {
   sel.value = announcePackId;
 }
 
+function syncCommentaryPersonalitySelect() {
+  const sel = document.getElementById('pref-commentary-personality');
+  if (!sel) return;
+  if (commentaryPersonalityId !== 'off' && !COMMENTARY_PERSONALITIES[commentaryPersonalityId]) {
+    commentaryPersonalityId = 'off';
+  }
+  if (![...sel.options].some(o => o.value === commentaryPersonalityId)) {
+    commentaryPersonalityId = 'off';
+  }
+  sel.value = commentaryPersonalityId;
+}
+
 function syncAnnouncePrefToggle() {
   const toggle = document.getElementById('pref-announce-toggle');
   if (!toggle) return;
@@ -12829,6 +13043,7 @@ function syncAnnouncePrefsUI() {
   syncAnnouncePrefToggle();
   populateAnnounceVoiceSelect();
   syncAnnouncePackSelect();
+  syncCommentaryPersonalitySelect();
 }
 
 function persistAnnounceVoice() {
@@ -12837,6 +13052,10 @@ function persistAnnounceVoice() {
 
 function persistAnnouncePack() {
   try { localStorage.setItem(ANNOUNCE_PACK_KEY, announcePackId); } catch { /* ignore */ }
+}
+
+function persistCommentaryPersonality() {
+  try { localStorage.setItem(COMMENTARY_PERSONALITY_KEY, commentaryPersonalityId || 'off'); } catch { /* ignore */ }
 }
 
 function onAnnounceVoiceChange() {
@@ -12861,13 +13080,25 @@ function onAnnouncePackChange() {
   if (!announceMuted) previewAnnounceVoice();
 }
 
+function onCommentaryPersonalityChange() {
+  const sel = document.getElementById('pref-commentary-personality');
+  const raw = (sel?.value || 'off').trim().toLowerCase();
+  commentaryPersonalityId = (raw === 'off' || COMMENTARY_PERSONALITIES[raw]) ? raw : 'off';
+  persistCommentaryPersonality();
+  if (commentaryPersonalityId !== 'off' && !announceMuted) previewAiCommentary();
+}
+
 function toggleAnnounceMute() {
   announceMuted = !announceMuted;
   try { localStorage.setItem(ANNOUNCE_MUTE_KEY, announceMuted ? '1' : '0'); } catch { /* ignore */ }
   syncAnnouncePrefToggle();
   toast(announceMuted ? 'Announcements muted' : 'Announcements on');
-  if (announceMuted) stopAnnounceAudio();
-  else announceSpeak('Announcer on');
+  if (announceMuted) {
+    commentaryPlayToken += 1;
+    stopAllSpokenAudio();
+  } else {
+    announceSpeak('Announcer on');
+  }
 }
 
 function announceSpeak(text, { force = false, cancel = true, enqueue = false, eventType = null } = {}) {
@@ -12886,7 +13117,7 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false, ev
         await speakWithBrowserFallback(text, { cancel, voiceId: voice, rate, pitch });
         return;
       }
-      if (cancel) stopAnnounceAudio();
+      if (cancel) stopAllSpokenAudio();
       const buf = await fetchAnnounceAudio(text, voice);
       if ((!force && announceMuted)) return;
       const blob = new Blob([buf], { type: 'audio/mpeg' });
@@ -12897,11 +13128,18 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false, ev
       const audio = new Audio(announceObjectUrl);
       announceAudio = audio;
       await new Promise((resolve) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        audio._announceDone = done;
+        audio.onended = done;
+        audio.onerror = done;
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(() => resolve());
+          playPromise.catch(() => done());
         }
       });
     } catch (err) {
@@ -13043,24 +13281,26 @@ function announceVisitScore(display, opts = {}) {
   if (display == null || display === '') return;
   const raw = String(display).trim();
   if (!raw) return;
+  const player = resolveCommentaryPlayerName(opts);
+  const visit = opts.visit != null ? opts.visit : (/^bust$/i.test(raw) ? 0 : parseAnnounceVisitTotal(raw));
+  const remaining = opts.remaining;
   // Enqueue so player + bot visits are both spoken (bot is also paced server-side).
   if (/^bust$/i.test(raw)) {
     announceSpeak('bust', { cancel: false, enqueue: true, eventType: 'MOMENTUM_LOSS' });
-    announceVisitCommentary({
-      visit: 0,
-      bust: true,
-      remaining: opts.remaining,
-      legWon: !!opts.legWon,
-      matchWon: !!opts.matchWon,
-      winner: opts.winner
-    });
-    return;
+  } else {
+    announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(), { cancel: false, enqueue: true });
   }
-  announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(), { cancel: false, enqueue: true });
+  requestAndPlayAiCommentary({
+    player,
+    score: Number(visit) || 0,
+    remaining: Number.isFinite(Number(remaining)) ? Number(remaining) : 0,
+    personality: commentaryPersonalityId,
+  });
   announceVisitCommentary({
-    visit: opts.visit != null ? opts.visit : parseAnnounceVisitTotal(raw),
-    remaining: opts.remaining,
-    bust: !!opts.bust,
+    player,
+    visit,
+    remaining,
+    bust: !!opts.bust || /^bust$/i.test(raw),
     legWon: !!opts.legWon,
     matchWon: !!opts.matchWon,
     winner: opts.winner
@@ -13073,6 +13313,14 @@ function announceVisitCommentary({ visit, remaining, bust, legWon, matchWon, win
   if (!event) return;
   noteDramaFromVisit({ visit, bust, legWon, matchWon });
   triggerArenaMoment(event, { visit, bust, legWon, matchWon, winner });
+  // AI personality already covers visit color commentary — skip canned pack lines.
+  if (commentaryPersonalityId && commentaryPersonalityId !== 'off') {
+    if (event.type === 'WIN') {
+      const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
+      lastAnnounceWinKey = key;
+    }
+    return;
+  }
   if (event.type === 'WIN') {
     announceMatchWin(winner, { forceLine: true });
     return;
@@ -13151,6 +13399,7 @@ function announceFromScoreUpdate(msg) {
   }
 
   announceVisitScore(display, {
+    player: msg.history?.[0]?.player || null,
     visit,
     remaining,
     bust,
@@ -13164,12 +13413,14 @@ function announceFromScoreUpdate(msg) {
 function initAnnounceVoiceList() {
   populateAnnounceVoiceSelect();
   probeAnnounceTts();
+  probeCommentaryApi();
 }
 
 syncAnnouncePrefsUI();
 initAnnounceVoiceList();
 persistAnnouncePack();
 persistAnnounceVoice();
+persistCommentaryPersonality();
 
 
 // ═══════════════════════════════════════════════════════════
