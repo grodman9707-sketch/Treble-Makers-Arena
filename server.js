@@ -4539,6 +4539,46 @@ function resolveDualSpeakers(body = {}) {
   return { speaker1, speaker2 };
 }
 
+function resolveRequestLocale(body = {}) {
+  const raw = typeof body.locale === 'string'
+    ? body.locale
+    : (typeof body.accent === 'string' ? body.accent : PERSONALITIES.DEFAULT_LOCALE);
+  return PERSONALITIES.getLocale(raw);
+}
+
+function normalizeIntroGameType(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '501';
+  const n = parseInt(s, 10);
+  if (Number.isFinite(n) && n >= 101 && n <= 1001) return String(n);
+  if (/^x01$/i.test(s)) return '501';
+  return s.slice(0, 40);
+}
+
+function clampIntroWords(text, maxWords = 25) {
+  const cleaned = String(text || '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+  const words = cleaned.split(' ');
+  return words.length <= maxWords ? cleaned : words.slice(0, maxWords).join(' ');
+}
+
+function clampRefWords(text, maxWords = 5) {
+  return clampCommentaryWords(text, maxWords);
+}
+
+/** Deterministic Ref Russ fallbacks when Groq is slow/unavailable. */
+function fallbackRefCallout({ score, bust, matchWon, legWon } = {}) {
+  if (bust) return 'BUST!';
+  if (matchWon || legWon) return 'GAME SHOT AND THE MATCH!';
+  const n = Number(score);
+  if (n === 180) return 'ONE HUNDRED AND EIGHTY!';
+  if (Number.isFinite(n)) return `${n}!`;
+  return '';
+}
+
 app.get('/api/personalities', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
@@ -4547,6 +4587,13 @@ app.get('/api/personalities', (req, res) => {
     deepgram: !!DEEPGRAM_API_KEY,
     personalities: PERSONALITIES.listPersonalities(),
     speakers: PERSONALITIES.listSpeakers(),
+    locales: PERSONALITIES.listLocales(),
+    defaultLocale: PERSONALITIES.DEFAULT_LOCALE,
+    refAnnouncer: {
+      id: PERSONALITIES.REF_ANNOUNCER.id,
+      name: PERSONALITIES.REF_ANNOUNCER.name,
+      voice: PERSONALITIES.REF_ANNOUNCER.voice,
+    },
     introAnnouncer: {
       id: PERSONALITIES.INTRO_ANNOUNCER.id,
       name: PERSONALITIES.INTRO_ANNOUNCER.name,
@@ -4564,35 +4611,156 @@ app.get('/api/commentary-status', (req, res) => {
     deepgram: !!DEEPGRAM_API_KEY,
     personalities: PERSONALITIES.listPersonalities().map((p) => p.id),
     speakers: PERSONALITIES.listSpeakers().map((s) => s.id),
+    locales: PERSONALITIES.listLocales().map((l) => l.id),
     introVoice: PERSONALITIES.INTRO_ANNOUNCER.voice,
+    refVoice: PERSONALITIES.REF_ANNOUNCER.voice,
   });
 });
 
-/** Fixed ring-announcer TTS for match intros / walk-on name calls (Deepgram only). */
+/**
+ * Thunderous Tom match intro (Groq → Deepgram Helios).
+ * Accepts POST { player1, player2, gameType, locale? } for generated intros,
+ * or { text, locale? } for walk-on / name-call TTS only.
+ */
 app.post('/api/match-intro', async (req, res) => {
   try {
-    const text = String(req.body?.text || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 320);
-    if (!text) return res.status(400).json({ ok: false, error: 'Missing text.' });
     if (!DEEPGRAM_API_KEY) {
       return res.status(503).json({
         ok: false,
         error: 'Intro announcer is not configured (set DEEPGRAM_API_KEY).',
       });
     }
-    const buf = await synthesizeDeepgramSpeech(text, PERSONALITIES.INTRO_ANNOUNCER.voice);
+
+    const locale = resolveRequestLocale(req.body);
+    const voice = PERSONALITIES.INTRO_ANNOUNCER.voice;
+    let text = String(req.body?.text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 320);
+
+    const player1 = typeof req.body?.player1 === 'string' ? req.body.player1.trim().slice(0, 40) : '';
+    const player2 = typeof req.body?.player2 === 'string' ? req.body.player2.trim().slice(0, 40) : '';
+    const gameType = normalizeIntroGameType(req.body?.gameType || req.body?.game);
+
+    if (!text && player1 && player2) {
+      const groq = getGroqClient();
+      if (!groq) {
+        return res.status(503).json({
+          ok: false,
+          error: 'Intro announcer is not configured (set GROQ_API_KEY and DEEPGRAM_API_KEY).',
+        });
+      }
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.95,
+        max_tokens: 80,
+        messages: [
+          {
+            role: 'system',
+            content: PERSONALITIES.getIntroSystemPrompt(locale.id),
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({ player1, player2, gameType }),
+          },
+        ],
+      });
+      text = clampIntroWords(completion?.choices?.[0]?.message?.content || '', 25);
+      if (!text) {
+        text = `LADIES AND GENTLEMEN… ${player1} versus ${player2}… IT'S TIME!`;
+      }
+    }
+
+    if (!text) return res.status(400).json({ ok: false, error: 'Missing text or players.' });
+
+    const buf = await synthesizeDeepgramSpeech(text, voice);
     if (!buf.length) {
       return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
     }
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('X-Intro-Voice', PERSONALITIES.INTRO_ANNOUNCER.voice);
+    res.setHeader('X-Intro-Voice', voice);
+    res.setHeader('X-Intro-Text', encodeURIComponent(text));
+    res.setHeader('X-Intro-Locale', locale.id);
     res.send(buf);
   } catch (err) {
     log('error', 'Match intro TTS failed:', err.message);
     res.status(502).json({ ok: false, error: 'Intro voice unavailable.' });
+  }
+});
+
+/**
+ * Ref Russ score callouts (Groq → Deepgram Perseus / locale voice).
+ * POST { score, bust?, matchWon?, legWon?, locale? }
+ */
+app.post('/api/ref-announce', async (req, res) => {
+  try {
+    const scoreNum = Number(req.body?.score);
+    const bust = req.body?.bust === true || req.body?.bust === 'true' || req.body?.bust === 1
+      || /^bust$/i.test(String(req.body?.display || ''));
+    const matchWon = req.body?.matchWon === true || req.body?.matchWon === 'true' || req.body?.matchWon === 1;
+    const legWon = req.body?.legWon === true || req.body?.legWon === 'true' || req.body?.legWon === 1;
+    const locale = resolveRequestLocale(req.body);
+    const voice = PERSONALITIES.resolveRefVoice(locale.id);
+
+    if (!bust && !matchWon && !legWon && !Number.isFinite(scoreNum)) {
+      return res.status(400).json({ ok: false, error: 'Invalid score.' });
+    }
+    if (!DEEPGRAM_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Ref announcer is not configured (set DEEPGRAM_API_KEY).',
+      });
+    }
+
+    const score = Number.isFinite(scoreNum) ? Math.round(scoreNum) : 0;
+    let line = '';
+    const groq = getGroqClient();
+    if (groq) {
+      try {
+        const completion = await groq.chat.completions.create({
+          model: 'llama-3.1-8b-instant',
+          temperature: 0.2,
+          max_tokens: 24,
+          messages: [
+            {
+              role: 'system',
+              content: PERSONALITIES.getRefSystemPrompt(locale.id),
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({
+                score,
+                bust,
+                matchWon,
+                legWon,
+              }),
+            },
+          ],
+        });
+        line = clampRefWords(completion?.choices?.[0]?.message?.content || '', 5);
+      } catch (err) {
+        log('warn', 'Ref Russ Groq failed, using fallback:', err.message);
+      }
+    }
+    if (!line) line = fallbackRefCallout({ score, bust, matchWon, legWon });
+    if (!line) {
+      return res.status(502).json({ ok: false, error: 'Ref callout generation failed.' });
+    }
+
+    const buf = await synthesizeDeepgramSpeech(line, voice);
+    if (!buf.length) {
+      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('X-Ref-Text', encodeURIComponent(line));
+    res.setHeader('X-Ref-Voice', voice);
+    res.setHeader('X-Ref-Locale', locale.id);
+    res.send(buf);
+  } catch (err) {
+    log('error', 'Ref announce failed:', err.message);
+    res.status(502).json({ ok: false, error: 'Ref voice unavailable.' });
   }
 });
 
@@ -4609,6 +4777,7 @@ app.post('/api/commentary', async (req, res) => {
       || req.body?.checkout === 'true'
       || req.body?.checkout === 1;
     const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
+    const locale = resolveRequestLocale(req.body);
 
     if (!player) return res.status(400).json({ ok: false, error: 'Missing player.' });
     if (!Number.isFinite(scoreNum)) {
@@ -4645,6 +4814,8 @@ app.post('/api/commentary', async (req, res) => {
           error: `Pick two different speakers (${PERSONALITIES.listSpeakers().map((s) => s.id).join(', ')}).`,
         });
       }
+      const voice1 = PERSONALITIES.resolveSpeakerVoice(pair.speaker1, locale);
+      const voice2 = PERSONALITIES.resolveSpeakerVoice(pair.speaker2, locale);
 
       const completion = await groq.chat.completions.create({
         model: 'llama-3.1-8b-instant',
@@ -4654,7 +4825,7 @@ app.post('/api/commentary', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: PERSONALITIES.buildDualSystemPrompt(pair.speaker1, pair.speaker2),
+            content: PERSONALITIES.buildDualSystemPrompt(pair.speaker1, pair.speaker2, locale.id),
           },
           {
             role: 'user',
@@ -4678,8 +4849,8 @@ app.post('/api/commentary', async (req, res) => {
       }
 
       const [audioBuffer1, audioBuffer2] = await Promise.all([
-        synthesizeDeepgramSpeech(dual.speaker1, pair.speaker1.voice),
-        synthesizeDeepgramSpeech(dual.speaker2, pair.speaker2.voice),
+        synthesizeDeepgramSpeech(dual.speaker1, voice1),
+        synthesizeDeepgramSpeech(dual.speaker2, voice2),
       ]);
       if (!audioBuffer1.length || !audioBuffer2.length) {
         log('warn', 'Deepgram TTS returned empty audio');
@@ -4693,15 +4864,16 @@ app.post('/api/commentary', async (req, res) => {
         mode: 'dual',
         speaker1: dual.speaker1,
         speaker2: dual.speaker2,
-        voice1: pair.speaker1.voice,
-        voice2: pair.speaker2.voice,
+        voice1,
+        voice2,
+        locale: locale.id,
         audio1: audioBuffer1.toString('base64'),
         audio2: audioBuffer2.toString('base64'),
       });
     }
 
     // ── Single personality (default path — one line, one TTS) ──
-    const pack = PERSONALITIES.getSingle(personalityRaw);
+    const pack = PERSONALITIES.getSingle(personalityRaw, locale.id);
     if (!pack) {
       return res.status(400).json({
         ok: false,
@@ -4743,6 +4915,7 @@ app.post('/api/commentary', async (req, res) => {
     res.setHeader('X-Commentary-Text', encodeURIComponent(commentary));
     res.setHeader('X-Commentary-Personality', personalityRaw);
     res.setHeader('X-Commentary-Voice', pack.voice);
+    res.setHeader('X-Commentary-Locale', locale.id);
     res.send(buf);
   } catch (err) {
     log('error', 'Commentary endpoint failed:', err.message);
