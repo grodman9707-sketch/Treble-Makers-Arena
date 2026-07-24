@@ -12378,6 +12378,10 @@ let commentaryPlayToken = 0;
 let commentaryConfigured = null; // null unknown, true/false after probe
 let commentaryWarned = false;
 let commentaryAudioUnlocked = false;
+let deepgramReady = null; // Deepgram-only (ring intro can work without Groq)
+let introAudio = null;
+let introObjectUrl = null;
+let introPlayToken = 0;
 
 function resetCommentaryMemory() {
   commentaryScoreHistory = [];
@@ -12441,9 +12445,29 @@ function stopCommentaryAudio() {
   }
 }
 
+function stopIntroAudio() {
+  introPlayToken += 1;
+  try {
+    if (introAudio) {
+      const done = introAudio._introDone;
+      introAudio.onended = null;
+      introAudio.onerror = null;
+      introAudio.pause();
+      introAudio.src = '';
+      if (typeof done === 'function') done();
+    }
+  } catch { /* ignore */ }
+  introAudio = null;
+  if (introObjectUrl) {
+    try { URL.revokeObjectURL(introObjectUrl); } catch { /* ignore */ }
+    introObjectUrl = null;
+  }
+}
+
 function stopAllSpokenAudio() {
   stopAnnounceAudio();
   stopCommentaryAudio();
+  stopIntroAudio();
 }
 
 function pickBrowserFallbackVoice() {
@@ -12494,11 +12518,19 @@ async function probeCommentaryApi({ force = false } = {}) {
     const res = await fetch('/api/commentary-status', { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     commentaryConfigured = !!(res.ok && data.configured);
+    deepgramReady = !!(res.ok && data.deepgram);
   } catch {
     commentaryConfigured = false;
+    deepgramReady = false;
   }
   updateCommentaryStatusNote();
   return commentaryConfigured;
+}
+
+async function probeDeepgramReady({ force = false } = {}) {
+  if (!force && deepgramReady != null) return deepgramReady;
+  await probeCommentaryApi({ force: true });
+  return !!deepgramReady;
 }
 
 function updateCommentaryStatusNote() {
@@ -12529,6 +12561,7 @@ async function loadCommentaryPersonalities() {
       commentarySpeakerList = data.speakers.filter(s => s && s.id && s.name);
     }
     if (typeof data.configured === 'boolean') commentaryConfigured = data.configured;
+    if (typeof data.deepgram === 'boolean') deepgramReady = data.deepgram;
   } catch { /* ignore */ }
   syncCommentaryPersonalitySelect();
   syncDualSpeakerRow();
@@ -12769,6 +12802,7 @@ function fillSpeakerSelect(sel, selectedId) {
       { id: 'jack', name: 'Hype Master Jack' },
       { id: 'sam', name: 'Sarcastic Sam' },
       { id: 'coach', name: 'Coach Pete' },
+      { id: 'maya', name: 'Maya Marks' },
     ];
   list.forEach((s) => {
     const opt = document.createElement('option');
@@ -12921,6 +12955,111 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false } =
   return announceSpeakQueue;
 }
 
+/** Play Deepgram ring-announcer MP3 (match intros). Falls back to browser TTS. */
+function playIntroBuffer(arrayBuffer, token) {
+  return new Promise(async (resolve) => {
+    if (token !== introPlayToken) {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    try {
+      unlockCommentaryAudio();
+      const ctx = typeof ensureArenaAudio === 'function' ? ensureArenaAudio() : null;
+      if (ctx) {
+        if (ctx.state === 'suspended') await ctx.resume();
+        const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        if (token !== introPlayToken) {
+          done();
+          return;
+        }
+        const src = ctx.createBufferSource();
+        src.buffer = decoded;
+        src.connect(ctx.destination);
+        src.onended = done;
+        introAudio = {
+          _introDone: done,
+          pause() { try { src.stop(0); } catch { /* ignore */ } },
+          src: '',
+        };
+        src.start(0);
+        return;
+      }
+    } catch { /* fall through */ }
+
+    try {
+      if (introObjectUrl) {
+        try { URL.revokeObjectURL(introObjectUrl); } catch { /* ignore */ }
+        introObjectUrl = null;
+      }
+      const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+      introObjectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(introObjectUrl);
+      audio._introDone = done;
+      introAudio = audio;
+      audio.onended = done;
+      audio.onerror = done;
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => done());
+    } catch {
+      done();
+    }
+  });
+}
+
+/**
+ * Permanent sports-arena ring announcer for match intros / walk-on name calls.
+ * Uses Deepgram Zeus when configured; otherwise browser speech.
+ */
+function announceIntroSpeak(text, { force = false, cancel = false, enqueue = true } = {}) {
+  if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
+  if (typeof window === 'undefined') return Promise.resolve();
+
+  const speakNow = async () => {
+    unlockCommentaryAudio();
+    if (cancel) {
+      try {
+        if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
+      } catch { /* ignore */ }
+    }
+    try {
+      const ready = await probeDeepgramReady();
+      if (ready) {
+        const token = ++introPlayToken;
+        const res = await fetch('/api/match-intro', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: String(text) }),
+        });
+        if (res.ok) {
+          const buf = await res.arrayBuffer();
+          if (buf?.byteLength) {
+            await playIntroBuffer(buf, token);
+            return;
+          }
+        }
+      }
+    } catch { /* fall back */ }
+    await speakWithBrowserFallback(text, {
+      cancel: false,
+      rate: 0.95,
+      pitch: 0.85,
+    });
+  };
+
+  if (enqueue) {
+    announceSpeakQueue = announceSpeakQueue.then(speakNow, speakNow);
+    return announceSpeakQueue;
+  }
+  announceSpeakQueue = speakNow();
+  return announceSpeakQueue;
+}
+
 function previewAiCommentary() {
   unlockCommentaryAudio();
   if (commentaryPersonalityId === 'off') {
@@ -13021,19 +13160,22 @@ function matchIntroNames(preview = null) {
 
 function buildMainMatchOpenLine({ game, tournamentName = '' } = {}) {
   const g = game || announceGameLabel(null, { spoken: true });
-  if (tournamentName) return `Welcome to ${tournamentName}. This is ${g}.`;
-  return `Welcome to Treble-Makers Arena. This is ${g}.`;
+  if (tournamentName) {
+    return `Ladies and gentlemen… welcome to Treble-Makers Arena for this ${tournamentName} ${g} main event!`;
+  }
+  return `Ladies and gentlemen… welcome to Treble-Makers Arena for this ${g} main event!`;
 }
 
 function buildMainMatchCloseLine({ game, a, b } = {}) {
-  return `${a} versus ${b}. Let's play ${game || announceGameLabel(null, { spoken: true })}!`;
+  const g = game || announceGameLabel(null, { spoken: true });
+  return `In the red corner… ${a}! And in the blue corner… ${b}! Let's play ${g}!`;
 }
 
 /** Fallback one-shot intro when walk-on sequence is unavailable. */
 function announceMatchStart(preview = null) {
   const { game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
   const line = `${buildMainMatchOpenLine({ game, tournamentName })} Introducing… ${a}… versus… ${b}!`;
-  return announceSpeak(line, { cancel: false, enqueue: true });
+  return announceIntroSpeak(line, { cancel: false, enqueue: true });
 }
 
 function announceMatchPreviewIntro(preview = null) {
@@ -13360,14 +13502,14 @@ function runMatchIntroAnnounce(preview) {
 
   matchIntroPromise = (async () => {
     // 1) Big-stage open for every match (bot / casual / tournament).
-    await announceSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
+    await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
       cancel: false,
       enqueue: true,
     });
     // 2) Walk-ons with name calls.
     await playWalkoutSequence(players.length ? players : [{ username: a }, { username: b }]);
     // 3) Title-card close before warm-up / "Game on."
-    await announceSpeak(buildMainMatchCloseLine({ game, a, b }), {
+    await announceIntroSpeak(buildMainMatchCloseLine({ game, a, b }), {
       cancel: false,
       enqueue: true,
     });
@@ -13387,7 +13529,7 @@ function playWalkoutSequence(players) {
   list.forEach((p, i) => {
     chain = chain.then(async () => {
       const label = i === 0 ? 'Introducing' : 'And their opponent';
-      await announceSpeak(`${label}… ${p.username}!`, { cancel: false, enqueue: true });
+      await announceIntroSpeak(`${label}… ${p.username}!`, { cancel: false, enqueue: true });
       const id = sanitizeClientWalkoutId(p.walkoutId);
       const hearThis = hearBoth || p.username === me;
       if (hearThis && id) {

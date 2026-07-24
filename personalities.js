@@ -1,7 +1,8 @@
 /**
  * AI match announcers for POST /api/commentary.
  * - singles: one Groq line → one Deepgram Aura voice
- * - dual: Jack+Sam-style team (or any two speakers) → two lines → two voices
+ * - dual: pick any two speakers → two lines → two voices
+ * - intro: fixed ring announcer voice for match walk-ons (Deepgram only)
  */
 
 const SPEAKERS = {
@@ -22,10 +23,26 @@ const SPEAKERS = {
   coach: {
     id: 'coach',
     name: 'Coach Pete',
-    voice: 'aura-2-asteria-en',
+    voice: 'aura-2-orpheus-en', // warm supportive male
     style:
       'Supportive darts coach. Short tips and praise, calm and clear.',
   },
+  maya: {
+    id: 'maya',
+    name: 'Maya Marks',
+    voice: 'aura-2-asteria-en', // female commentator (former Coach Pete voice)
+    style:
+      'Sharp female color commentator. Clear, punchy, crowd-aware.',
+  },
+};
+
+/** Permanent boxing-style arena voice for match introductions / walk-ons. */
+const INTRO_ANNOUNCER = {
+  id: 'ring',
+  name: 'Ring Announcer',
+  voice: 'aura-2-zeus-en', // deep, authoritative “ladies and gentlemen…” energy
+  style:
+    'Classic boxing / sports arena ring announcer. Formal, booming, theatrical.',
 };
 
 const SINGLES = {
@@ -54,6 +71,15 @@ const SINGLES = {
     systemPrompt:
       'You are Coach Pete, a supportive darts coach. ' +
       'Reply with one short encouraging tip or praise. Maximum 12 words. ' +
+      'No quotes, emojis, or stage directions.',
+  },
+  maya: {
+    id: 'maya',
+    name: 'Maya Marks',
+    speakerId: 'maya',
+    systemPrompt:
+      'You are Maya Marks, a sharp female darts color commentator. ' +
+      'Reply with one clear, punchy line only. Maximum 12 words. ' +
       'No quotes, emojis, or stage directions.',
   },
 };
@@ -121,6 +147,7 @@ module.exports = {
   SPEAKERS,
   SINGLES,
   DUAL,
+  INTRO_ANNOUNCER,
   listSpeakers,
   listPersonalities,
   getSingle,
