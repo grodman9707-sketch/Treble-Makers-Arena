@@ -46,7 +46,9 @@ const SPEAKERS = {
 const INTRO_ANNOUNCER = {
   id: 'thunderous-tom',
   name: 'Thunderous Tom',
+  // Prefer Aura-2 id when available; Deepgram currently ships Helios as Aura-1.
   voice: 'aura-2-helios-en',
+  voiceFallbacks: ['aura-2-helios-en', 'aura-helios-en', 'aura-2-zeus-en'],
   style:
     'Iconic world-championship boxing and MMA ring announcer. Explosive, theatrical, fight-night energy.',
   systemPrompt:
@@ -61,7 +63,9 @@ const INTRO_ANNOUNCER = {
 const REF_ANNOUNCER = {
   id: 'ref',
   name: 'Ref Russ',
+  // Prefer Aura-2 id when available; Deepgram currently ships Perseus as Aura-1.
   voice: 'aura-2-perseus-en',
+  voiceFallbacks: ['aura-2-perseus-en', 'aura-perseus-en', 'aura-2-orpheus-en'],
   style: 'Official professional darts referee. Crisp score callouts only.',
   systemPrompt:
     'You are "Ref Russ", a official professional darts referee calling out score results. ' +
@@ -85,6 +89,7 @@ const VOICE_LOCALES = {
     accent: 'American',
     groqLanguageHint: null, // default English — no extra instruction
     refVoice: 'aura-2-perseus-en',
+    refVoiceFallbacks: ['aura-2-perseus-en', 'aura-perseus-en', 'aura-2-orpheus-en'],
     masculine: 'aura-2-apollo-en',
     masculineAlt: 'aura-2-orion-en',
     masculineWarm: 'aura-2-orpheus-en',
@@ -335,6 +340,20 @@ function resolveRefVoice(localeId) {
   return loc.refVoice || REF_ANNOUNCER.voice;
 }
 
+function resolveRefVoiceFallbacks(localeId) {
+  const loc = getLocale(localeId);
+  if (loc.id === 'en-us') {
+    return REF_ANNOUNCER.voiceFallbacks || [REF_ANNOUNCER.voice];
+  }
+  const primary = loc.refVoice || REF_ANNOUNCER.voice;
+  const extras = loc.refVoiceFallbacks || REF_ANNOUNCER.voiceFallbacks || [];
+  return [primary, ...extras].filter((v, i, arr) => v && arr.indexOf(v) === i);
+}
+
+function resolveIntroVoiceFallbacks() {
+  return INTRO_ANNOUNCER.voiceFallbacks || [INTRO_ANNOUNCER.voice];
+}
+
 function getRefSystemPrompt(localeId) {
   return appendLocaleHint(REF_ANNOUNCER.systemPrompt, localeId);
 }
@@ -372,6 +391,8 @@ module.exports = {
   getSpeaker,
   resolveSpeakerVoice,
   resolveRefVoice,
+  resolveRefVoiceFallbacks,
+  resolveIntroVoiceFallbacks,
   getRefSystemPrompt,
   getIntroSystemPrompt,
   appendLocaleHint,

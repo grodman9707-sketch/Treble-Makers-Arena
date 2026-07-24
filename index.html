@@ -33,8 +33,8 @@
   /* Shared player-cam frame: square crop so Camera Setup framing matches every match box */
   --cam-frame-ratio: 1 / 1;
   --cam-zoom: 1.15;
-  /* Restore pre-shrink player-cam size (was capped at 280px). */
-  --cam-box-max: 480px;
+  /* Player-cam target size — stretch fills remaining center column up to this. */
+  --cam-box-max: 640px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -2792,7 +2792,10 @@ body.app-active .arena-bg { animation: none !important; }
 /* ════════════════════════════════════════════
    X01 MATCH (dartcounter style)
 ════════════════════════════════════════════ */
-.x01-layout { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem 1rem 1.25rem; min-height: calc(100vh - 60px); }
+.x01-layout {
+  display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem 1rem 1.25rem;
+  height: calc(100dvh - 60px); max-height: calc(100dvh - 60px); min-height: 0; overflow: hidden;
+}
 .x01-topbar { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; }
 .x01-icon-btn {
   width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
@@ -3106,21 +3109,39 @@ body.app-active .arena-bg { animation: none !important; }
 /* Swapped layout: camera lives in the center column, the score-recording log
    (leg history) moves into the right side column and scrolls instead of the
    whole match view growing as turns accumulate. */
-/* Bound the whole X01 view to the viewport so the columns have a definite
-   height — this lets the score log scroll internally and the cam use a fixed square. */
-.x01-layout { height: auto; min-height: calc(100vh - 60px); overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.x01-body { min-height: 0; }
-.x01-center { min-height: 0; }
-/* Larger square player-cam under the score entry (pre-shrink sizing). */
+/* Viewport-locked match shell so center cams can stretch (cqh needs definite height). */
+.x01-layout {
+  height: calc(100dvh - 60px);
+  max-height: calc(100dvh - 60px);
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.x01-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+.x01-center {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+/* Largest square player-cam under the score entry (pre-shrink stretch). */
 .x01-center .x01-cam {
-  flex: 0 0 auto;
-  width: 100%;
-  min-height: min(var(--cam-box-max), 52vmin);
-  display: flex; align-items: center; justify-content: center;
+  flex: 1 1 auto;
+  min-height: min(280px, 40vmin);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
 }
 .x01-center .x01-cam-frame {
-  width: min(100%, var(--cam-box-max, 480px), 52vmin);
+  width: min(100cqw, 100cqh, var(--cam-box-max, 640px));
   max-width: 100%;
+  max-height: 100%;
   height: auto;
   aspect-ratio: var(--cam-frame-ratio);
   align-self: center;
@@ -3134,11 +3155,10 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-layout {
   display: flex; flex-direction: column; gap: 0.75rem;
   padding: 0.75rem 1rem 1.25rem;
-  height: auto;
-  min-height: calc(100vh - 60px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  height: calc(100dvh - 60px);
+  max-height: calc(100dvh - 60px);
+  min-height: 0;
+  overflow: hidden;
 }
 .ckt-topbar { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; flex-shrink: 0; }
 .ckt-icon-btn {
@@ -3158,7 +3178,7 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .ckt-body {
   display: grid; grid-template-columns: 230px 1fr 380px; gap: 1rem;
-  align-items: start; flex: 1 0 auto; min-height: min-content;
+  align-items: stretch; flex: 1 1 auto; min-height: 0;
 }
 @media (max-width: 1100px) { .ckt-body { grid-template-columns: 200px 1fr; } .ckt-side { grid-column: 1 / -1; } }
 @media (max-width: 720px) {
@@ -3232,16 +3252,16 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .ckt-chat-close:hover { border-color: var(--gold); color: var(--gold-light); }
 
-/* Center column — larger cam (definite size; scroll layout has no cq height) */
+/* Center column — stretch cam like X01 (largest square in remaining space) */
 .ckt-center {
-  display: flex; flex-direction: column; gap: 0.7rem; min-height: 0;
+  display: flex; flex-direction: column; gap: 0.7rem; min-height: 0; height: 100%;
 }
 .ckt-turn-line { font-family: 'Cinzel', serif; font-size: 1.08rem; letter-spacing: 0.1em; color: var(--gold-light); text-transform: uppercase; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9); flex-shrink: 0; }
 .ckt-center .ckt-cam {
-  flex: 0 0 auto;
-  width: 100%;
-  min-height: min(var(--cam-box-max), 52vmin);
+  flex: 1 1 auto;
+  min-height: min(280px, 40vmin);
   display: flex; align-items: center; justify-content: center;
+  container-type: size;
 }
 
 /* Marks board */
@@ -3372,7 +3392,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-hint { font-size: 0.66rem; color: var(--muted); line-height: 1.5; text-align: center; padding: 0 0.4rem; }
 
 /* Right column: marks board + scoring pad */
-.ckt-side { display: flex; flex-direction: column; gap: 0.7rem; align-self: start; min-height: 0; }
+.ckt-side { display: flex; flex-direction: column; gap: 0.7rem; align-self: stretch; min-height: 0; overflow-y: auto; }
 .ckt-cam-frame {
   position: relative; width: 100%; aspect-ratio: var(--cam-frame-ratio); border-radius: 12px; overflow: hidden;
   border: 1px solid var(--border); background: #000; flex-shrink: 0;
@@ -3383,10 +3403,11 @@ body.app-active .arena-bg { animation: none !important; }
   font-size: 0.68rem; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);
 }
 .ckt-cam-badge.bot { background: rgba(232,144,42,0.85); color: #1a0e00; font-weight: 700; }
-/* Cricket/Tactics: larger square player-cam (avoid cqh — scroll layout has no height) */
+/* Cricket/Tactics: stretch square player-cam in center column */
 .ckt-center .ckt-cam-frame {
-  width: min(100%, var(--cam-box-max, 480px), 52vmin);
+  width: min(100cqw, 100cqh, var(--cam-box-max, 640px));
   max-width: 100%;
+  max-height: 100%;
   height: auto;
   aspect-ratio: var(--cam-frame-ratio);
   align-self: center;
@@ -12529,14 +12550,32 @@ function speakWithBrowserFallback(text, { cancel = true, rate = 1.05, pitch = 1 
     }
     try {
       if (cancel) stopAllSpokenAudio();
-      const u = new SpeechSynthesisUtterance(String(text));
-      u.rate = rate;
-      u.pitch = pitch;
-      const voice = pickBrowserFallbackVoice();
-      if (voice) u.voice = voice;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
-      window.speechSynthesis.speak(u);
+      const speak = () => {
+        try {
+          const u = new SpeechSynthesisUtterance(String(text));
+          u.rate = rate;
+          u.pitch = pitch;
+          const voice = pickBrowserFallbackVoice();
+          if (voice) u.voice = voice;
+          u.onend = () => resolve();
+          u.onerror = () => resolve();
+          window.speechSynthesis.speak(u);
+        } catch {
+          resolve();
+        }
+      };
+      // Chrome often returns [] until voiceschanged fires.
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices || !voices.length) {
+        const onVoices = () => {
+          try { window.speechSynthesis.removeEventListener('voiceschanged', onVoices); } catch { /* ignore */ }
+          speak();
+        };
+        try { window.speechSynthesis.addEventListener('voiceschanged', onVoices); } catch { /* ignore */ }
+        setTimeout(speak, 250);
+        return;
+      }
+      speak();
     } catch {
       resolve();
     }
@@ -13090,7 +13129,7 @@ function playAnnounceBuffer(arrayBuffer) {
 }
 
 /**
- * Ref Russ score callout via Groq + Deepgram (aura-2-perseus-en by default).
+ * Ref Russ score callout via Groq + Deepgram (aura-2-perseus-en / aura-perseus-en).
  * Falls back to browser TTS if the API is unavailable.
  */
 function requestAndPlayRefAnnounce({
@@ -13109,27 +13148,28 @@ function requestAndPlayRefAnnounce({
           ? 'ONE HUNDRED AND EIGHTY!'
           : (display || (Number.isFinite(Number(score)) ? `${Math.round(Number(score))}!` : '')));
     try {
-      const ready = await probeDeepgramReady();
-      if (ready) {
-        const res = await fetch('/api/ref-announce', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            score: Number.isFinite(Number(score)) ? Number(score) : 0,
-            bust: !!bust,
-            matchWon: !!matchWon,
-            legWon: !!legWon,
-            display: String(display || ''),
-            locale: voiceLocaleId || 'en-us',
-          }),
-        });
-        if (res.ok) {
-          const buf = await res.arrayBuffer();
-          if (buf?.byteLength) {
-            await playAnnounceBuffer(buf);
-            return;
-          }
+      // Always attempt the API — probe can be stale; 503/502 fall through to browser TTS.
+      const res = await fetch('/api/ref-announce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          score: Number.isFinite(Number(score)) ? Number(score) : 0,
+          bust: !!bust,
+          matchWon: !!matchWon,
+          legWon: !!legWon,
+          display: String(display || ''),
+          locale: voiceLocaleId || 'en-us',
+        }),
+      });
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        if (buf?.byteLength) {
+          await playAnnounceBuffer(buf);
+          deepgramReady = true;
+          return;
         }
+      } else if (res.status === 503) {
+        deepgramReady = false;
       }
     } catch { /* fall back */ }
     if (fallbackText) {
@@ -13268,24 +13308,24 @@ function announceIntroSpeak(text, { force = false, cancel = false, enqueue = tru
       } catch { /* ignore */ }
     }
     try {
-      const ready = await probeDeepgramReady();
-      if (ready) {
-        const token = ++introPlayToken;
-        const res = await fetch('/api/match-intro', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: String(text),
-            locale: voiceLocaleId || 'en-us',
-          }),
-        });
-        if (res.ok) {
-          const buf = await res.arrayBuffer();
-          if (buf?.byteLength) {
-            await playIntroBuffer(buf, token);
-            return;
-          }
+      const token = ++introPlayToken;
+      const res = await fetch('/api/match-intro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: String(text),
+          locale: voiceLocaleId || 'en-us',
+        }),
+      });
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        if (buf?.byteLength) {
+          await playIntroBuffer(buf, token);
+          deepgramReady = true;
+          return;
         }
+      } else if (res.status === 503) {
+        deepgramReady = false;
       }
     } catch { /* fall back */ }
     await speakWithBrowserFallback(text, {
@@ -13763,32 +13803,26 @@ function runMatchIntroAnnounce(preview) {
   })();
 
   matchIntroPromise = (async () => {
-    // 1) Dramatic bell / stadium swell, then Thunderous Tom generated intro.
+    if (announceMuted) return;
+    // 1) Dramatic bell, then Thunderous Tom generated intro (Helios).
     await playBoxingBell();
+    let playedGenerated = false;
     try {
-      const ready = await probeDeepgramReady();
-      if (ready && !announceMuted) {
-        const token = ++introPlayToken;
-        const buf = await fetchGeneratedMatchIntro({
-          player1: a,
-          player2: b,
-          gameType,
-        });
-        if (buf?.byteLength) {
-          await playIntroBuffer(buf, token);
-        } else {
-          await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
-            cancel: false,
-            enqueue: true,
-          });
-        }
-      } else {
-        await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
-          cancel: false,
-          enqueue: true,
-        });
+      const token = ++introPlayToken;
+      const buf = await fetchGeneratedMatchIntro({
+        player1: a,
+        player2: b,
+        gameType,
+      });
+      if (buf?.byteLength) {
+        await playIntroBuffer(buf, token);
+        deepgramReady = true;
+        playedGenerated = true;
       }
     } catch {
+      playedGenerated = false;
+    }
+    if (!playedGenerated) {
       await announceIntroSpeak(buildMainMatchOpenLine({ game, tournamentName }), {
         cancel: false,
         enqueue: true,

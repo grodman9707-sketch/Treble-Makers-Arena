@@ -4508,23 +4508,40 @@ function parseDualCommentaryJson(raw) {
 }
 
 async function synthesizeDeepgramSpeech(text, model) {
-  const url = `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(model)}&encoding=mp3`;
-  // Deepgram API keys use "Token", not "Bearer" (Bearer is only for short-lived JWTs).
-  const upstream = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${DEEPGRAM_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ text: String(text) }),
-  });
-  if (!upstream.ok) {
-    const detail = await upstream.text().catch(() => '');
-    const err = new Error(`Deepgram TTS failed (${upstream.status}): ${detail.slice(0, 200)}`);
-    err.status = upstream.status;
+  const models = Array.isArray(model)
+    ? model.filter(Boolean)
+    : [model].filter(Boolean);
+  if (!models.length) {
+    const err = new Error('Deepgram TTS failed: no voice model');
+    err.status = 400;
     throw err;
   }
-  return Buffer.from(await upstream.arrayBuffer());
+
+  let lastErr = null;
+  for (const m of models) {
+    const url = `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(m)}&encoding=mp3`;
+    // Deepgram API keys use "Token", not "Bearer" (Bearer is only for short-lived JWTs).
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${DEEPGRAM_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: String(text) }),
+    });
+    if (upstream.ok) {
+      if (m !== models[0]) {
+        log('info', `Deepgram TTS fell back to model ${m}`);
+      }
+      return Buffer.from(await upstream.arrayBuffer());
+    }
+    const detail = await upstream.text().catch(() => '');
+    lastErr = new Error(`Deepgram TTS failed (${upstream.status}): ${detail.slice(0, 200)}`);
+    lastErr.status = upstream.status;
+    // Try next fallback on bad/unknown model; otherwise stop.
+    if (upstream.status !== 400 && upstream.status !== 404) break;
+  }
+  throw lastErr || new Error('Deepgram TTS failed');
 }
 
 function resolveDualSpeakers(body = {}) {
@@ -4632,7 +4649,7 @@ app.post('/api/match-intro', async (req, res) => {
     }
 
     const locale = resolveRequestLocale(req.body);
-    const voice = PERSONALITIES.INTRO_ANNOUNCER.voice;
+    const voices = PERSONALITIES.resolveIntroVoiceFallbacks();
     let text = String(req.body?.text || '')
       .replace(/\s+/g, ' ')
       .trim()
@@ -4641,45 +4658,46 @@ app.post('/api/match-intro', async (req, res) => {
     const player1 = typeof req.body?.player1 === 'string' ? req.body.player1.trim().slice(0, 40) : '';
     const player2 = typeof req.body?.player2 === 'string' ? req.body.player2.trim().slice(0, 40) : '';
     const gameType = normalizeIntroGameType(req.body?.gameType || req.body?.game);
+    const fallbackIntro = player1 && player2
+      ? `LADIES AND GENTLEMEN… ${player1} versus ${player2}… IT'S ${String(gameType).toUpperCase()} TIME!`
+      : '';
 
     if (!text && player1 && player2) {
       const groq = getGroqClient();
-      if (!groq) {
-        return res.status(503).json({
-          ok: false,
-          error: 'Intro announcer is not configured (set GROQ_API_KEY and DEEPGRAM_API_KEY).',
-        });
+      if (groq) {
+        try {
+          const completion = await groq.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            temperature: 0.95,
+            max_tokens: 80,
+            messages: [
+              {
+                role: 'system',
+                content: PERSONALITIES.getIntroSystemPrompt(locale.id),
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({ player1, player2, gameType }),
+              },
+            ],
+          });
+          text = clampIntroWords(completion?.choices?.[0]?.message?.content || '', 25);
+        } catch (err) {
+          log('warn', 'Thunderous Tom Groq failed, using fallback line:', err.message);
+        }
       }
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.1-8b-instant',
-        temperature: 0.95,
-        max_tokens: 80,
-        messages: [
-          {
-            role: 'system',
-            content: PERSONALITIES.getIntroSystemPrompt(locale.id),
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({ player1, player2, gameType }),
-          },
-        ],
-      });
-      text = clampIntroWords(completion?.choices?.[0]?.message?.content || '', 25);
-      if (!text) {
-        text = `LADIES AND GENTLEMEN… ${player1} versus ${player2}… IT'S TIME!`;
-      }
+      if (!text) text = fallbackIntro;
     }
 
     if (!text) return res.status(400).json({ ok: false, error: 'Missing text or players.' });
 
-    const buf = await synthesizeDeepgramSpeech(text, voice);
+    const buf = await synthesizeDeepgramSpeech(text, voices);
     if (!buf.length) {
       return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
     }
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('X-Intro-Voice', voice);
+    res.setHeader('X-Intro-Voice', voices[0] || PERSONALITIES.INTRO_ANNOUNCER.voice);
     res.setHeader('X-Intro-Text', encodeURIComponent(text));
     res.setHeader('X-Intro-Locale', locale.id);
     res.send(buf);
@@ -4701,7 +4719,7 @@ app.post('/api/ref-announce', async (req, res) => {
     const matchWon = req.body?.matchWon === true || req.body?.matchWon === 'true' || req.body?.matchWon === 1;
     const legWon = req.body?.legWon === true || req.body?.legWon === 'true' || req.body?.legWon === 1;
     const locale = resolveRequestLocale(req.body);
-    const voice = PERSONALITIES.resolveRefVoice(locale.id);
+    const voices = PERSONALITIES.resolveRefVoiceFallbacks(locale.id);
 
     if (!bust && !matchWon && !legWon && !Number.isFinite(scoreNum)) {
       return res.status(400).json({ ok: false, error: 'Invalid score.' });
@@ -4748,14 +4766,14 @@ app.post('/api/ref-announce', async (req, res) => {
       return res.status(502).json({ ok: false, error: 'Ref callout generation failed.' });
     }
 
-    const buf = await synthesizeDeepgramSpeech(line, voice);
+    const buf = await synthesizeDeepgramSpeech(line, voices);
     if (!buf.length) {
       return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
     }
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('X-Ref-Text', encodeURIComponent(line));
-    res.setHeader('X-Ref-Voice', voice);
+    res.setHeader('X-Ref-Voice', voices[0] || PERSONALITIES.REF_ANNOUNCER.voice);
     res.setHeader('X-Ref-Locale', locale.id);
     res.send(buf);
   } catch (err) {
