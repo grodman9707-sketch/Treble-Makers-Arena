@@ -4183,7 +4183,7 @@ body.app-active .arena-bg { animation: none !important; }
           <button type="button" class="guide-zone west" onclick="goArenaZone('locker')">
             <div class="guide-zone-kicker">West</div>
             <div class="guide-zone-title">Locker Room</div>
-            <div class="guide-zone-desc">Profile, announcer voice, commentary pack, and preferred settings.</div>
+            <div class="guide-zone-desc">Profile, AI announcer personality, and preferred settings.</div>
           </button>
           <div class="guide-center" aria-hidden="true">
             <div class="guide-center-label">You are here</div>
@@ -4213,7 +4213,7 @@ body.app-active .arena-bg { animation: none !important; }
     <div class="page" id="page-profile">
       <div class="profile-page">
         <div class="page-section-title">Locker Room</div>
-        <div class="page-section-sub">Your avatar, info, and preferred announcer settings for the Arena.</div>
+        <div class="page-section-sub">Your avatar, info, and preferred AI announcer for the Arena.</div>
         <div class="profile-layout">
           <div class="profile-card">
             <div class="profile-avatar-wrap">
@@ -4273,7 +4273,7 @@ body.app-active .arena-bg { animation: none !important; }
             <div class="profile-setting-row">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Announce scores</span>
-                <span class="profile-setting-hint">Speak visit scores and match cues aloud</span>
+                <span class="profile-setting-hint">Speak visit scores and AI commentary aloud</span>
               </div>
               <button type="button" class="pref-toggle" id="pref-announce-toggle"
                 role="switch" aria-checked="true" aria-label="Announce scores"
@@ -4281,45 +4281,23 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
             <div class="profile-setting-stack" id="pref-announce-voice-stack">
               <div class="profile-setting-meta">
-                <span class="profile-setting-label">Announcer voice</span>
-                <span class="profile-setting-hint">Arena neural voices + commentary packs</span>
+                <span class="profile-setting-label">AI announcer</span>
+                <span class="profile-setting-hint">Personality for visit commentary (Groq + OpenAI TTS)</span>
               </div>
               <div class="profile-setting-controls">
-                <label class="profile-setting-field-label" for="pref-announce-voice">Voice</label>
-                <select id="pref-announce-voice" onchange="onAnnounceVoiceChange()">
-                  <option value="en-US-ChristopherNeural">Christopher (Arena)</option>
-                  <option value="en-US-DavisNeural">Davis (Mythic)</option>
-                  <option value="en-US-GuyNeural">Guy (Chaotic)</option>
-                  <option value="en-US-AndrewNeural">Andrew (Sarcasm)</option>
-                  <option value="en-US-BrandonNeural">Brandon (Dark)</option>
-                  <option value="en-US-AriaNeural">Aria (Female)</option>
-                </select>
-                <label class="profile-setting-field-label" for="pref-announce-pack">Pack</label>
-                <select id="pref-announce-pack" onchange="onAnnouncePackChange()">
-                  <option value="bigMatchAnnouncer">Big Match</option>
-                  <option value="lokiHybrid">Loki Hybrid</option>
-                  <option value="femaleArenaAnnouncer">Arena Voice</option>
-                  <option value="off">Scores only</option>
-                </select>
-                <label class="profile-setting-field-label" for="pref-commentary-personality">AI personality</label>
-                <select id="pref-commentary-personality" onchange="onCommentaryPersonalityChange()">
+                <label class="profile-setting-field-label" for="pref-commentary-personality">Personality</label>
+                <select id="pref-commentary-personality" onchange="onCommentaryPersonalityChange('pref-commentary-personality')">
                   <option value="off">Off</option>
-                  <option value="sarcastic">Sarcastic</option>
-                  <option value="hyped">Hyped</option>
-                  <option value="coach">Coach</option>
                 </select>
                 <div class="profile-setting-actions">
-                  <button type="button" class="btn btn-sm" onclick="previewAnnounceVoice()">Preview</button>
-                  <button type="button" class="btn btn-sm" onclick="previewAiCommentary()">Preview AI</button>
+                  <button type="button" class="btn btn-sm" onclick="previewAiCommentary()">Preview</button>
                 </div>
               </div>
               <p class="profile-setting-note">
-                Arena neural callers play through Azure when configured
-                (<code>AZURE_SPEECH_KEY</code> / <code>AZURE_SPEECH_REGION</code>).
-                Until then, the browser speaks as a fallback so matches stay audible.
-                Loki Hybrid still switches mood lines per moment.
-                AI personality calls Groq + Deepgram on each visit
-                (<code>GROQ_API_KEY</code> / <code>DEEPGRAM_API_KEY</code>) and plays one clip at a time.
+                Announcers load from <code>GET /api/personalities</code>.
+                Each visit calls <code>POST /api/commentary</code> when a personality is selected
+                (<code>GROQ_API_KEY</code> + <code>OPENAI_API_KEY</code>).
+                Only one commentary clip plays at a time.
               </p>
             </div>
             <div class="profile-setting-row">
@@ -4478,6 +4456,15 @@ body.app-active .arena-bg { animation: none !important; }
           </select>
           <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
             Same-device play for X01 and Cricket/Tactics — no camera or online opponent.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>AI Announcer</label>
+          <select id="m-commentary-personality" onchange="onCommentaryPersonalityChange('m-commentary-personality')">
+            <option value="off">Off</option>
+          </select>
+          <div class="presence-row-meta" style="margin-top:0.45rem">
+            Visit commentary personality (saved to your locker settings).
           </div>
         </div>
         <div class="form-group" id="invite-friend-row">
@@ -6423,6 +6410,7 @@ function updateCamNavButton() {
 
 function openCreateMatch() {
   updateGameAccessUI();
+  syncCommentaryPersonalitySelect();
   openModal('create-match-modal');
 }
 
@@ -12254,467 +12242,32 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  ANNOUNCE — Azure neural voices + commentary packs (PR #20+)
+//  ANNOUNCE — AI personalities (Groq + OpenAI TTS)
 // ═══════════════════════════════════════════════════════════
 const ANNOUNCE_MUTE_KEY = 'tma-announce-muted';
-const ANNOUNCE_VOICE_KEY = 'tma-announce-voice';
-const ANNOUNCE_PACK_KEY = 'tma-announce-pack';
-// Legacy style key — migrated once to a commentary pack.
-const ANNOUNCE_STYLE_KEY = 'tma-announce-style';
 const COMMENTARY_PERSONALITY_KEY = 'tma-commentary-personality';
-const COMMENTARY_PERSONALITIES = {
-  sarcastic: { label: 'Sarcastic' },
-  hyped: { label: 'Hyped' },
-  coach: { label: 'Coach' },
-};
-
-// Curated Arena voices (Azure Neural). Browser/OS Microsoft lists are not used.
-const ANNOUNCE_VOICES = [
-  { id: 'en-US-ChristopherNeural', label: 'Christopher (Arena)' },
-  { id: 'en-US-DavisNeural', label: 'Davis (Mythic)' },
-  { id: 'en-US-GuyNeural', label: 'Guy (Chaotic)' },
-  { id: 'en-US-AndrewNeural', label: 'Andrew (Sarcasm)' },
-  { id: 'en-US-BrandonNeural', label: 'Brandon (Dark)' },
-  { id: 'en-US-AriaNeural', label: 'Aria (Female)' },
-];
-const ANNOUNCE_VOICE_IDS = new Set(ANNOUNCE_VOICES.map(v => v.id));
-
-const ANNOUNCE_PACKS = {
-  lokiHybrid: {
-    label: 'Loki Hybrid',
-    rate: 1.02,
-    pitch: 0.88,
-    defaultVoice: 'en-US-GuyNeural',
-    eventVoices: {
-      BIG_SCORE: 'en-US-GuyNeural',
-      MOMENTUM_LOSS: 'en-US-AndrewNeural',
-      CHECKOUT_CHANCE: 'en-US-DavisNeural',
-      WIN: 'en-US-DavisNeural'
-    },
-    bigScore: [
-      "Chaos unleashed! A monstrous visit!",
-      "Thunder cracks — the gods awaken!",
-      "A surge of power shakes the Arena!",
-      "The runes flare with raw fury!",
-      "A strike worthy of ancient legends!",
-      "Power tears through the board!",
-      "The Arena shudders under that score!",
-      "Mischief explodes in a storm of steel!",
-      "That visit carves a mark into destiny!",
-      "The gods lean forward in approval.",
-      "A roar of numbers — pure devastation!",
-      "The board sings with that impact!",
-      "A visit forged in fire and shadow!",
-      "The trickster laughs — that was brutal!",
-      "A thunderous answer to doubt!",
-      "The realms echo with that score!",
-      "A hammer blow to the opponent's hopes!",
-      "Runes ignite — the Arena is alive!",
-      "A surge of chaos, perfectly aimed!",
-      "That visit rewrites the story of this leg!",
-      "The crowd of unseen spirits erupts!",
-      "A storm of points crashes down!",
-      "The gods whisper: again.",
-      "A visit that bends fate itself!"
-    ],
-    momentumLoss: [
-      "The trickster smiles… momentum fades.",
-      "A stumble — fate twists sharply.",
-      "Weakness whispers through the Arena.",
-      "The gods turn their gaze away.",
-      "Mischief coils around this misstep.",
-      "The storm calms — too calm.",
-      "Power drains from the thrower's hand.",
-      "The runes dim, sensing doubt.",
-      "Chaos pauses, watching the slip.",
-      "The Arena grows colder after that visit.",
-      "A crack appears in their resolve.",
-      "The spirits murmur — not impressed.",
-      "Momentum bleeds out onto the floor.",
-      "The tide of battle shifts away.",
-      "A misstep in the dance of destiny.",
-      "The trickster tilts the scales the other way.",
-      "The board feels that hesitation.",
-      "A soft visit in a hard moment.",
-      "The gods arch an eyebrow at that.",
-      "The Arena sighs — pressure mounts.",
-      "A lull in the storm — dangerous.",
-      "Chaos waits for a stronger offering.",
-      "The runes flicker, uncertain.",
-      "The path to glory grows steeper."
-    ],
-    checkout: [
-      "Destiny calls… a finish glimmers.",
-      "The runes align — the end is near.",
-      "A chance to end the battle right here.",
-      "The Arena holds its breath…",
-      "Power gathers behind this moment.",
-      "One throw to carve fate in stone.",
-      "The gods watch this visit closely.",
-      "Chaos circles, hungry for an ending.",
-      "The board waits for the killing blow.",
-      "A finish hangs in the air like thunder.",
-      "This dart could seal the saga.",
-      "Runes burn brighter — the moment is ripe.",
-      "The trickster whispers: take it.",
-      "A single dart to silence doubt.",
-      "The Arena narrows to this one throw.",
-      "Every breath in the realms pauses.",
-      "The path to victory stands open.",
-      "A finish glows at the edge of vision.",
-      "This is a blade poised above destiny.",
-      "The gods lean in, eyes fixed.",
-      "Chaos demands a decisive strike.",
-      "The board begs for a final number.",
-      "This moment weighs more than all before.",
-      "A chance to write legend in one motion."
-    ],
-    win: [
-      "Victory claimed! The Arena roars!",
-      "Triumph ascends in thunder!",
-      "The final blow lands — glory is theirs!",
-      "The gods salute this conquest!",
-      "Chaos bows to the victor!",
-      "A saga ends in blazing triumph!",
-      "The runes glow with satisfaction.",
-      "The Arena echoes with their name.",
-      "Fate kneels before that final dart.",
-      "The storm breaks into radiant victory.",
-      "The trickster smirks — well played.",
-      "A legend is etched into the board.",
-      "The realms remember this finish.",
-      "Glory crashes down like a wave.",
-      "The last dart sings of dominance.",
-      "The gods raise a toast to this win.",
-      "Chaos retreats, beaten for now.",
-      "The Arena stands in awe of that ending.",
-      "A crown of numbers rests upon them.",
-      "The match ends in mythic fashion.",
-      "The runes whisper: champion.",
-      "The story closes on a perfect note.",
-      "Victory burns bright in the dark.",
-      "This win will echo through future battles."
-    ]
-  },
-
-  bigMatchAnnouncer: {
-    label: 'Big Match',
-    rate: 0.95,
-    pitch: 0.9,
-    defaultVoice: 'en-US-ChristopherNeural',
-    bigScore: [
-      "What a visit! That is world-class darts!",
-      "Huge score! That changes everything!",
-      "A massive hit — the crowd erupts!",
-      "That is exceptional scoring!",
-      "A brilliant visit under pressure!",
-      "That's a huge moment in this leg!",
-      "Superb scoring — exactly what was needed.",
-      "They pile on the pressure with that visit.",
-      "That's a statement score right there.",
-      "Top-tier darts — fantastic visit.",
-      "They answer the pressure in style.",
-      "That visit could turn the match around.",
-      "Outstanding scoring — right back in it.",
-      "That's a hammer blow to the opponent.",
-      "They've found their scoring power now.",
-      "That's a visit the crowd will remember.",
-      "They load the board with points again.",
-      "Relentless scoring — this is quality.",
-      "Firing on all cylinders now.",
-      "That's a professional response to pressure.",
-      "They punish every mistake with visits like that.",
-      "That's the kind of scoring champions produce.",
-      "They're building a serious platform here.",
-      "That visit sends a clear message."
-    ],
-    momentumLoss: [
-      "That's a slip — pressure now shifts.",
-      "Momentum swings toward the other player.",
-      "A costly visit… they'll want that back.",
-      "That opens the door for their opponent.",
-      "A dip in scoring at the worst moment.",
-      "They've lost a bit of rhythm there.",
-      "That visit invites pressure.",
-      "They'll be disappointed with that outcome.",
-      "The scoring has dropped off at a key time.",
-      "That could be a turning point — in the wrong direction.",
-      "They've given their opponent a chance to breathe.",
-      "That's not the visit they were looking for.",
-      "The momentum they had is fading.",
-      "They're struggling to maintain the pace.",
-      "That visit hands the initiative over.",
-      "They'll need to reset after that.",
-      "The match tempo is slipping away.",
-      "That's a missed opportunity to press on.",
-      "They've opened the door for a comeback.",
-      "That visit may haunt them later.",
-      "They've let the pressure ease off their opponent.",
-      "That's a soft visit in a hard moment.",
-      "They'll know that wasn't good enough.",
-      "The crowd senses a shift in momentum."
-    ],
-    checkout: [
-      "Checkout opportunity here — can they take it?",
-      "This is a crucial moment in the match.",
-      "A chance to close the leg right now.",
-      "Pressure rising — finish required.",
-      "This could be the turning point.",
-      "They're lining up a key finish.",
-      "This is a massive dart in the context of the match.",
-      "They have a real chance to steal the leg.",
-      "This is where champions show their nerve.",
-      "They've got a look at the finish — big moment.",
-      "The match could swing on this checkout.",
-      "They step up with a chance to end it.",
-      "This is a test of composure and precision.",
-      "They're eyeing up the winning combination.",
-      "One clean visit could seal the leg.",
-      "This is a high-pressure checkout.",
-      "They know how important this finish is.",
-      "The crowd leans in for this moment.",
-      "They've got the opportunity — can they deliver?",
-      "This dart could change everything.",
-      "They're on a finish — tension is building.",
-      "This is a pivotal checkout attempt.",
-      "They're within striking distance of the leg.",
-      "This is where the match can be decided."
-    ],
-    win: [
-      "Game, shot, and the match!",
-      "A brilliant finish to seal the victory!",
-      "That's the winning dart — superb performance!",
-      "Match won in style!",
-      "A commanding victory from start to finish!",
-      "They take the match with authority.",
-      "That's a well-deserved win.",
-      "They close it out with real class.",
-      "A strong performance from the very first dart.",
-      "They've been the better player and it shows.",
-      "They wrap up the match with a clinical finish.",
-      "That's a professional job done.",
-      "They've earned every bit of that victory.",
-      "A decisive result in a high-quality match.",
-      "They finish the contest in emphatic fashion.",
-      "That's a statement win.",
-      "They've shown real composure to get over the line.",
-      "The match ends with a superb checkout.",
-      "They walk away the clear winner.",
-      "That's a big win in this Arena.",
-      "They've proven their quality on this stage.",
-      "A memorable victory tonight.",
-      "They seal the match with a dart of pure precision.",
-      "That's the perfect way to end a great match."
-    ]
-  },
-
-  femaleArenaAnnouncer: {
-    label: 'Arena Voice',
-    rate: 1.0,
-    pitch: 1.12,
-    defaultVoice: 'en-US-AriaNeural',
-    bigScore: [
-      "A powerful visit! The Arena feels it!",
-      "Exceptional scoring — beautifully done!",
-      "A commanding hit — momentum rises!",
-      "Precision and power in perfect harmony!",
-      "That is a statement visit!",
-      "A huge score under pressure.",
-      "That visit sends a clear message.",
-      "Beautifully struck — that's top-level scoring.",
-      "Loading the board with points again.",
-      "A strong visit that shifts the balance.",
-      "Finding a rhythm now.",
-      "That's a brilliant response to the situation.",
-      "Answering the pressure with pure quality.",
-      "That visit could reshape this leg.",
-      "Building a serious platform here.",
-      "A confident, controlled scoring visit.",
-      "Showing real scoring power.",
-      "That's the kind of visit champions produce.",
-      "Turning up the heat on the opponent.",
-      "The Arena comes alive after that score.",
-      "Asserting control with visits like that.",
-      "That's a big moment in this match.",
-      "Right back in the contest with that.",
-      "A visit that demands respect."
-    ],
-    momentumLoss: [
-      "A dip in rhythm — pressure builds.",
-      "Momentum slips away… can they recover?",
-      "That visit opens the door for their opponent.",
-      "A costly moment — tension rises.",
-      "They'll want that visit back.",
-      "Scoring drops at a difficult time.",
-      "That's not the visit needed there.",
-      "The match tilts slightly away.",
-      "The opponent has room to breathe.",
-      "That's a missed chance to keep control.",
-      "Momentum has slowed noticeably.",
-      "Frustration after that outcome.",
-      "The Arena feels the shift in energy.",
-      "A bit of scoring edge lost there.",
-      "That visit invites pressure from the other side.",
-      "Time to reset and refocus.",
-      "The match tempo is slipping from their grasp.",
-      "That's a softer visit in a hard moment.",
-      "The door opens to a possible comeback.",
-      "The pressure now leans their way.",
-      "That wasn't enough.",
-      "The crowd senses a change in momentum.",
-      "The initiative slips slightly.",
-      "That visit may prove costly later."
-    ],
-    checkout: [
-      "A finish is within reach… focus now.",
-      "This is a pivotal moment — can they take it?",
-      "The match could turn right here.",
-      "A chance to close the leg in style.",
-      "Pressure peaks — finish required.",
-      "Stepping up with a chance to win the leg.",
-      "This is a huge moment.",
-      "Lining up a key checkout.",
-      "One composed visit could seal it.",
-      "The opportunity is there — can they deliver?",
-      "The Arena holds its breath for this finish.",
-      "Eyeing the winning combination.",
-      "This checkout could define the match.",
-      "They know how important this moment is.",
-      "A successful finish here changes everything.",
-      "On a finish — tension rises.",
-      "This is a test of nerve and precision.",
-      "Standing on the edge of victory.",
-      "This dart could close the leg.",
-      "Within striking distance of the win.",
-      "This is a critical checkout attempt.",
-      "Poised to end the leg.",
-      "The match hangs on this opportunity.",
-      "Seize control with this finish."
-    ],
-    win: [
-      "Victory secured — an outstanding performance!",
-      "The match is claimed with style!",
-      "A decisive finish — beautifully executed!",
-      "Match won — a brilliant display!",
-      "A powerful victory from start to finish!",
-      "They take the win with real authority.",
-      "That's a well-earned triumph.",
-      "Closing out the match with confidence.",
-      "A superb performance throughout.",
-      "Quality proven on this stage.",
-      "The Arena celebrates this victory.",
-      "The match ends with a clinical checkout.",
-      "That's a memorable win.",
-      "The stronger player, and it shows.",
-      "A commanding result in a high-pressure match.",
-      "Finishing the contest in style.",
-      "Composure under pressure has paid off.",
-      "The match ends with a beautiful final dart.",
-      "Walking away the clear winner.",
-      "This victory will stand out in the Arena's history.",
-      "Every point of that win was earned.",
-      "A fitting end to a strong performance.",
-      "Sealing the match with precision and poise.",
-      "That's the perfect conclusion tonight."
-    ]
-  }
-};
-
-const ANNOUNCE_PACK_IDS = Object.keys(ANNOUNCE_PACKS);
-
-function migrateAnnouncePackId(raw) {
-  if (raw === 'off') return 'off';
-  if (ANNOUNCE_PACKS[raw]) return raw;
-  if (raw === 'oche' || raw === 'arena') return 'bigMatchAnnouncer';
-  if (raw === 'rapid') return 'lokiHybrid';
-  if (raw === 'calm') return 'femaleArenaAnnouncer';
-  return 'bigMatchAnnouncer';
-}
-
-function migrateAnnounceVoiceId(raw) {
-  if (ANNOUNCE_VOICE_IDS.has(raw)) return raw;
-  // Legacy browser voiceURI / empty → pack default or Christopher.
-  return '';
-}
 
 let announceMuted = (() => {
   try { return localStorage.getItem(ANNOUNCE_MUTE_KEY) === '1'; } catch { return false; }
 })();
-let announceVoiceId = (() => {
-  try {
-    return migrateAnnounceVoiceId(localStorage.getItem(ANNOUNCE_VOICE_KEY) || '');
-  } catch { return ''; }
-})();
-let announcePackId = (() => {
-  try {
-    const pack = localStorage.getItem(ANNOUNCE_PACK_KEY);
-    if (pack != null) return migrateAnnouncePackId(pack);
-    const legacy = localStorage.getItem(ANNOUNCE_STYLE_KEY);
-    if (legacy != null) return migrateAnnouncePackId(legacy);
-    return 'bigMatchAnnouncer';
-  } catch { return 'bigMatchAnnouncer'; }
-})();
 let commentaryPersonalityId = (() => {
   try {
     const raw = (localStorage.getItem(COMMENTARY_PERSONALITY_KEY) || 'off').trim().toLowerCase();
-    if (raw === 'off' || !raw) return 'off';
-    return COMMENTARY_PERSONALITIES[raw] ? raw : 'off';
+    return raw || 'off';
   } catch { return 'off'; }
 })();
+/** @type {{ id: string, name: string, voice?: string }[]} */
+let commentaryPersonalityList = [];
 let lastX01RequireKey = '';
 let lastAnnounceWinKey = '';
 let announceSpeakQueue = Promise.resolve();
 let announceAudio = null;
 let announceObjectUrl = null;
-let announceTtsConfigured = null; // null unknown, true/false after probe
-let announceTtsWarned = false;
 let commentaryAudio = null;
 let commentaryObjectUrl = null;
 let commentaryPlayToken = 0;
 let commentaryConfigured = null; // null unknown, true/false after probe
 let commentaryWarned = false;
-
-function getAnnouncePack() {
-  if (announcePackId === 'off') return null;
-  return ANNOUNCE_PACKS[announcePackId] || ANNOUNCE_PACKS.bigMatchAnnouncer;
-}
-
-function announceRandomLine(lines) {
-  if (!Array.isArray(lines) || !lines.length) return '';
-  return lines[Math.floor(Math.random() * lines.length)];
-}
-
-function detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon } = {}) {
-  if (matchWon || legWon || remaining === 0) return { type: 'WIN' };
-  if (bust) return { type: 'MOMENTUM_LOSS' };
-  const score = Number(visit);
-  if (Number.isFinite(score)) {
-    if (score >= 140) return { type: 'BIG_SCORE' };
-    if (score < 40) return { type: 'MOMENTUM_LOSS' };
-  }
-  return null;
-}
-
-function getAnnounceCommentary(event, pack) {
-  if (!event || !pack) return '';
-  switch (event.type) {
-    case 'BIG_SCORE': return announceRandomLine(pack.bigScore);
-    case 'MOMENTUM_LOSS': return announceRandomLine(pack.momentumLoss);
-    case 'CHECKOUT_CHANCE': return announceRandomLine(pack.checkout);
-    case 'WIN': return announceRandomLine(pack.win);
-    default: return '';
-  }
-}
-
-function resolveAnnounceVoiceId(eventType) {
-  const pack = getAnnouncePack();
-  if (pack?.eventVoices && eventType && pack.eventVoices[eventType]) {
-    return pack.eventVoices[eventType];
-  }
-  if (announceVoiceId && ANNOUNCE_VOICE_IDS.has(announceVoiceId)) return announceVoiceId;
-  if (pack?.defaultVoice && ANNOUNCE_VOICE_IDS.has(pack.defaultVoice)) return pack.defaultVoice;
-  return 'en-US-ChristopherNeural';
-}
 
 function stopAnnounceAudio() {
   try {
@@ -12762,47 +12315,75 @@ function stopAllSpokenAudio() {
   stopCommentaryAudio();
 }
 
-async function probeAnnounceTts() {
-  if (announceTtsConfigured != null) return announceTtsConfigured;
-  try {
-    const res = await fetch('/api/tts-status', { cache: 'no-store' });
-    const data = await res.json().catch(() => ({}));
-    announceTtsConfigured = !!(res.ok && data.configured);
-  } catch {
-    announceTtsConfigured = false;
-  }
-  return announceTtsConfigured;
+function pickBrowserFallbackVoice() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  let voices = [];
+  try { voices = window.speechSynthesis.getVoices() || []; } catch { return null; }
+  if (!voices.length) return null;
+  const scored = voices.map(v => {
+    const lang = String(v.lang || '').toLowerCase();
+    const name = String(v.name || '').toLowerCase();
+    let s = 0;
+    if (lang.startsWith('en')) s += 40;
+    if (lang.startsWith('en-us')) s += 10;
+    if (lang.startsWith('en-gb')) s += 8;
+    if (/male|david|mark|guy|george|daniel|james|ryan/.test(name)) s += 12;
+    if (v.localService) s += 3;
+    return { v, s };
+  });
+  scored.sort((a, b) => b.s - a.s);
+  return scored[0]?.v || voices[0] || null;
 }
 
-async function fetchAnnounceAudio(text, voice) {
-  const res = await fetch('/api/tts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: String(text), voice }),
-  });
-  if (!res.ok) {
-    let msg = 'Voice service unavailable.';
+function speakWithBrowserFallback(text, { cancel = true, rate = 1.05, pitch = 1 } = {}) {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
     try {
-      const data = await res.json();
-      if (data?.error) msg = data.error;
-    } catch { /* ignore */ }
-    const err = new Error(msg);
-    err.status = res.status;
-    throw err;
-  }
-  return res.arrayBuffer();
+      if (cancel) stopAllSpokenAudio();
+      const u = new SpeechSynthesisUtterance(String(text));
+      u.rate = rate;
+      u.pitch = pitch;
+      const voice = pickBrowserFallbackVoice();
+      if (voice) u.voice = voice;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      window.speechSynthesis.speak(u);
+    } catch {
+      resolve();
+    }
+  });
 }
 
 async function probeCommentaryApi() {
   if (commentaryConfigured != null) return commentaryConfigured;
   try {
-    const res = await fetch('/api/commentary-status', { cache: 'no-store' });
+    const res = await fetch('/api/personalities', { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     commentaryConfigured = !!(res.ok && data.configured);
+    if (Array.isArray(data.personalities)) {
+      commentaryPersonalityList = data.personalities.filter(p => p && p.id && p.name);
+    }
   } catch {
     commentaryConfigured = false;
   }
   return commentaryConfigured;
+}
+
+async function loadCommentaryPersonalities() {
+  try {
+    const res = await fetch('/api/personalities', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && Array.isArray(data.personalities)) {
+      commentaryPersonalityList = data.personalities.filter(p => p && p.id && p.name);
+      commentaryConfigured = !!data.configured;
+    }
+  } catch {
+    /* keep prior list */
+  }
+  syncCommentaryPersonalitySelect();
 }
 
 async function fetchCommentaryAudio({ player, score, remaining, personality }) {
@@ -12862,7 +12443,7 @@ function playCommentaryBuffer(arrayBuffer, token) {
 }
 
 /**
- * Fetch Groq+Deepgram commentary for a visit and play it via HTMLAudioElement.
+ * Fetch Groq+OpenAI commentary for a visit and play it via HTMLAudioElement.
  * Newer visits bump commentaryPlayToken so stale responses never start overlapping audio.
  */
 function requestAndPlayAiCommentary({ player, score, remaining, personality, force = false } = {}) {
@@ -12871,7 +12452,6 @@ function requestAndPlayAiCommentary({ player, score, remaining, personality, for
   if (typeof window === 'undefined') return Promise.resolve();
 
   const token = ++commentaryPlayToken;
-  // Stop any prior AI clip immediately so rapid throws don't layer.
   stopCommentaryAudio();
 
   return (async () => {
@@ -12890,7 +12470,6 @@ function requestAndPlayAiCommentary({ player, score, remaining, personality, for
       if (token !== commentaryPlayToken) return;
       if ((!force && announceMuted)) return;
 
-      // Enqueue only playback so fetches stay parallel but audio stays exclusive.
       const play = () => playCommentaryBuffer(buf, token);
       announceSpeakQueue = announceSpeakQueue.then(play, play);
       await announceSpeakQueue;
@@ -12921,112 +12500,36 @@ function resolveCommentaryPlayerName(opts = {}) {
   return (S.username || S.players?.[0]?.username || 'Player').slice(0, 40);
 }
 
-function previewAiCommentary() {
-  if (commentaryPersonalityId === 'off') {
-    toast('Pick an AI personality first');
-    return;
-  }
-  const wasMuted = announceMuted;
-  requestAndPlayAiCommentary({
-    player: S.username || 'Player',
-    score: 140,
-    remaining: 361,
-    personality: commentaryPersonalityId,
-    force: true,
-  }).then(() => {
-    if (wasMuted) toast('Preview only — announcements still muted');
-  });
-}
-
-/** Browser TTS fallback when Azure Speech is not configured (no OS voice list in UI). */
-function pickBrowserFallbackVoice(preferredId) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-  let voices = [];
-  try { voices = window.speechSynthesis.getVoices() || []; } catch { return null; }
-  if (!voices.length) return null;
-  const wantFemale = /Aria/i.test(preferredId || '');
-  const scored = voices.map(v => {
-    const lang = String(v.lang || '').toLowerCase();
-    const name = String(v.name || '').toLowerCase();
-    let s = 0;
-    if (lang.startsWith('en')) s += 40;
-    if (lang.startsWith('en-us')) s += 10;
-    if (lang.startsWith('en-gb')) s += 8;
-    if (wantFemale && /female|woman|zira|samantha|victoria|aria|jenny|sara/.test(name)) s += 20;
-    if (!wantFemale && /male|david|mark|guy|george|daniel|james|ryan/.test(name)) s += 12;
-    if (v.localService) s += 3;
-    return { v, s };
-  });
-  scored.sort((a, b) => b.s - a.s);
-  return scored[0]?.v || voices[0] || null;
-}
-
-function speakWithBrowserFallback(text, { cancel = true, voiceId = null, rate = 1.05, pitch = 1 } = {}) {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      resolve();
-      return;
-    }
-    try {
-      if (cancel) {
-        stopAllSpokenAudio();
-      }
-      const u = new SpeechSynthesisUtterance(String(text));
-      u.rate = rate;
-      u.pitch = pitch;
-      const voice = pickBrowserFallbackVoice(voiceId);
-      if (voice) u.voice = voice;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
-      window.speechSynthesis.speak(u);
-    } catch {
-      resolve();
-    }
-  });
-}
-
-function populateAnnounceVoiceSelect() {
-  const sel = document.getElementById('pref-announce-voice');
-  if (!sel) return;
-  const prev = announceVoiceId || sel.value;
-  sel.innerHTML = '';
-  ANNOUNCE_VOICES.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v.id;
-    opt.textContent = v.label;
-    sel.appendChild(opt);
-  });
-  sel.disabled = false;
-  const pack = getAnnouncePack();
-  const fallback = pack?.defaultVoice || 'en-US-ChristopherNeural';
-  if (prev && ANNOUNCE_VOICE_IDS.has(prev)) {
-    sel.value = prev;
-    announceVoiceId = prev;
-  } else {
-    sel.value = fallback;
-    announceVoiceId = fallback;
-  }
-}
-
-function syncAnnouncePackSelect() {
-  const sel = document.getElementById('pref-announce-pack');
-  if (!sel) return;
-  const ok = announcePackId === 'off' || ANNOUNCE_PACKS[announcePackId];
-  if (!ok) announcePackId = 'bigMatchAnnouncer';
-  if (![...sel.options].some(o => o.value === announcePackId)) announcePackId = 'bigMatchAnnouncer';
-  sel.value = announcePackId;
-}
-
 function syncCommentaryPersonalitySelect() {
-  const sel = document.getElementById('pref-commentary-personality');
-  if (!sel) return;
-  if (commentaryPersonalityId !== 'off' && !COMMENTARY_PERSONALITIES[commentaryPersonalityId]) {
+  const known = new Set(commentaryPersonalityList.map(p => p.id));
+  if (commentaryPersonalityId !== 'off' && !known.has(commentaryPersonalityId)) {
+    if (commentaryPersonalityList.length) commentaryPersonalityId = 'off';
+  }
+  const ids = ['pref-commentary-personality', 'm-commentary-personality'];
+  ids.forEach((id) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const prev = commentaryPersonalityId;
+    sel.innerHTML = '';
+    const off = document.createElement('option');
+    off.value = 'off';
+    off.textContent = 'Off';
+    sel.appendChild(off);
+    commentaryPersonalityList.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    if (prev === 'off' || known.has(prev) || !commentaryPersonalityList.length) {
+      sel.value = prev;
+    } else {
+      sel.value = 'off';
+    }
+  });
+  if (commentaryPersonalityList.length && commentaryPersonalityId !== 'off' && !known.has(commentaryPersonalityId)) {
     commentaryPersonalityId = 'off';
   }
-  if (![...sel.options].some(o => o.value === commentaryPersonalityId)) {
-    commentaryPersonalityId = 'off';
-  }
-  sel.value = commentaryPersonalityId;
 }
 
 function syncAnnouncePrefToggle() {
@@ -13041,51 +12544,25 @@ function syncAnnouncePrefToggle() {
 
 function syncAnnouncePrefsUI() {
   syncAnnouncePrefToggle();
-  populateAnnounceVoiceSelect();
-  syncAnnouncePackSelect();
   syncCommentaryPersonalitySelect();
-}
-
-function persistAnnounceVoice() {
-  try { localStorage.setItem(ANNOUNCE_VOICE_KEY, announceVoiceId || ''); } catch { /* ignore */ }
-}
-
-function persistAnnouncePack() {
-  try { localStorage.setItem(ANNOUNCE_PACK_KEY, announcePackId); } catch { /* ignore */ }
 }
 
 function persistCommentaryPersonality() {
   try { localStorage.setItem(COMMENTARY_PERSONALITY_KEY, commentaryPersonalityId || 'off'); } catch { /* ignore */ }
 }
 
-function onAnnounceVoiceChange() {
-  const sel = document.getElementById('pref-announce-voice');
-  const id = sel?.value || '';
-  announceVoiceId = ANNOUNCE_VOICE_IDS.has(id) ? id : 'en-US-ChristopherNeural';
-  persistAnnounceVoice();
-  if (!announceMuted) previewAnnounceVoice();
-}
-
-function onAnnouncePackChange() {
-  const sel = document.getElementById('pref-announce-pack');
-  announcePackId = migrateAnnouncePackId(sel?.value || 'bigMatchAnnouncer');
-  persistAnnouncePack();
-  const pack = getAnnouncePack();
-  if (pack?.defaultVoice && ANNOUNCE_VOICE_IDS.has(pack.defaultVoice)) {
-    announceVoiceId = pack.defaultVoice;
-    persistAnnounceVoice();
-    const voiceSel = document.getElementById('pref-announce-voice');
-    if (voiceSel) voiceSel.value = announceVoiceId;
-  }
-  if (!announceMuted) previewAnnounceVoice();
-}
-
-function onCommentaryPersonalityChange() {
-  const sel = document.getElementById('pref-commentary-personality');
+function onCommentaryPersonalityChange(selectId) {
+  const sel = document.getElementById(selectId || 'pref-commentary-personality')
+    || document.getElementById('pref-commentary-personality')
+    || document.getElementById('m-commentary-personality');
   const raw = (sel?.value || 'off').trim().toLowerCase();
-  commentaryPersonalityId = (raw === 'off' || COMMENTARY_PERSONALITIES[raw]) ? raw : 'off';
+  const known = new Set(commentaryPersonalityList.map(p => p.id));
+  commentaryPersonalityId = (raw === 'off' || known.has(raw)) ? raw : 'off';
   persistCommentaryPersonality();
-  if (commentaryPersonalityId !== 'off' && !announceMuted) previewAiCommentary();
+  syncCommentaryPersonalitySelect();
+  if (commentaryPersonalityId !== 'off' && !announceMuted && selectId !== 'm-commentary-personality') {
+    previewAiCommentary();
+  }
 }
 
 function toggleAnnounceMute() {
@@ -13101,55 +12578,12 @@ function toggleAnnounceMute() {
   }
 }
 
-function announceSpeak(text, { force = false, cancel = true, enqueue = false, eventType = null } = {}) {
+function announceSpeak(text, { force = false, cancel = true, enqueue = false } = {}) {
   if ((!force && announceMuted) || text == null || text === '') return Promise.resolve();
   if (typeof window === 'undefined') return Promise.resolve();
 
   const speakNow = async () => {
-    const voice = resolveAnnounceVoiceId(eventType);
-    const pack = getAnnouncePack();
-    const rate = pack?.rate ?? 1.05;
-    const pitch = pack?.pitch ?? 1;
-    try {
-      const configured = await probeAnnounceTts();
-      if (!configured) {
-        // No Azure keys yet — keep matches audible with browser TTS.
-        await speakWithBrowserFallback(text, { cancel, voiceId: voice, rate, pitch });
-        return;
-      }
-      if (cancel) stopAllSpokenAudio();
-      const buf = await fetchAnnounceAudio(text, voice);
-      if ((!force && announceMuted)) return;
-      const blob = new Blob([buf], { type: 'audio/mpeg' });
-      if (announceObjectUrl) {
-        try { URL.revokeObjectURL(announceObjectUrl); } catch { /* ignore */ }
-      }
-      announceObjectUrl = URL.createObjectURL(blob);
-      const audio = new Audio(announceObjectUrl);
-      announceAudio = audio;
-      await new Promise((resolve) => {
-        let settled = false;
-        const done = () => {
-          if (settled) return;
-          settled = true;
-          resolve();
-        };
-        audio._announceDone = done;
-        audio.onended = done;
-        audio.onerror = done;
-        const playPromise = audio.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(() => done());
-        }
-      });
-    } catch (err) {
-      // Azure configured but request failed — still announce via browser.
-      if (!announceTtsWarned && (err?.status === 503 || err?.status === 502)) {
-        announceTtsWarned = true;
-        toast('Azure voice unavailable — using browser fallback');
-      }
-      await speakWithBrowserFallback(text, { cancel, voiceId: voice, rate, pitch });
-    }
+    await speakWithBrowserFallback(text, { cancel, rate: 1.05, pitch: 1 });
   };
 
   if (enqueue) {
@@ -13160,15 +12594,21 @@ function announceSpeak(text, { force = false, cancel = true, enqueue = false, ev
   return announceSpeakQueue;
 }
 
-function previewAnnounceVoice() {
-  const pack = getAnnouncePack();
+function previewAiCommentary() {
+  if (commentaryPersonalityId === 'off') {
+    toast('Pick an AI announcer first');
+    return;
+  }
   const wasMuted = announceMuted;
-  const sample = pack
-    ? announceRandomLine(pack.bigScore) || 'Welcome to Treble-Makers Arena!'
-    : 'One hundred and eighty. Scores only.';
-  const eventType = pack ? 'BIG_SCORE' : null;
-  announceSpeak(sample, { force: true, eventType });
-  if (wasMuted) toast('Preview only — announcements still muted');
+  requestAndPlayAiCommentary({
+    player: S.username || 'Player',
+    score: 140,
+    remaining: 361,
+    personality: commentaryPersonalityId,
+    force: true,
+  }).then(() => {
+    if (wasMuted) toast('Preview only — announcements still muted');
+  });
 }
 
 /** Resolve the on-screen / spoken game title (501 not "X01", etc.). */
@@ -13206,65 +12646,41 @@ function announceGameLabel(preview = null, { spoken = false } = {}) {
     const base = resolveX01AnnounceBase(game, src);
     if (base) return spoken ? speakX01Base(base) : String(base);
   }
-  if (game === 'Halve-It') return 'Halve It';
-  return game;
+  return String(game);
 }
 
-function matchIntroPlayersAndNames(preview = null) {
+function matchIntroNames(preview = null) {
   const src = preview || pendingMatchPreview;
-  const players = src?.players?.length ? src.players : null;
-  const fromPreview = players?.length >= 2
-    ? [players[0]?.username, players[1]?.username]
-    : null;
-  const names = fromPreview || seatPlayerNames();
   return {
-    src,
-    players: players || [],
-    // Spoken label for announcer lines (five-oh-one, Cricket, …).
     game: announceGameLabel(src, { spoken: true }),
-    // Numeric / display label for UI (501, Cricket, …).
     gameDisplay: announceGameLabel(src, { spoken: false }),
-    a: names[0] || 'Player 1',
-    b: names[1] || 'Player 2',
-    tournamentName: src?.tournamentName || S.tournamentName || '',
+    a: src?.hostName || S.localNames?.[0] || S.username || 'Player 1',
+    b: src?.guestName || S.localNames?.[1] || S.opponentName || 'Player 2',
   };
 }
 
 function buildMainMatchOpenLine({ game, tournamentName = '' } = {}) {
-  const eventBit = tournamentName
-    ? `this ${tournamentName} ${game} main event`
-    : `this ${game} main event`;
-  const lines = [
-    `Ladies and gentlemen… welcome to Treble-Makers Arena for ${eventBit}!`,
-    `From Treble-Makers Arena… it's ${eventBit}!`,
-    `Welcome to Treble-Makers Arena — ${eventBit} is about to begin!`,
-    `It's main-event time in Treble-Makers Arena for ${eventBit}!`,
-  ];
-  return lines[Math.floor(Math.random() * lines.length)];
+  const g = game || announceGameLabel(null, { spoken: true });
+  if (tournamentName) return `Welcome to ${tournamentName}. This is ${g}.`;
+  return `Welcome to Treble-Makers Arena. This is ${g}.`;
 }
 
 function buildMainMatchCloseLine({ game, a, b } = {}) {
-  const lines = [
-    `${game}! ${a} versus ${b}!`,
-    `Your main event — ${a} versus ${b}!`,
-    `${a} versus ${b}… for the ${game}!`,
-  ];
-  return lines[Math.floor(Math.random() * lines.length)];
+  return `${a} versus ${b}. Let's play ${game || announceGameLabel(null, { spoken: true })}!`;
 }
 
-/** Fallback one-shot intro when walk-on sequence is unavailable. */
-function announceMatchStart(preview = null) {
-  const { game, a, b, tournamentName } = matchIntroPlayersAndNames(preview);
+function announceMatchPreviewIntro(preview = null) {
+  const { game, a, b } = matchIntroNames(preview);
+  const tournamentName = preview?.tournamentName || '';
   const line = `${buildMainMatchOpenLine({ game, tournamentName })} Introducing… ${a}… versus… ${b}!`;
   return announceSpeak(line, { cancel: false, enqueue: true });
 }
 
 function parseAnnounceVisitTotal(display) {
-  if (display == null) return NaN;
-  if (typeof display === 'number') return display;
-  const raw = String(display).trim();
+  const raw = String(display || '').trim();
   if (!raw || /^bust$/i.test(raw)) return NaN;
-  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  const m = raw.match(/(-?\d+)/);
+  if (m) return parseInt(m[1], 10);
   return NaN;
 }
 
@@ -13277,6 +12693,17 @@ function x01LastVisitEntry(gs) {
   return null;
 }
 
+function detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon } = {}) {
+  if (matchWon || legWon || remaining === 0) return { type: 'WIN' };
+  if (bust) return { type: 'MOMENTUM_LOSS' };
+  const score = Number(visit);
+  if (Number.isFinite(score)) {
+    if (score >= 140) return { type: 'BIG_SCORE' };
+    if (score < 40) return { type: 'MOMENTUM_LOSS' };
+  }
+  return null;
+}
+
 function announceVisitScore(display, opts = {}) {
   if (display == null || display === '') return;
   const raw = String(display).trim();
@@ -13284,9 +12711,8 @@ function announceVisitScore(display, opts = {}) {
   const player = resolveCommentaryPlayerName(opts);
   const visit = opts.visit != null ? opts.visit : (/^bust$/i.test(raw) ? 0 : parseAnnounceVisitTotal(raw));
   const remaining = opts.remaining;
-  // Enqueue so player + bot visits are both spoken (bot is also paced server-side).
   if (/^bust$/i.test(raw)) {
-    announceSpeak('bust', { cancel: false, enqueue: true, eventType: 'MOMENTUM_LOSS' });
+    announceSpeak('bust', { cancel: false, enqueue: true });
   } else {
     announceSpeak(raw.replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim(), { cancel: false, enqueue: true });
   }
@@ -13308,41 +12734,25 @@ function announceVisitScore(display, opts = {}) {
 }
 
 function announceVisitCommentary({ visit, remaining, bust, legWon, matchWon, winner } = {}) {
-  const pack = getAnnouncePack();
   const event = detectAnnounceEvent({ visit, remaining, bust, legWon, matchWon });
   if (!event) return;
   noteDramaFromVisit({ visit, bust, legWon, matchWon });
   triggerArenaMoment(event, { visit, bust, legWon, matchWon, winner });
-  // AI personality already covers visit color commentary — skip canned pack lines.
-  if (commentaryPersonalityId && commentaryPersonalityId !== 'off') {
-    if (event.type === 'WIN') {
-      const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
-      lastAnnounceWinKey = key;
-    }
-    return;
-  }
   if (event.type === 'WIN') {
-    announceMatchWin(winner, { forceLine: true });
-    return;
+    const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
+    lastAnnounceWinKey = key;
+    // AI personality covers color; still speak a short win cue if AI is off.
+    if (!commentaryPersonalityId || commentaryPersonalityId === 'off') {
+      announceMatchWin(winner, { forceLine: true });
+    }
   }
-  if (!pack) return;
-  const line = getAnnounceCommentary(event, pack);
-  if (line) announceSpeak(line, { cancel: false, enqueue: true, eventType: event.type });
 }
 
 function announceMatchWin(winner, { forceLine = false } = {}) {
-  const pack = getAnnouncePack();
   const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${winner || ''}|${S.gameState?.currentLeg || ''}|${S.scores?.join?.('-') || ''}`;
   if (!forceLine && key === lastAnnounceWinKey) return;
   lastAnnounceWinKey = key;
-  if (pack) {
-    const line = getAnnounceCommentary({ type: 'WIN' }, pack);
-    if (line) {
-      announceSpeak(line, { cancel: false, enqueue: true, eventType: 'WIN' });
-      return;
-    }
-  }
-  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true, eventType: 'WIN' });
+  if (winner) announceSpeak(`${winner} wins`, { cancel: false, enqueue: true });
 }
 
 function maybeAnnounceX01Require() {
@@ -13357,18 +12767,8 @@ function maybeAnnounceX01Require() {
   const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${active}|${rem}`;
   if (key === lastX01RequireKey) return;
   lastX01RequireKey = key;
-
-  const pack = getAnnouncePack();
-  if (pack && rem <= 40) {
-    const line = getAnnounceCommentary({ type: 'CHECKOUT_CHANCE' }, pack);
-    if (line) {
-      triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
-      announceSpeak(line, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
-      return;
-    }
-  }
   triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
-  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true, eventType: 'CHECKOUT_CHANCE' });
+  announceSpeak(`require ${rem}`, { cancel: false, enqueue: true });
 }
 
 function announceFromScoreUpdate(msg) {
@@ -13411,17 +12811,12 @@ function announceFromScoreUpdate(msg) {
 }
 
 function initAnnounceVoiceList() {
-  populateAnnounceVoiceSelect();
-  probeAnnounceTts();
-  probeCommentaryApi();
+  loadCommentaryPersonalities();
 }
 
 syncAnnouncePrefsUI();
 initAnnounceVoiceList();
-persistAnnouncePack();
-persistAnnounceVoice();
 persistCommentaryPersonality();
-
 
 // ═══════════════════════════════════════════════════════════
 //  STANDS OPT-IN + WALK-OUT MUSIC + MATCH INTRO

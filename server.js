@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const Groq = require('groq-sdk');
-const { DeepgramClient } = require('@deepgram/sdk');
+const PERSONALITIES = require('./personalities');
 
 const app = express();
 const server = http.createServer(app);
@@ -4465,99 +4465,14 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
-// Curated Azure Neural voices for Arena announcer packs (allowlist).
-const AZURE_TTS_VOICES = new Set([
-  'en-US-ChristopherNeural',
-  'en-US-DavisNeural',
-  'en-US-GuyNeural',
-  'en-US-AndrewNeural',
-  'en-US-BrandonNeural',
-  'en-US-AriaNeural',
-]);
-const AZURE_SPEECH_KEY = (process.env.AZURE_SPEECH_KEY || process.env.AZURE_KEY || '').trim();
-const AZURE_SPEECH_REGION = (process.env.AZURE_SPEECH_REGION || process.env.AZURE_REGION || '').trim();
+// Curated Azure Neural voices removed — AI announcers use Groq + OpenAI TTS.
+// See personalities.js and POST /api/commentary.
 
-app.get('/api/tts-status', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.json({
-    ok: true,
-    configured: !!(AZURE_SPEECH_KEY && AZURE_SPEECH_REGION),
-    voices: [...AZURE_TTS_VOICES],
-  });
-});
-
-app.post('/api/tts', async (req, res) => {
-  try {
-    const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 400) : '';
-    const voice = typeof req.body?.voice === 'string' ? req.body.voice.trim() : '';
-    if (!text) return res.status(400).json({ ok: false, error: 'Missing text.' });
-    if (!AZURE_TTS_VOICES.has(voice)) {
-      return res.status(400).json({ ok: false, error: 'Voice not allowed.' });
-    }
-    if (!AZURE_SPEECH_KEY || !AZURE_SPEECH_REGION) {
-      return res.status(503).json({
-        ok: false,
-        error: 'Announcer voices are not configured (set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION).',
-      });
-    }
-
-    const escaped = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-    const ssml = `<speak version="1.0" xml:lang="en-US"><voice name="${voice}">${escaped}</voice></speak>`;
-    const url = `https://${AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
-    const upstream = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': AZURE_SPEECH_KEY,
-        'Content-Type': 'application/ssml+xml',
-        'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
-      },
-      body: ssml,
-    });
-    if (!upstream.ok) {
-      const detail = await upstream.text().catch(() => '');
-      log('warn', 'Azure TTS failed:', upstream.status, detail.slice(0, 200));
-      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
-    }
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.send(buf);
-  } catch (err) {
-    log('error', 'TTS proxy failed:', err.message);
-    res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
-  }
-});
-
-// ─── AI match commentary (Groq text → Deepgram Aura TTS) ───
+// ─── AI match commentary (Groq text → OpenAI TTS) ───
 const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
-const DEEPGRAM_API_KEY = (process.env.DEEPGRAM_API_KEY || '').trim();
-const COMMENTARY_PERSONALITIES = {
-  sarcastic: {
-    voice: 'aura-2-orion-en',
-    system:
-      'You are a sarcastic darts commentator. Reply with one dry, witty line only. ' +
-      'Maximum 12 words. No quotes, emojis, or stage directions.',
-  },
-  hyped: {
-    voice: 'aura-2-apollo-en',
-    system:
-      'You are a hyped darts arena announcer. Reply with one explosive hype line only. ' +
-      'Maximum 12 words. No quotes, emojis, or stage directions.',
-  },
-  coach: {
-    voice: 'aura-2-asteria-en',
-    system:
-      'You are a supportive darts coach. Reply with one short encouraging tip or praise. ' +
-      'Maximum 12 words. No quotes, emojis, or stage directions.',
-  },
-};
+const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
+const OPENAI_TTS_MODEL = (process.env.OPENAI_TTS_MODEL || 'tts-1').trim() || 'tts-1';
 let groqClient = null;
-let deepgramClient = null;
 
 function getGroqClient() {
   if (!GROQ_API_KEY) return null;
@@ -4565,10 +4480,17 @@ function getGroqClient() {
   return groqClient;
 }
 
-function getDeepgramClient() {
-  if (!DEEPGRAM_API_KEY) return null;
-  if (!deepgramClient) deepgramClient = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY });
-  return deepgramClient;
+function listPersonalities() {
+  return Object.values(PERSONALITIES).map((p) => ({
+    id: p.id,
+    name: p.name,
+    voice: p.voice,
+  }));
+}
+
+function getPersonality(id) {
+  const key = String(id || '').trim().toLowerCase();
+  return PERSONALITIES[key] || null;
 }
 
 /** Keep spoken lines short for TTS latency / cost. */
@@ -4582,17 +4504,46 @@ function clampCommentaryWords(text, maxWords = 12) {
   return words.length <= maxWords ? cleaned : words.slice(0, maxWords).join(' ');
 }
 
+async function synthesizeOpenAiSpeech(text, voice) {
+  const upstream = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OPENAI_TTS_MODEL,
+      input: text,
+      voice,
+      response_format: 'mp3',
+    }),
+  });
+  if (!upstream.ok) {
+    const detail = await upstream.text().catch(() => '');
+    const err = new Error(`OpenAI TTS failed (${upstream.status}): ${detail.slice(0, 200)}`);
+    err.status = upstream.status;
+    throw err;
+  }
+  return Buffer.from(await upstream.arrayBuffer());
+}
+
+app.get('/api/personalities', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    configured: !!(GROQ_API_KEY && OPENAI_API_KEY),
+    personalities: listPersonalities(),
+  });
+});
+
 app.get('/api/commentary-status', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
-    configured: !!(GROQ_API_KEY && DEEPGRAM_API_KEY),
+    configured: !!(GROQ_API_KEY && OPENAI_API_KEY),
     groq: !!GROQ_API_KEY,
-    deepgram: !!DEEPGRAM_API_KEY,
-    personalities: Object.keys(COMMENTARY_PERSONALITIES),
-    voices: Object.fromEntries(
-      Object.entries(COMMENTARY_PERSONALITIES).map(([k, v]) => [k, v.voice])
-    ),
+    openai: !!OPENAI_API_KEY,
+    personalities: listPersonalities(),
   });
 });
 
@@ -4612,20 +4563,19 @@ app.post('/api/commentary', async (req, res) => {
     if (!Number.isFinite(remainingNum)) {
       return res.status(400).json({ ok: false, error: 'Invalid remaining.' });
     }
-    const pack = COMMENTARY_PERSONALITIES[personalityRaw];
+    const pack = getPersonality(personalityRaw);
     if (!pack) {
       return res.status(400).json({
         ok: false,
-        error: `Invalid personality. Use one of: ${Object.keys(COMMENTARY_PERSONALITIES).join(', ')}.`,
+        error: `Invalid personality. Use one of: ${Object.keys(PERSONALITIES).join(', ')}.`,
       });
     }
 
     const groq = getGroqClient();
-    const deepgram = getDeepgramClient();
-    if (!groq || !deepgram) {
+    if (!groq || !OPENAI_API_KEY) {
       return res.status(503).json({
         ok: false,
-        error: 'Commentary is not configured (set GROQ_API_KEY and DEEPGRAM_API_KEY).',
+        error: 'Commentary is not configured (set GROQ_API_KEY and OPENAI_API_KEY).',
       });
     }
 
@@ -4636,7 +4586,7 @@ app.post('/api/commentary', async (req, res) => {
       temperature: 0.9,
       max_tokens: 40,
       messages: [
-        { role: 'system', content: pack.system },
+        { role: 'system', content: pack.systemPrompt },
         {
           role: 'user',
           content:
@@ -4653,22 +4603,18 @@ app.post('/api/commentary', async (req, res) => {
       return res.status(502).json({ ok: false, error: 'Commentary generation failed.' });
     }
 
-    const audio = await deepgram.speak.v1.audio.generate({
-      text: commentary,
-      model: pack.voice,
-      encoding: 'mp3',
-    });
-    const buf = Buffer.from(await audio.arrayBuffer());
+    const buf = await synthesizeOpenAiSpeech(commentary, pack.voice);
     if (!buf.length) {
-      log('warn', 'Deepgram TTS returned empty audio');
+      log('warn', 'OpenAI TTS returned empty audio');
       return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
     }
 
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('X-Commentary-Text', encodeURIComponent(commentary));
-    res.setHeader('X-Commentary-Personality', personalityRaw);
+    res.setHeader('X-Commentary-Personality', pack.id);
     res.setHeader('X-Commentary-Voice', pack.voice);
+    res.setHeader('X-Commentary-Name', encodeURIComponent(pack.name));
     res.send(buf);
   } catch (err) {
     log('error', 'Commentary endpoint failed:', err.message);
