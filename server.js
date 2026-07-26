@@ -2310,6 +2310,7 @@ async function handleMessage(wsId, msg) {
       send(wsId, {
         type: 'bot_room_started', roomId: room.id, game: msg.game,
         opponentName: room.config.guestName, gameState: room.gameState,
+        botSkill: botLevel,
         matchPreview: buildMatchPreview(msg.game, room.config.hostName, room.config.guestName, room),
       });
       break;
@@ -3001,6 +3002,7 @@ async function handleMessage(wsId, msg) {
         game: t.game,
         opponentName: opponent,
         gameState: room.gameState,
+        botSkill: room.config.botSkill,
         tournamentId: t.id,
         bracketMatchId: match.id,
         tournamentName: t.name,
