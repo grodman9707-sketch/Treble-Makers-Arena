@@ -5262,13 +5262,17 @@ function handleWS(msg) {
     case 'bot_room_started':
       S.roomId = msg.roomId; S.isHost = true; S.game = msg.game;
       resetMatchSeats();
-      const skillMatch = (msg.opponentName || '').match(/\((?:level\s*)?(\d{1,2}|easy|medium|hard|adaptive)\)/i);
-      S.botSkill = skillMatch ? normalizeBotLevel(skillMatch[1]) : normalizeBotLevel(selectedBotSkill);
+      {
+        const skillMatch = (msg.opponentName || '').match(/\((?:level\s*)?(\d{1,2}|easy|medium|hard|adaptive)\)/i);
+        S.botSkill = msg.botSkill != null
+          ? normalizeBotLevel(msg.botSkill)
+          : (skillMatch ? normalizeBotLevel(skillMatch[1]) : readSelectedBotSkill());
+      }
       attachLocalCamera();
       startMatchUI(msg.game, msg.opponentName, false, msg.gameState, msg.matchPreview);
       toast(msg.tournamentName
         ? `🏆 ${msg.tournamentName} — bracket match started!`
-        : 'Bot match started. Good luck!');
+        : `Bot match started — Level ${normalizeBotLevel(S.botSkill)}. Good luck!`);
       break;
     case 'joined_room':
       S.roomId = msg.roomId; S.isHost = false; S.game = msg.game;
@@ -6497,6 +6501,7 @@ function setMatchType(type) {
   document.getElementById('bot-skill-row').classList.toggle('hidden', type !== 'bot');
   document.getElementById('invite-friend-row')?.classList.toggle('hidden', type !== 'human');
   document.getElementById('local-match-hint')?.classList.toggle('hidden', type !== 'local');
+  if (type === 'bot') readSelectedBotSkill();
   if (type !== 'human') {
     pendingInviteFriend = null;
     updateInviteFriendSelectedLabel();
@@ -6504,7 +6509,14 @@ function setMatchType(type) {
 }
 
 function selectBotSkill(el) {
-  selectedBotSkill = el.value;
+  const raw = el?.value != null ? el.value : document.getElementById('bot-skill')?.value;
+  selectedBotSkill = String(raw || selectedBotSkill || '3');
+}
+
+function readSelectedBotSkill() {
+  const sel = document.getElementById('bot-skill');
+  if (sel?.value) selectedBotSkill = sel.value;
+  return normalizeBotLevel(selectedBotSkill);
 }
 
 let pendingJoin = null;
@@ -6881,13 +6893,14 @@ function attachLocalCamera() {
 }
 
 function createBotMatch() {
-  S.botSkill = normalizeBotLevel(selectedBotSkill);
+  // Always read the live <select> so the chosen level can't drift from UI state.
+  S.botSkill = readSelectedBotSkill();
   wsSend({
     type: 'create_bot_room',
     game: S.game,
-    botSkill: S.botSkill,
     ...(S.matchVariation || {}),
     ...arenaPresencePrefsPayload(),
+    botSkill: S.botSkill, // last so nothing can overwrite the chosen level
   });
 }
 
@@ -9165,7 +9178,8 @@ function renderCricketMatch() {
   cardsEl.innerHTML = [0, 1].map(p => {
     const isActive = p === active;
     const isBotCard = S.isBot && p === 1;
-    const lvl = isBotCard ? `<span class="ckt-lvl">Lv. 5</span>` : '';
+    const botLv = normalizeBotLevel(S.botSkill);
+    const lvl = isBotCard ? `<span class="ckt-lvl">Lv. ${botLv}</span>` : '';
     const avatarChar = (names[p] || '?').charAt(0).toUpperCase();
     const opened = gs.targets.filter(t => (gs.marks?.[p]?.[t] || 0) >= 3).length;
     const legs = gs.legs?.[p] || 0;
@@ -10406,7 +10420,8 @@ function buildX01Cards(names) {
   const cardsEl = gid('x01-cards');
   cardsEl.innerHTML = [0, 1].map(p => {
     const isBotCard = S.isBot && p === 1;
-    const lvl = isBotCard ? `<span class="x01-lvl">Lv. 5</span>` : '';
+    const botLv = normalizeBotLevel(S.botSkill);
+    const lvl = isBotCard ? `<span class="x01-lvl">Lv. ${botLv}</span>` : '';
     const avatarChar = (names[p] || '?').charAt(0).toUpperCase();
     return `
       <div class="x01-card${p === 1 ? ' alt' : ''}" data-p="${p}">
@@ -10449,7 +10464,7 @@ function buildX01Cards(names) {
 }
 
 function renderX01Cards(gs, names, active) {
-  const sig = `${names[0]}|${names[1]}|${!!S.isBot}`;
+  const sig = `${names[0]}|${names[1]}|${!!S.isBot}|${normalizeBotLevel(S.botSkill)}`;
   if (!x01CardRefs || x01CardSig !== sig || !x01CardRefs[0].card.isConnected) {
     buildX01Cards(names);
     x01CardSig = sig;
