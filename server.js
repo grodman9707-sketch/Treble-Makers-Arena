@@ -642,6 +642,8 @@ function defaultUserProfile() {
 }
 
 const WALKOUT_IDS = new Set(Array.from({ length: 27 }, (_, i) => `wo${String(i + 1).padStart(2, '0')}`));
+/** Fixed walk-out clip for bot opponents (Sports Intro). */
+const BOT_WALKOUT_ID = 'wo18';
 
 function sanitizeWalkoutId(raw) {
   const id = String(raw == null ? '' : raw).trim();
@@ -761,7 +763,7 @@ function playerPreviewProfile(username) {
       isBot: true,
       avatar: '🤖',
       avatarUrl: '',
-      walkoutId: '',
+      walkoutId: BOT_WALKOUT_ID,
       standsOptIn: false,
       threeDartAvg: botStats.threeDartAvg,
       highestCheckout: botStats.highestCheckout,
@@ -2299,7 +2301,7 @@ async function handleMessage(wsId, msg) {
         golfCourse: msg.golfCourse || 'B',
         capEnabled: msg.capEnabled !== false,
         hostWalkoutId: hostWalkout,
-        guestWalkoutId: '',
+        guestWalkoutId: BOT_WALKOUT_ID,
         hostStandsOptIn: hostStands,
         guestStandsOptIn: false,
       });
@@ -2985,7 +2987,7 @@ async function handleMessage(wsId, msg) {
         x01Base: t.x01Base || null,
         legs: t.legs || null,
         hostWalkoutId: sanitizeWalkoutId(hostProfile.walkoutId),
-        guestWalkoutId: '',
+        guestWalkoutId: BOT_WALKOUT_ID,
         hostStandsOptIn: sanitizeStandsOptIn(hostProfile.standsOptIn) === '1',
         guestStandsOptIn: false,
       });
