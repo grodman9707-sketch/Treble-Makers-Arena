@@ -131,18 +131,27 @@ async function build() {
     console.warn(`  ! missing walkout clips folder: ${WALKOUT_DIR}`);
   }
 
-  // 7) Copy arena SFX (boxing bell, etc.).
+  // 7) Copy arena SFX (boxing bell, match-intro segments, name/nickname calls).
   const SFX_DIR = 'sfx';
   let sfxCopied = 0;
   const sfxFrom = path.join(ROOT, SFX_DIR);
   if (fs.existsSync(sfxFrom)) {
     const sfxTo = path.join(PUBLIC_DIR, SFX_DIR);
-    fs.mkdirSync(sfxTo, { recursive: true });
-    for (const name of fs.readdirSync(sfxFrom)) {
-      if (!name.toLowerCase().endsWith('.mp3')) continue;
-      fs.copyFileSync(path.join(sfxFrom, name), path.join(sfxTo, name));
-      sfxCopied++;
-    }
+    const copySfxTree = (fromDir, toDir) => {
+      fs.mkdirSync(toDir, { recursive: true });
+      for (const name of fs.readdirSync(fromDir)) {
+        const from = path.join(fromDir, name);
+        const to = path.join(toDir, name);
+        if (fs.statSync(from).isDirectory()) {
+          copySfxTree(from, to);
+          continue;
+        }
+        if (!/\.(mp3|json)$/i.test(name)) continue;
+        fs.copyFileSync(from, to);
+        sfxCopied++;
+      }
+    };
+    copySfxTree(sfxFrom, sfxTo);
   } else {
     console.warn(`  ! missing sfx folder: ${SFX_DIR}`);
   }

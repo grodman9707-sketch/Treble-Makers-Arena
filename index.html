@@ -7232,9 +7232,27 @@ function hydrateMatchGameState(game, gameState) {
 }
 
 const WALKOUT_CLIP_MS = 15000;
-// Preview holds long enough for both players' ~15s walk-out clips (+ small buffer).
-const MATCH_PREVIEW_MS = WALKOUT_CLIP_MS * 2 + 2500;
-const MATCH_PREVIEW_BOT_MS = WALKOUT_CLIP_MS * 2 + 2500;
+// Bruce Buffer–style ElevenLabs ring intro, split so walk-outs / name calls can play between lines.
+const MATCH_INTRO_ASSET_VER = 'bruce1';
+const MATCH_INTRO_CALL_VER = 'bruce-calls1';
+const MATCH_INTRO_SEGMENTS = {
+  // Lead-ins stop before generic "Player One/Two" so real name/nickname clips can insert.
+  open:  { file: 'match_intro_open_lead.mp3',  ms: 15500 }, // …first to the stage
+  enter: { file: 'match_intro_enter_lead.mp3', ms: 1900  }, // Now entering
+  close: { file: 'match_intro_close.mp3',      ms: 4300  }, // Let the battle commence. Game on!
+  // Fallbacks that still say "Player One/Two" when no call clip matches.
+  openFull:  { file: 'match_intro_open.mp3',  ms: 17000 },
+  enterFull: { file: 'match_intro_enter.mp3', ms: 2800  },
+};
+const MATCH_INTRO_CALL_MS = 1200; // avg single name/nickname sting
+const MATCH_INTRO_SPEECH_MS =
+  MATCH_INTRO_SEGMENTS.open.ms +
+  MATCH_INTRO_SEGMENTS.enter.ms +
+  MATCH_INTRO_SEGMENTS.close.ms +
+  MATCH_INTRO_CALL_MS * 4; // up to name+nickname per player
+// Preview: intro speech + name calls + both ~15s walk-outs (+ small buffer).
+const MATCH_PREVIEW_MS = MATCH_INTRO_SPEECH_MS + WALKOUT_CLIP_MS * 2 + 2500;
+const MATCH_PREVIEW_BOT_MS = MATCH_INTRO_SPEECH_MS + WALKOUT_CLIP_MS * 2 + 2500;
 let matchPreviewTimer = null;
 let pendingMatchPreview = null;
 let starterFlow = {
@@ -7387,15 +7405,15 @@ function showMatchPreviewOverlay(preview, opts = {}) {
         ? 'Tap “You Start” to begin, or use bull / coin / pick'
         : 'Host is deciding who throws first…';
     } else if (starterName) {
-      footerEl.textContent = `${starterName} throws first — walk-out music…`;
+      footerEl.textContent = `${starterName} throws first — intro & walk-ons…`;
     } else {
-      footerEl.textContent = 'Walk-out music for both players…';
+      footerEl.textContent = 'Ring intro with walk-on music…';
     }
   }
 
   overlay.classList.remove('hidden');
 
-  // Walk-out music only during the preview card (no voice). Await both clips before kickoff.
+  // Ring announcer segments interleaved with each player's walk-out music.
   const introPromise = runMatchIntroAnnounce(preview);
 
   if (!awaitStarter) {
@@ -7431,12 +7449,13 @@ function beginMatchAfterPreview() {
   hideMatchPreviewOverlay();
   hideStarterOverlays();
   stopWalkoutAudio();
+  stopIntroAudio();
   updateMatchUI();
   signalMatchUiReady();
-  // Warm-up countdown before first dart (walk-out music already ran on preview).
+  // Warm-up countdown before first dart (intro + walk-ons already ran on preview).
   playCrowdBurst('cheer');
   pulseArenaLighting();
-  showArenaBumper('WALK-ON', {
+  showArenaBumper('GAME ON', {
     kicker: S.game || 'MATCH',
     sub: `${(S.user?.username || 'Player')} vs ${(S.opponentName || 'Opponent')}`,
     ms: 1600
@@ -13087,6 +13106,165 @@ function playBoxingBell() {
   });
 }
 
+/**
+ * Play one canned match-intro MP3 segment (open / enter / close / fallbacks).
+ * Name/nickname calls + walk-out music are inserted between segments by runMatchIntroAnnounce.
+ */
+function playMatchIntroSegment(key) {
+  const seg = MATCH_INTRO_SEGMENTS[key];
+  if (!seg?.file) return Promise.resolve();
+
+  stopIntroAudio();
+  const token = ++introPlayToken;
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      if (introAudio && introAudio._introToken === token) introAudio = null;
+      resolve();
+    };
+    try {
+      unlockCommentaryAudio();
+      const audio = new Audio(`/sfx/${seg.file}?v=${MATCH_INTRO_ASSET_VER}`);
+      audio._introDone = done;
+      audio._introToken = token;
+      introAudio = audio;
+      audio.volume = 1;
+      audio.preload = 'auto';
+      audio.onended = () => {
+        if (token !== introPlayToken) return;
+        done();
+      };
+      audio.onerror = done;
+      // Cap wait so a missing file cannot stall kickoff.
+      setTimeout(() => {
+        if (token !== introPlayToken) return;
+        done();
+      }, (seg.ms || 5000) + 1500);
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => done());
+    } catch {
+      done();
+    }
+  });
+}
+
+// ── Name / nickname call clips (split from Bruce ElevenLabs packs) ──────────
+const MATCH_INTRO_CALLS_DIR = 'sfx/match_intro_calls';
+let matchIntroCallCatalog = null; // { byId, byNameLabel, byNickLabel }
+let matchIntroCallCatalogPromise = null;
+
+function normalizeIntroCallLabel(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/^the\s+/, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
+async function ensureMatchIntroCallCatalog() {
+  if (matchIntroCallCatalog) return matchIntroCallCatalog;
+  if (matchIntroCallCatalogPromise) return matchIntroCallCatalogPromise;
+  matchIntroCallCatalogPromise = (async () => {
+    try {
+      const res = await fetch(`/${MATCH_INTRO_CALLS_DIR}/catalog.json?v=${MATCH_INTRO_CALL_VER}`);
+      if (!res.ok) throw new Error('catalog ' + res.status);
+      const raw = await res.json();
+      const byId = {};
+      const byNameLabel = {};
+      const byNickLabel = {};
+      for (const gender of Object.keys(raw.packs || {})) {
+        const pack = raw.packs[gender] || {};
+        for (const c of pack.names || []) {
+          byId[c.id] = c;
+          byNameLabel[normalizeIntroCallLabel(c.label)] = c;
+        }
+        for (const c of pack.nicknames || []) {
+          byId[c.id] = c;
+          byNickLabel[normalizeIntroCallLabel(c.label)] = c;
+          // also index full label with "the"
+          byNickLabel[normalizeIntroCallLabel(`the ${c.label}`)] = c;
+        }
+      }
+      matchIntroCallCatalog = { raw, byId, byNameLabel, byNickLabel };
+    } catch {
+      matchIntroCallCatalog = { raw: null, byId: {}, byNameLabel: {}, byNickLabel: {} };
+    }
+    return matchIntroCallCatalog;
+  })();
+  return matchIntroCallCatalogPromise;
+}
+
+/** Resolve name + nickname call entries for a player (profile fields or username match). */
+function resolveIntroCallsForPlayer(player, catalog) {
+  if (!player || !catalog) return { name: null, nickname: null };
+  const nameKey = normalizeIntroCallLabel(
+    player.introName || player.firstName || player.announceName || ''
+  );
+  const nickKey = normalizeIntroCallLabel(
+    player.introNickname || player.nickname || player.announceNickname || ''
+  );
+  let name = (nameKey && catalog.byNameLabel[nameKey]) || null;
+  let nickname = (nickKey && catalog.byNickLabel[nickKey])
+    || (player.introNicknameId && catalog.byId[player.introNicknameId])
+    || null;
+
+  // Fallback: first token of username matches a canned first-name clip (Jack, Emma, …).
+  if (!name) {
+    const userTok = normalizeIntroCallLabel(String(player.username || '').split(/[\s._-]+/)[0]);
+    if (userTok) name = catalog.byNameLabel[userTok] || null;
+  }
+  return { name, nickname };
+}
+
+function playMatchIntroCallFile(relFile, { ms = MATCH_INTRO_CALL_MS } = {}) {
+  if (!relFile) return Promise.resolve();
+  stopIntroAudio();
+  const token = ++introPlayToken;
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      if (introAudio && introAudio._introToken === token) introAudio = null;
+      resolve();
+    };
+    try {
+      unlockCommentaryAudio();
+      const audio = new Audio(`/${MATCH_INTRO_CALLS_DIR}/${relFile}?v=${MATCH_INTRO_CALL_VER}`);
+      audio._introDone = done;
+      audio._introToken = token;
+      introAudio = audio;
+      audio.volume = 1;
+      audio.preload = 'auto';
+      audio.onended = () => { if (token === introPlayToken) done(); };
+      audio.onerror = done;
+      setTimeout(() => { if (token === introPlayToken) done(); }, ms + 1200);
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => done());
+    } catch {
+      done();
+    }
+  });
+}
+
+/** Play nickname then name (Bruce cadence) for one competitor. Returns true if anything played. */
+async function playIntroCallsForPlayer(player) {
+  const catalog = await ensureMatchIntroCallCatalog();
+  const { name, nickname } = resolveIntroCallsForPlayer(player, catalog);
+  let played = false;
+  if (nickname?.file) {
+    await playMatchIntroCallFile(nickname.file);
+    played = true;
+  }
+  if (name?.file) {
+    await playMatchIntroCallFile(name.file);
+    played = true;
+  }
+  return played;
+}
+
 /** Fetch Thunderous Tom generated intro MP3 for the match card. */
 async function fetchGeneratedMatchIntro({ player1, player2, gameType } = {}) {
   const res = await fetch('/api/match-intro', {
@@ -13581,46 +13759,70 @@ function countHeardWalkouts(players) {
 }
 
 function estimateMatchIntroMs(players) {
-  // Enough time for both players' full walk-out clips.
+  // Ring-intro speech + both players' full walk-out clips.
   const slots = Math.max(2, countHeardWalkouts(players));
-  return slots * WALKOUT_CLIP_MS + 1500;
+  return MATCH_INTRO_SPEECH_MS + slots * WALKOUT_CLIP_MS + 1500;
 }
 
 function defaultWalkoutId() {
   return WALKOUT_CATALOG[0]?.id || '';
 }
 
+/**
+ * Match intro sequence with walk-on pauses + name/nickname inserts:
+ *   open lead ("…first to the stage") → P1 calls → P1 walk-out
+ *   → enter lead ("now entering") → P2 calls → P2 walk-out
+ *   → close ("Game on!")
+ * Falls back to full open/enter (with generic Player One/Two) when no call clip matches.
+ */
 function runMatchIntroAnnounce(preview) {
   if (matchIntroAnnounced) return matchIntroPromise;
   matchIntroAnnounced = true;
   const { players, a, b } = matchIntroPlayersAndNames(preview);
+  const list = (players.length ? players : [{ username: a }, { username: b }])
+    .filter((p) => p?.username);
 
   matchIntroPromise = (async () => {
-    // Music only — no bell, ring announcer, or spoken name calls.
-    await playWalkoutSequence(players.length ? players : [{ username: a }, { username: b }]);
+    await ensureMatchIntroCallCatalog();
+    const p1 = list[0] || { username: a };
+    const p2 = list[1] || list[0] || { username: b };
+    const catalog = matchIntroCallCatalog;
+    const p1Calls = resolveIntroCallsForPlayer(p1, catalog);
+    const p2Calls = resolveIntroCallsForPlayer(p2, catalog);
+    const p1Has = !!(p1Calls.name || p1Calls.nickname);
+    const p2Has = !!(p2Calls.name || p2Calls.nickname);
+
+    await playBoxingBell();
+    await playMatchIntroSegment(p1Has ? 'open' : 'openFull');
+    if (p1Has) await playIntroCallsForPlayer(p1);
+    await playWalkoutForPlayer(p1);
+    await playMatchIntroSegment(p2Has ? 'enter' : 'enterFull');
+    if (p2Has) await playIntroCallsForPlayer(p2);
+    await playWalkoutForPlayer(p2);
+    await playMatchIntroSegment('close');
   })().catch(() => {});
 
   return matchIntroPromise;
+}
+
+function playWalkoutForPlayer(p) {
+  if (!p?.username) return Promise.resolve();
+  const isBot = !!(p.isBot || /bot/i.test(p.username || ''));
+  const houseId = defaultWalkoutId();
+  const id = sanitizeClientWalkoutId(p.walkoutId)
+    || (isBot ? BOT_WALKOUT_ID : houseId);
+  if (id) return playWalkoutSting(id);
+  return new Promise((r) => setTimeout(r, WALKOUT_CLIP_MS));
 }
 
 function playWalkoutSequence(players) {
   const list = Array.isArray(players) ? players.filter(p => p?.username) : [];
   if (!list.length) return Promise.resolve();
 
-  // Match preview: play each competitor's walk-out clip back-to-back (both players).
-  const houseId = defaultWalkoutId();
+  // Fallback: play each competitor's walk-out clip back-to-back.
   let chain = Promise.resolve();
   list.forEach((p) => {
-    chain = chain.then(async () => {
-      const isBot = !!(p.isBot || /bot/i.test(p.username || ''));
-      const id = sanitizeClientWalkoutId(p.walkoutId)
-        || (isBot ? BOT_WALKOUT_ID : houseId);
-      if (id) {
-        await playWalkoutSting(id);
-      } else {
-        await new Promise(r => setTimeout(r, WALKOUT_CLIP_MS));
-      }
-    });
+    chain = chain.then(() => playWalkoutForPlayer(p));
   });
   return chain;
 }
