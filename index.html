@@ -1479,94 +1479,68 @@ body.app-active .arena-bg { animation: none !important; }
 .golf-hole-chip.current { border-color: var(--gold); color: var(--gold-light); background: var(--glow); }
 .golf-hole-chip.over { border-color: var(--crimson-bright); color: var(--crimson-bright); }
 
-/* Golf Checkouts (scorecard under cams; course image fills remaining space) */
-.match-layout.golf-checkouts-match {
-  --gc-cam-max: calc(var(--cam-box-max) * 0.7); /* ~30% smaller than shared cam box */
-  height: calc(100dvh - 54px);
-  max-height: calc(100dvh - 54px);
-  overflow: hidden;
-}
-.match-layout.golf-checkouts-match .match-main {
-  background: var(--black);
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.match-layout.golf-checkouts-match #scoreboard {
-  display: none !important;
-}
-/* Single thrower cam — 30% smaller, centered above the scorecard/course */
-.match-layout.golf-checkouts-match .webcam-grid {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: 1fr;
-  justify-items: center;
-  align-items: center;
-  gap: 0;
-  padding: 0.35rem 0.65rem;
-  border-bottom: 1px solid rgba(42,139,90,0.28);
-  background: rgba(0,0,0,0.35);
-}
-.match-layout.golf-checkouts-match .webcam-cell {
-  width: min(100%, var(--gc-cam-max));
-  max-width: var(--gc-cam-max);
-  max-height: var(--gc-cam-max);
-  aspect-ratio: var(--cam-frame-ratio);
-}
-.match-layout.golf-checkouts-match .webcam-cell.gc-cam-idle {
-  display: none !important;
-}
-.match-layout.golf-checkouts-match .fb-cam-spacer {
-  display: none !important;
-}
-.match-layout.golf-checkouts-match .gc-scorecard-slot {
-  flex: 0 0 auto;
-  overflow: auto;
-  max-height: min(28vh, 220px);
-  padding: 0.35rem 0.75rem 0.2rem;
-  background: var(--black);
-}
-.match-layout.golf-checkouts-match .gc-scorecard-slot .gc-scorecard-wrap {
-  margin: 0; border-radius: 14px;
-}
-.match-layout.golf-checkouts-match .visualizer.golf-checkouts-arena {
-  flex: 1 1 0; min-height: 200px;
+/* Golf Checkouts — same room shell as Golf Darts; checkout course fills the center */
+.match-layout.golf-checkouts-match .webcam-grid,
+.match-layout.golf-checkouts-match #scoreboard,
+.match-layout.golf-checkouts-match #gc-scorecard-slot { display: none !important; }
+.visualizer.golf-checkouts-arena {
   display: flex; flex-direction: column;
-  padding: 0;
-  background: var(--black); overflow: hidden;
+  padding: 0; overflow: hidden;
+  background: linear-gradient(180deg, #0b2218 0%, #123a2a 45%, #0a1c14 100%);
 }
-.match-layout.golf-checkouts-match .visualizer.golf-checkouts-arena #viz-label { display: none !important; }
-.match-layout.golf-checkouts-match .visualizer.golf-checkouts-arena #viz-content {
+.visualizer.golf-checkouts-arena #viz-label { display: none !important; }
+.visualizer.golf-checkouts-arena #viz-content {
   flex: 1 1 0; min-height: 0; height: auto !important;
   display: flex; flex-direction: column; overflow: hidden;
 }
-.gc-course-stage {
-  position: relative; flex: 1 1 0; min-height: 200px;
+/* Checkout course stage (replaces dartboard + Golf Darts fairway viz) */
+.gdg-gc-course-stage {
+  position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   container-type: size;
-  background: radial-gradient(ellipse at 50% 38%, #0e2a14 0%, #06120a 100%);
-  border-top: 1px solid rgba(42,139,90,0.3);
-  padding: 0.5rem; overflow: hidden;
-}
-.gc-course-img-wrap {
-  flex: 1 1 0; min-height: 0; width: 100%; height: 100%;
-  display: flex; align-items: center; justify-content: center;
   overflow: hidden;
+  pointer-events: none;
 }
-.gc-course-img {
+.gdg-gc-course-viz {
+  width: 100%; height: 100%; min-width: 0; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; padding: 0.5rem;
+}
+.gdg-gc-course-img {
   transform: rotate(90deg);
-  max-width: min(100cqh, 92%);
-  max-height: min(100cqw, 92%);
+  max-width: min(100cqh, 96%);
+  max-height: min(100cqw, 96%);
   width: auto; height: auto;
-  object-fit: contain; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.5));
+  object-fit: contain;
+  filter: drop-shadow(0 8px 18px rgba(0,0,0,0.45));
+}
+.gdg-gc-remaining-track {
+  display: flex; align-items: center; gap: 0.85rem;
+}
+.gdg-gc-remaining-box {
+  text-align: center; min-width: 5.5rem;
+  background: rgba(0,0,0,0.45);
+  padding: 0.45rem 0.85rem; border-radius: 8px;
+  border: 1px solid rgba(42,139,90,0.5);
+}
+.gdg-gc-remaining-box .lbl {
+  font-family: 'Orbitron', monospace; font-size: 0.52rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: rgba(255,255,255,0.55);
+}
+.gdg-gc-remaining-box .val {
+  font-family: 'Orbitron', monospace; font-size: 1.85rem; font-weight: 700;
+  color: #3dd68c; line-height: 1.1; margin-top: 2px;
+}
+.gdg-gc-remaining-box .val.waiting { font-size: 0.95rem; color: #f4d03f; }
+.gdg-gc-remaining-box .sub {
+  font-size: 0.52rem; color: rgba(255,255,255,0.5); margin-top: 2px;
 }
 .gc-course-hole-badge {
-  position: absolute; top: 0.5rem; left: 0.5rem; z-index: 2;
+  position: absolute; top: 0.55rem; left: 0.55rem; z-index: 2;
   font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: 0.04em;
-  color: var(--gold-light); background: rgba(0,0,0,0.7);
+  color: var(--gold-light); background: rgba(0,0,0,0.72);
   padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(201,168,76,0.35);
+  pointer-events: none;
 }
 .gc-course-remaining {
   position: absolute; right: 0.55rem; top: 12%; z-index: 3;
@@ -10046,7 +10020,7 @@ function updateMatchUI() {
   gid('cam-score-opp').textContent = S.scores[opp];
   gid('cam-score-you-wrap').className = 'cam-score-box you' + (S.turn === me ? ' active' : '');
   gid('cam-score-opp-wrap').className = 'cam-score-box opp' + (S.turn === opp ? ' active' : '');
-  gid('scoreboard').classList.toggle('halveit-hidden', isHalveIt || isGolfDarts || isFootballDarts);
+  gid('scoreboard').classList.toggle('halveit-hidden', isHalveIt || isGolfDarts || isGolfCheckouts || isFootballDarts);
   gid('visualizer').classList.toggle('halveit-arena', isHalveIt);
   gid('visualizer').classList.toggle('golf-darts-arena', isGolfDarts);
   gid('visualizer').classList.toggle('golf-checkouts-arena', isGolfCheckouts);
@@ -10056,7 +10030,7 @@ function updateMatchUI() {
   ml?.classList.toggle('football-darts-match', isFootballDarts);
   ml?.classList.toggle('halveit-match', isHalveIt);
   const hideTurnHistory = isHalveIt || isGolfDarts || isGolfCheckouts || isFootballDarts;
-  const showInputChat = isHalveIt || isGolfDarts || isFootballDarts;
+  const showInputChat = isHalveIt || isGolfDarts || isGolfCheckouts || isFootballDarts;
   gid('turn-history-panel')?.classList.toggle('hidden', hideTurnHistory);
   gid('session-stats-panel')?.classList.toggle('hidden', isGolfCheckouts || isFootballDarts);
   gid('halveit-chat-area')?.classList.toggle('hidden', !showInputChat);
@@ -10076,19 +10050,18 @@ function updateMatchUI() {
     fbFieldLayer.classList.add('hidden');
     fbFieldLayer.setAttribute('aria-hidden', 'true');
   }
+  // Scorecard lives inside the GDG-style room now — keep the old slot empty.
   const gcScorecardSlot = document.getElementById('gc-scorecard-slot');
   if (gcScorecardSlot) {
-    gcScorecardSlot.classList.toggle('hidden', !isGolfCheckouts);
-    if (!isGolfCheckouts) gcScorecardSlot.innerHTML = '';
+    gcScorecardSlot.classList.add('hidden');
+    gcScorecardSlot.innerHTML = '';
   }
-  if (!isGolfDarts && golfCamsMounted) restoreGolfCams();
+  if (!isGolfDarts && !isGolfCheckouts && golfCamsMounted) restoreGolfCams();
   if (!isHalveIt && halveItCamsMounted) restoreHalveItCams();
 
-  // Webcam turn highlight (+ Golf Checkouts single-thrower switch)
-  if (isGolfCheckouts) {
-    syncGcThrowerCam();
-  } else {
-    clearGcThrowerCam();
+  // Webcam turn highlight (Golf Darts / Checkouts mount into the side cam slot)
+  clearGcThrowerCam();
+  if (!isGolfDarts && !isGolfCheckouts) {
     const camYou = gid('webcam-you');
     const camOpp = gid('webcam-opp');
     if (camYou) camYou.className = 'webcam-cell' + (isMyTurn ? ' your-turn' : '');
@@ -11447,25 +11420,40 @@ function renderGolfCheckoutsScorecard(gs) {
     </div>`;
 }
 
+function gcCourseImageIndex(holeNum) {
+  // Hole # = Course # for 1–9; holes 10–18 reuse courses 1–9.
+  const n = Math.max(1, Number(holeNum) || 1);
+  return ((n - 1) % 9) + 1;
+}
+
 function renderGolfCheckoutsCourse(gs) {
+  // Legacy helper — room layout now embeds the course stage directly.
+  return renderGolfCheckoutsRoom(gs);
+}
+
+function renderGolfCheckoutsRoom(gs) {
   const totalHoles = gs.holes?.length || 18;
-  const pIdx = myPlayerIdx();
+  const activePlayer = S.turn;
+  const me = myPlayerIdx();
+  const opp = 1 - me;
+  const pIdx = me;
   const prog = gs.playerProgress?.[pIdx] || {};
   const holeIdx = Math.min(gcEffectiveHole(gs, pIdx), totalHoles - 1);
   const holeDef = gs.holes?.[holeIdx] || { target: 0, par: 0 };
-  const imgIdx = (holeIdx % 9) + 1;
   const holeNum = holeIdx + 1;
+  const courseNum = gcCourseImageIndex(holeNum);
   const capOn = gs.capEnabled !== false;
   const waiting = capOn && prog.holeDone;
   const capLeft = capOn && holeDef.cap && !waiting && !prog.finished
     ? Math.max(0, holeDef.cap - (prog.currentHoleDarts || 0)) : null;
-  let remainingMain, remainingSub, remainingCls = 'gc-course-remaining-value';
+
+  let remainingMain, remainingSub, remainingCls = '';
   if (prog.finished) {
     remainingMain = 'Done';
     remainingSub = 'All holes complete';
   } else if (waiting) {
     remainingMain = 'Wait';
-    remainingCls += ' waiting';
+    remainingCls = 'waiting';
     remainingSub = 'Opponent finishing hole';
   } else {
     remainingMain = prog.remaining ?? holeDef.target;
@@ -11474,22 +11462,80 @@ function renderGolfCheckoutsCourse(gs) {
       : 'Left to checkout';
   }
 
-  return `
-    <div class="gc-course-stage">
-      <div class="gc-course-hole-badge">Hole ${holeNum} · Par ${holeDef.par} · Target ${holeDef.target}${capOn && holeDef.cap ? ` · Cap ${holeDef.cap}` : ''}</div>
-      <div class="gc-course-img-wrap">
-        <img class="gc-course-img" src="golf_imgs/hole-${imgIdx}.webp" alt="Golf Checkouts hole ${holeNum}" loading="lazy" decoding="async" />
-      </div>
-      <div class="gc-course-remaining">
-        <div class="gc-course-remaining-label">Left to Checkout</div>
-        <div class="${remainingCls}">${remainingMain}</div>
-        <div class="gc-course-remaining-sub">${remainingSub}</div>
-      </div>
-    </div>`;
-}
+  const oppLabel = document.getElementById('sb-name-opp')?.textContent || 'Opponent';
+  const multiplayer = S.isBot || !/^(OPP|WAITING|OPPONENT)/i.test(oppLabel.trim());
+  const youName = (S.user.username || 'You').slice(0, 12);
+  const oppName = oppLabel.slice(0, 12);
+  const names = seatPlayerNames().map(n => String(n).slice(0, 12));
+  const throwerName = (names[activePlayer] || (activePlayer === me ? youName : oppName)).slice(0, 14);
+  const phase = prog.finished
+    ? 'Round Complete'
+    : waiting
+      ? 'Waiting'
+      : (S.turn === me ? 'Your Approach' : `${throwerName}'s Turn`);
 
-function renderGolfCheckoutsRoom(gs) {
-  return renderGolfCheckoutsCourse(gs);
+  const courseLabel = gs.golfCourse === 'A' ? 'Course A' : 'Course B';
+  const scorecardHtml = renderGolfCheckoutsScorecard(gs);
+
+  return `
+    <div class="gdg-room">
+      <div class="gdg-header">
+        <div class="gdg-logo"><span class="gdg-logo-icon">⛳</span> GOLF CHECKOUTS</div>
+        <div class="gdg-player-badges">
+          <span class="gdg-player-badge${S.turn === me ? ' active' : ''}">${youName}:${S.scores[me]}</span>
+          ${multiplayer ? `<span class="gdg-player-badge opp${S.turn === opp ? ' active' : ''}">${oppName}:${S.scores[opp]}</span>` : ''}
+        </div>
+      </div>
+      <div class="gdg-play-body">
+        <div class="gdg-side-panel">
+          <div class="gdg-player-cam-panel">
+            <div class="gdg-cam-half">
+              <div class="gdg-player-cam-label" id="gdg-cam-label">${throwerName} · Throw</div>
+              <div class="gdg-cam-player-wrap">
+                <div class="gdg-cam-slot" id="gdg-cam-player"></div>
+              </div>
+            </div>
+            <div class="gdg-board-half">
+              <div class="gdg-target-label" id="gdg-target-label">
+                Target <span>${holeDef.target ?? '–'}</span>
+                · Remaining <span>${prog.finished || waiting ? remainingMain : (prog.remaining ?? holeDef.target)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="gdg-play-right">
+          <div class="gdg-main">
+            <div class="gdg-center-field">
+              <div class="gdg-gc-course-stage">
+                <div class="gc-course-hole-badge">${courseLabel} · Hole ${holeNum} · Course ${courseNum} · Par ${holeDef.par}${capOn && holeDef.cap ? ` · Cap ${holeDef.cap}` : ''}</div>
+                <div class="gdg-gc-course-viz">
+                  <img class="gdg-gc-course-img" src="golf_imgs/hole-${courseNum}.webp" alt="Golf Checkouts course ${courseNum} (hole ${holeNum})" loading="lazy" decoding="async" />
+                </div>
+                <div class="gc-course-remaining">
+                  <div class="gc-course-remaining-label">Left to Checkout</div>
+                  <div class="gc-course-remaining-value ${remainingCls}">${remainingMain}</div>
+                  <div class="gc-course-remaining-sub">${remainingSub}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="gdg-hole-bar">
+            <div class="gdg-hole-status">
+              <div class="gdg-hole-phase">${phase}</div>
+              <div class="gdg-hole-num">Hole ${holeNum} · Course ${courseNum}</div>
+            </div>
+            <div class="gdg-gc-remaining-track">
+              <div class="gdg-gc-remaining-box">
+                <div class="lbl">Remaining</div>
+                <div class="val ${remainingCls}">${remainingMain}</div>
+                <div class="sub">${remainingSub}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      ${scorecardHtml}
+    </div>`;
 }
 
 function renderFootballPitchHtml(gs) {
@@ -11568,11 +11614,13 @@ function renderVisualizer() {
   }
   stopGolfDartboardFit();
   if (g === 'Golf Checkouts') {
+    restoreGolfCams();
     lbl.textContent = '';
     lbl.style.display = 'none';
-    const gcSlot = document.getElementById('gc-scorecard-slot');
-    if (gcSlot) gcSlot.innerHTML = renderGolfCheckoutsScorecard(gs);
-    el.innerHTML = renderGolfCheckoutsCourse(gs);
+    el.innerHTML = renderGolfCheckoutsRoom(gs);
+    const oppLabel = document.getElementById('sb-name-opp')?.textContent || '';
+    const multiplayer = S.isBot || !/^(OPP|WAITING|OPPONENT)/i.test(oppLabel.trim());
+    mountGolfCams(multiplayer);
     return;
   } else if (g === 'Football Darts') {
     lbl.textContent = '';
