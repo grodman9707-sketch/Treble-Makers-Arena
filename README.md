@@ -115,7 +115,7 @@ Copy `.env.example` → `.env` and adjust. The server loads `.env` automatically
 | `LAZY_LEAGUES_PASSWORD` | — | Lazy Leagues Firebase sign-in (optional) |
 | `LAZY_LEAGUES_TOKEN` | — | Pre-made Firebase ID token (overrides above) |
 
-If Lazy Leagues credentials are missing, `/api/lazy-standings` returns 502 gracefully; the rest of the app works normally. A local `lazy-credentials.json` (gitignored) is also supported as a dev fallback.
+If Lazy Leagues credentials are missing, the server auto-provisions a Firebase proxy account and saves it to `/app/data/lazy-credentials.json` (or a local gitignored `lazy-credentials.json`). Env vars always win when set. After a season reset (empty points/history), the ticker falls back to ranking by rolling 3DA until new games are recorded.
 
 ## Backups
 

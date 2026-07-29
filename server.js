@@ -4288,16 +4288,22 @@ setInterval(() => {
 // Lazy Leagues is a Firebase (Firestore) web app. Division tables are computed
 // client-side from the `users` collection. Current score fields:
 //   league (0-11), firstName, lastName, totalPoints, averagePPG, gamesPlayed,
-//   rollingAverage, ppgHistory[] (legacy fallback).
-// Division names below mirror the site's leagueNames array. Firestore rules
-// require an authenticated session, so the proxy signs in via the Firebase
-// Auth REST API (email/password) to obtain an ID token. Credentials come from
-// env vars LAZY_LEAGUES_EMAIL / LAZY_LEAGUES_PASSWORD, else from a local
-// (gitignored) lazy-credentials.json; LAZY_LEAGUES_TOKEN overrides sign-in.
+//   rollingAverage, ppgHistory[] (number[] or {points}[]).
+// Division names below mirror the site's leaderboard leagueNames array.
+// Firestore rules require any authenticated session — the proxy signs in via
+// the Firebase Auth REST API. Credentials resolve in order:
+//   1) LAZY_LEAGUES_TOKEN (ready-made ID token)
+//   2) LAZY_LEAGUES_EMAIL + LAZY_LEAGUES_PASSWORD
+//   3) lazy-credentials.json next to server.js (gitignored)
+//   4) /app/data/lazy-credentials.json (persisted auto-provisioned proxy)
+// If none exist, the proxy auto-registers a Lazy Leagues Firebase account and
+// saves it under /app/data so the ticker works without manual secrets.
 const LAZY_PROJECT = 'lazy-leagues';
 const LAZY_API_KEY = 'AIzaSyCPn78FhyBpelCjwlD7yf3g8Y8D5mwuxfM';
 const LAZY_FS_BASE = `https://firestore.googleapis.com/v1/projects/${LAZY_PROJECT}/databases/(default)/documents`;
 const LAZY_CACHE_MS = 5 * 60 * 1000;
+const LAZY_CREDENTIALS_FILE = path.join(path.dirname(DATA_FILE), 'lazy-credentials.json');
+const LAZY_CREDENTIALS_FALLBACK = path.join(__dirname, 'lazy-credentials.json');
 const LAZY_DIVISIONS = [
   'Premier League', 'Champs League', 'The Bridge',
   'Gold One', 'Gold Two', 'Gold Three',
@@ -4307,36 +4313,122 @@ const LAZY_DIVISIONS = [
 let lazyStandingsCache = { data: null, fetchedAt: 0 };
 let lazyInFlight = null;
 let lazyAuth = { idToken: '', refreshToken: '', expiresAt: 0 };
+let lazyCredentialProvision = null;
+
+function readLazyCredentialsFile(filePath) {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return {
+      email: String(cfg.email || '').trim(),
+      password: String(cfg.password || ''),
+    };
+  } catch {
+    return { email: '', password: '' };
+  }
+}
+
+function saveLazyCredentialsFile(filePath, email, password) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify({
+    email,
+    password,
+    provisionedAt: new Date().toISOString(),
+    note: 'Auto-provisioned Lazy Leagues Firebase proxy account for /api/lazy-standings',
+  }, null, 2));
+}
 
 function loadLazyCredentials() {
-  let email = process.env.LAZY_LEAGUES_EMAIL || '';
+  let email = (process.env.LAZY_LEAGUES_EMAIL || '').trim();
   let password = process.env.LAZY_LEAGUES_PASSWORD || '';
   if (!email || !password) {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'lazy-credentials.json'), 'utf8'));
-      email = email || cfg.email || '';
-      password = password || cfg.password || '';
-    } catch { /* no local credentials file — fall through */ }
+    const fromData = readLazyCredentialsFile(LAZY_CREDENTIALS_FILE);
+    const fromRepo = readLazyCredentialsFile(LAZY_CREDENTIALS_FALLBACK);
+    email = email || fromData.email || fromRepo.email;
+    password = password || fromData.password || fromRepo.password;
   }
   return { email, password };
 }
 
-async function lazySignIn() {
-  const { email, password } = loadLazyCredentials();
-  if (!email || !password) throw new Error('no Lazy-Leagues credentials configured');
-  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${LAZY_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, returnSecureToken: true }),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(`Lazy sign-in failed: ${json.error?.message || res.status}`);
+function applyLazyAuthTokens(json) {
   lazyAuth = {
     idToken: json.idToken,
     refreshToken: json.refreshToken,
     expiresAt: Date.now() + (Number(json.expiresIn || 3600) - 60) * 1000,
   };
   return lazyAuth.idToken;
+}
+
+async function lazySignInWithPassword(email, password) {
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${LAZY_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    const err = new Error(`Lazy sign-in failed: ${json.error?.message || res.status}`);
+    err.code = json.error?.message || String(res.status);
+    throw err;
+  }
+  return applyLazyAuthTokens(json);
+}
+
+async function lazySignUpProxyAccount() {
+  const stamp = Date.now().toString(36);
+  const email = `treble-makers-ticker+${stamp}@gmail.com`;
+  const password = crypto.randomBytes(18).toString('base64url');
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${LAZY_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(`Lazy proxy sign-up failed: ${json.error?.message || res.status}`);
+  try {
+    saveLazyCredentialsFile(LAZY_CREDENTIALS_FILE, email, password);
+    log('info', `Provisioned Lazy-Leagues ticker credentials at ${LAZY_CREDENTIALS_FILE}`);
+  } catch (err) {
+    log('warn', `Lazy-Leagues credentials provisioned in-memory only (could not write ${LAZY_CREDENTIALS_FILE}): ${err.message}`);
+  }
+  return applyLazyAuthTokens(json);
+}
+
+async function ensureLazyCredentials() {
+  const existing = loadLazyCredentials();
+  if (existing.email && existing.password) return existing;
+  if (!lazyCredentialProvision) {
+    lazyCredentialProvision = lazySignUpProxyAccount()
+      .then(() => loadLazyCredentials())
+      .catch(err => {
+        lazyCredentialProvision = null;
+        throw err;
+      });
+  }
+  const provisioned = await lazyCredentialProvision;
+  if (provisioned.email && provisioned.password) return provisioned;
+  // Sign-up wrote tokens but file read failed — still authenticated.
+  return existing;
+}
+
+async function lazySignIn() {
+  const { email, password } = await ensureLazyCredentials();
+  if (lazyAuth.idToken && Date.now() < lazyAuth.expiresAt) return lazyAuth.idToken;
+  if (email && password) {
+    try {
+      return await lazySignInWithPassword(email, password);
+    } catch (err) {
+      // Stale auto-provisioned file / rotated password — mint a fresh proxy account once.
+      if (!process.env.LAZY_LEAGUES_EMAIL && !process.env.LAZY_LEAGUES_PASSWORD) {
+        log('warn', `Lazy-Leagues sign-in failed (${err.code || err.message}); provisioning a new proxy account`);
+        lazyCredentialProvision = null;
+        await lazySignUpProxyAccount();
+        if (lazyAuth.idToken) return lazyAuth.idToken;
+      }
+      throw err;
+    }
+  }
+  if (lazyAuth.idToken) return lazyAuth.idToken;
+  throw new Error('no Lazy-Leagues credentials configured');
 }
 
 async function lazyRefreshToken() {
@@ -4370,6 +4462,16 @@ function lazyFieldNumber(f) {
   return 0;
 }
 
+function lazyHistEntryPoints(v) {
+  if (!v) return 0;
+  // Legacy: bare numeric array entries.
+  if (v.integerValue !== undefined || v.doubleValue !== undefined) return lazyFieldNumber(v);
+  // Current: { matchId, points } maps inside ppgHistory.
+  const fields = v.mapValue?.fields;
+  if (fields) return lazyFieldNumber(fields.points);
+  return 0;
+}
+
 function lazyParseUser(fields) {
   const f = fields || {};
   const first = f.firstName?.stringValue || '';
@@ -4378,9 +4480,9 @@ function lazyParseUser(fields) {
   const league = f.league?.integerValue !== undefined ? Number(f.league.integerValue)
     : (f.league?.doubleValue !== undefined ? Number(f.league.doubleValue) : null);
 
-  // Prefer current aggregate fields; fall back to legacy ppgHistory[].
+  // Prefer current aggregate fields; fall back to ppgHistory[] (numbers or {points}).
   const hist = f.ppgHistory?.arrayValue?.values || [];
-  const histPoints = hist.reduce((a, v) => a + lazyFieldNumber(v), 0);
+  const histPoints = hist.reduce((a, v) => a + lazyHistEntryPoints(v), 0);
   const histMatches = hist.length;
   const histAvg = histMatches ? +(histPoints / histMatches).toFixed(1) : 0;
 
@@ -4392,14 +4494,18 @@ function lazyParseUser(fields) {
     averagePPG = +(totalPoints / gamesPlayed).toFixed(1);
   }
   const rollingAverage = lazyFieldNumber(f.rollingAverage);
+  // Season-reset windows wipe points/history but leave rolling 3DA — use that so
+  // the ticker still has leaders to show until the new season records games.
+  const avg = averagePPG || rollingAverage || 0;
 
   return {
     name,
     league,
     matches: gamesPlayed,
     points: totalPoints,
-    avg: averagePPG || rollingAverage || 0,
+    avg,
     rollingAverage,
+    seasonAvg: averagePPG,
     isMember: f.isMember?.booleanValue === true,
   };
 }
@@ -4441,18 +4547,28 @@ async function buildLazyStandings() {
   LAZY_DIVISIONS.forEach((division, leagueIndex) => {
     // Pending League (11) is a queue, not a ranked table — skip on the ticker.
     if (leagueIndex === 11) return;
-    const top2 = users
-      .filter(u => u.league === leagueIndex && u.matches > 0 && (u.avg > 0 || u.points > 0))
-      .sort((a, b) => (b.avg - a.avg) || (b.points - a.points) || a.name.localeCompare(b.name))
+    const pool = users.filter(u => u.league === leagueIndex);
+    const seasonActive = pool.some(u => u.matches > 0 && (u.seasonAvg > 0 || u.points > 0));
+    const top2 = pool
+      .filter(u => seasonActive
+        ? (u.matches > 0 && (u.seasonAvg > 0 || u.points > 0))
+        : (u.rollingAverage > 0 || u.avg > 0))
+      .sort((a, b) => {
+        if (seasonActive) {
+          return (b.seasonAvg - a.seasonAvg) || (b.points - a.points) || a.name.localeCompare(b.name);
+        }
+        return (b.rollingAverage - a.rollingAverage) || (b.avg - a.avg) || a.name.localeCompare(b.name);
+      })
       .slice(0, 2)
       .map((u, i) => ({
         pos: i + 1,
         name: u.name,
         points: u.points,
-        avg: u.avg,
+        avg: seasonActive ? (u.seasonAvg || u.avg) : (u.rollingAverage || u.avg),
         matches: u.matches,
+        metric: seasonActive ? 'avg' : '3da',
       }));
-    if (top2.length) divisions.push({ division, leagueIndex, top2 });
+    if (top2.length) divisions.push({ division, leagueIndex, top2, seasonActive });
   });
 
   const payload = { ok: true, divisions, updatedAt: Date.now() };

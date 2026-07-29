@@ -14609,9 +14609,15 @@ function buildLazyTickerHtml(divisions) {
     const players = d.top2.map((p, i) => {
       const avg = (typeof p.avg === 'number' && p.avg > 0) ? p.avg : null;
       const pts = (typeof p.points === 'number' && p.points > 0) ? p.points : null;
-      const score = avg != null
-        ? `<span class="pts">${avg} avg${pts != null ? ` · ${pts}pts` : ''}</span>`
-        : `<span class="pts">${pts != null ? `${pts}pts` : '—'}</span>`;
+      const use3da = p.metric === '3da' || d.seasonActive === false;
+      let score;
+      if (use3da && avg != null) {
+        score = `<span class="pts">${avg} 3DA</span>`;
+      } else if (avg != null) {
+        score = `<span class="pts">${avg} avg${pts != null ? ` · ${pts}pts` : ''}</span>`;
+      } else {
+        score = `<span class="pts">${pts != null ? `${pts}pts` : '—'}</span>`;
+      }
       return `<span class="lazy-ticker-player">${LAZY_TICKER_MEDALS[i]} ${escapeHtml(p.name)} ${score}</span>`;
     }).join('<span class="lazy-ticker-sep">·</span>');
     return `<span class="lazy-ticker-item"><span class="lazy-ticker-league">${escapeHtml(d.division)}</span><span class="lazy-ticker-sep">—</span>${players}</span><span class="lazy-ticker-dot"></span>`;
@@ -14639,7 +14645,7 @@ async function loadLazyTicker() {
     }
     throw new Error(data.error || 'lazy standings unavailable');
   } catch {
-    const msg = '<span class="lazy-ticker-loading">Lazy-Leagues standings unavailable — check credentials / server connection.</span>';
+    const msg = '<span class="lazy-ticker-loading">Lazy-Leagues standings temporarily offline — check back later.</span>';
     ['lazy-ticker-track-landing', 'lazy-ticker-track-app'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = msg;
