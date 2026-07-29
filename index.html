@@ -1480,23 +1480,59 @@ body.app-active .arena-bg { animation: none !important; }
 .golf-hole-chip.over { border-color: var(--crimson-bright); color: var(--crimson-bright); }
 
 /* Golf Checkouts (scorecard under cams; course image fills remaining space) */
+.match-layout.golf-checkouts-match {
+  --gc-cam-max: calc(var(--cam-box-max) * 0.7); /* ~30% smaller than shared cam box */
+  height: calc(100dvh - 54px);
+  max-height: calc(100dvh - 54px);
+  overflow: hidden;
+}
 .match-layout.golf-checkouts-match .match-main {
   background: var(--black);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .match-layout.golf-checkouts-match #scoreboard {
   display: none !important;
 }
+/* Single thrower cam — 30% smaller, centered above the scorecard/course */
+.match-layout.golf-checkouts-match .webcam-grid {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  align-items: center;
+  gap: 0;
+  padding: 0.35rem 0.65rem;
+  border-bottom: 1px solid rgba(42,139,90,0.28);
+  background: rgba(0,0,0,0.35);
+}
+.match-layout.golf-checkouts-match .webcam-cell {
+  width: min(100%, var(--gc-cam-max));
+  max-width: var(--gc-cam-max);
+  max-height: var(--gc-cam-max);
+  aspect-ratio: var(--cam-frame-ratio);
+}
+.match-layout.golf-checkouts-match .webcam-cell.gc-cam-idle {
+  display: none !important;
+}
+.match-layout.golf-checkouts-match .fb-cam-spacer {
+  display: none !important;
+}
 .match-layout.golf-checkouts-match .gc-scorecard-slot {
   flex: 0 0 auto;
-  overflow: visible;
-  padding: 0.5rem 1rem 0.25rem;
+  overflow: auto;
+  max-height: min(28vh, 220px);
+  padding: 0.35rem 0.75rem 0.2rem;
   background: var(--black);
 }
 .match-layout.golf-checkouts-match .gc-scorecard-slot .gc-scorecard-wrap {
   margin: 0; border-radius: 14px;
 }
 .match-layout.golf-checkouts-match .visualizer.golf-checkouts-arena {
-  flex: 1 1 0; min-height: 0;
+  flex: 1 1 0; min-height: 200px;
   display: flex; flex-direction: column;
   padding: 0;
   background: var(--black); overflow: hidden;
@@ -1507,7 +1543,7 @@ body.app-active .arena-bg { animation: none !important; }
   display: flex; flex-direction: column; overflow: hidden;
 }
 .gc-course-stage {
-  position: relative; flex: 1 1 0; min-height: 0;
+  position: relative; flex: 1 1 0; min-height: 200px;
   display: flex; align-items: center; justify-content: center;
   container-type: size;
   background: radial-gradient(ellipse at 50% 38%, #0e2a14 0%, #06120a 100%);
@@ -1515,13 +1551,14 @@ body.app-active .arena-bg { animation: none !important; }
   padding: 0.5rem; overflow: hidden;
 }
 .gc-course-img-wrap {
-  flex: 1 1 0; min-height: 0; width: 100%;
+  flex: 1 1 0; min-height: 0; width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
 }
 .gc-course-img {
   transform: rotate(90deg);
-  max-width: 100cqh; max-height: 100cqw;
+  max-width: min(100cqh, 92%);
+  max-height: min(100cqw, 92%);
   width: auto; height: auto;
   object-fit: contain; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.5));
 }
@@ -1532,9 +1569,9 @@ body.app-active .arena-bg { animation: none !important; }
   padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(201,168,76,0.35);
 }
 .gc-course-remaining {
-  position: absolute; right: 0.4rem; top: 14%; z-index: 3;
-  text-align: center; min-width: 5.5rem;
-  background: rgba(0,0,0,0.78);
+  position: absolute; right: 0.55rem; top: 12%; z-index: 3;
+  text-align: center; min-width: 5.75rem;
+  background: rgba(0,0,0,0.82);
   padding: 0.75rem 0.95rem; border-radius: 8px;
   border: 1px solid rgba(42,139,90,0.55);
   box-shadow: 0 4px 14px rgba(0,0,0,0.45);
@@ -10047,11 +10084,16 @@ function updateMatchUI() {
   if (!isGolfDarts && golfCamsMounted) restoreGolfCams();
   if (!isHalveIt && halveItCamsMounted) restoreHalveItCams();
 
-  // Webcam
-  const camYou = gid('webcam-you');
-  const camOpp = gid('webcam-opp');
-  if (camYou) camYou.className = 'webcam-cell' + (isMyTurn ? ' your-turn' : '');
-  if (camOpp) camOpp.className = 'webcam-cell' + (!isMyTurn ? ' your-turn' : '');
+  // Webcam turn highlight (+ Golf Checkouts single-thrower switch)
+  if (isGolfCheckouts) {
+    syncGcThrowerCam();
+  } else {
+    clearGcThrowerCam();
+    const camYou = gid('webcam-you');
+    const camOpp = gid('webcam-opp');
+    if (camYou) camYou.className = 'webcam-cell' + (isMyTurn ? ' your-turn' : '');
+    if (camOpp) camOpp.className = 'webcam-cell' + (!isMyTurn ? ' your-turn' : '');
+  }
 
   // Turn
   const gcCanThrow = isGolfCheckouts && gcPlayerCanThrow(gs, myPlayerIdx());
@@ -10166,9 +10208,7 @@ function updateMatchUI() {
   }
   renderDartPad(g);
 
-  // Golf Checkouts: in place of the (now hidden) dart pad, show Current Hole +
-  // remaining checkout readouts for the active (local) player. Hidden for all
-  // other games so their input area is untouched.
+  // Golf Checkouts: Current Hole + Remaining checkout (sidebar), plus course overlay.
   const gcReadouts = document.getElementById('gc-readouts');
   if (gcReadouts) {
     if (g === 'Golf Checkouts') {
@@ -10180,12 +10220,26 @@ function updateMatchUI() {
       const holeDef = gs.holes?.[holeIdx] || {};
       const capOn = gs.capEnabled !== false;
       const waiting = capOn && prog.holeDone;
+      let remainingMain = prog.remaining ?? holeDef.target ?? '–';
+      let remainingSub = 'Left to checkout';
+      if (prog.finished) {
+        remainingMain = 'Done';
+        remainingSub = 'All holes complete';
+      } else if (waiting) {
+        remainingMain = 'Wait';
+        remainingSub = 'Opponent finishing hole';
+      }
       gcReadouts.style.display = 'grid';
       gcReadouts.innerHTML = `
-        <div class="gc-readout" style="grid-column: 1 / -1">
+        <div class="gc-readout">
           <div class="gc-readout-label">Current Hole</div>
           <div class="gc-readout-value">${holeNum}<span class="gc-readout-of">/ ${totalHoles}</span></div>
-          <div class="gc-readout-sub">Par ${holeDef.par ?? '–'} · Target ${holeDef.target ?? '–'}${waiting ? ' · Waiting for opponent' : ''}</div>
+          <div class="gc-readout-sub">Par ${holeDef.par ?? '–'} · Target ${holeDef.target ?? '–'}${waiting ? ' · Waiting' : ''}</div>
+        </div>
+        <div class="gc-readout">
+          <div class="gc-readout-label">Remaining</div>
+          <div class="gc-readout-value gc-remaining">${remainingMain}</div>
+          <div class="gc-readout-sub">${remainingSub}</div>
         </div>`;
     } else {
       gcReadouts.style.display = 'none';
@@ -10662,6 +10716,43 @@ function updateX01Camera() {
 // ═══════════════════════════════════════════════════════════
 const DARTBOARD_NUMBERS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 let golfCamsMounted = false;
+let gcThrowerCamActive = false;
+
+/** Golf Checkouts: one cam box that switches to whoever is up to throw. */
+function syncGcThrowerCam() {
+  const you = document.getElementById('webcam-you');
+  const opp = document.getElementById('webcam-opp');
+  if (!you) return;
+
+  const me = myPlayerIdx();
+  // Local pass-and-play shares one device cam (myPlayerIdx follows turn).
+  const showYou = S.isLocal || !opp || S.turn === me;
+
+  you.className = 'webcam-cell'
+    + (showYou ? ' your-turn' : '')
+    + (showYou ? '' : ' gc-cam-idle');
+  if (opp) {
+    opp.className = 'webcam-cell'
+      + (!showYou ? ' your-turn' : '')
+      + (showYou ? ' gc-cam-idle' : '');
+  }
+
+  if (S.isBot && opp) {
+    document.getElementById('bot-avatar')?.classList.toggle('hidden', showYou);
+    const remote = document.getElementById('video-remote');
+    if (remote) remote.style.display = showYou ? '' : 'none';
+  }
+
+  if (showYou) document.getElementById('cam-frame-local')?.classList.remove('fit-contain');
+  gcThrowerCamActive = true;
+}
+
+function clearGcThrowerCam() {
+  if (!gcThrowerCamActive) return;
+  document.getElementById('webcam-you')?.classList.remove('gc-cam-idle');
+  document.getElementById('webcam-opp')?.classList.remove('gc-cam-idle');
+  gcThrowerCamActive = false;
+}
 
 function golfDartPoints(dart, target) {
   if (!dart || dart.isMiss || dart.base !== target) return 7;
@@ -11782,6 +11873,7 @@ function leaveMatch() {
   closeModal('x01-edit-approve-modal');
   restoreGolfCams();
   restoreHalveItCams();
+  clearGcThrowerCam();
   if (S.roomId) wsSend({ type: 'leave_room' });
   if (S.roomId && S.isHost) {
     const room = S.lobbies.find(r => r.id === S.roomId);
