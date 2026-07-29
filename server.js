@@ -638,6 +638,8 @@ function defaultUserProfile() {
     avatarUrl: '',
     walkoutId: '',          // '' = none (default); wo01–wo27
     standsOptIn: '0',       // '1' = allow Stands gallery reactions
+    introNameId: '',        // e.g. male_name_jack — canned ring-intro first name
+    introNicknameId: '',    // e.g. male_nickname_the_hammer — canned ring-intro nickname
   };
 }
 
@@ -653,6 +655,19 @@ function sanitizeWalkoutId(raw) {
 
 function sanitizeStandsOptIn(raw) {
   return raw === true || raw === 1 || raw === '1' ? '1' : '0';
+}
+
+/** Canned intro call ids from sfx/match_intro_calls (male_name_*, female_nickname_*, …). */
+function sanitizeIntroCallId(raw, kind) {
+  const id = String(raw == null ? '' : raw).trim().toLowerCase();
+  if (!id) return '';
+  if (kind === 'name') {
+    return /^(male|female)_name_[a-z0-9_]+$/.test(id) ? id : '';
+  }
+  if (kind === 'nickname') {
+    return /^(male|female)_nickname_[a-z0-9_]+$/.test(id) ? id : '';
+  }
+  return '';
 }
 
 function ensureUserProfile(user) {
@@ -676,6 +691,8 @@ function publicProfilePayload(user, { includeEmail = false } = {}) {
       avatarUrl: profile.avatarUrl,
       walkoutId: sanitizeWalkoutId(profile.walkoutId),
       standsOptIn: sanitizeStandsOptIn(profile.standsOptIn),
+      introNameId: sanitizeIntroCallId(profile.introNameId, 'name'),
+      introNicknameId: sanitizeIntroCallId(profile.introNicknameId, 'nickname'),
     },
     stats: {
       wins: stats.wins || 0,
@@ -784,6 +801,8 @@ function playerPreviewProfile(username) {
     equipment: profile.equipment || '',
     walkoutId: sanitizeWalkoutId(profile.walkoutId),
     standsOptIn: sanitizeStandsOptIn(profile.standsOptIn) === '1',
+    introNameId: sanitizeIntroCallId(profile.introNameId, 'name'),
+    introNicknameId: sanitizeIntroCallId(profile.introNicknameId, 'nickname'),
     threeDartAvg: s.threeDartAvg || 0,
     highestCheckout: s.highestCheckout || 0,
     oneEighties: s.oneEighties || 0,
@@ -805,6 +824,18 @@ function buildMatchPreview(game, hostName, guestName, room = null) {
     }
     if (typeof room.config.guestStandsOptIn === 'boolean' && players[1]) {
       players[1].standsOptIn = room.config.guestStandsOptIn;
+    }
+    if (room.config.hostIntroNameId != null && players[0]) {
+      players[0].introNameId = sanitizeIntroCallId(room.config.hostIntroNameId, 'name');
+    }
+    if (room.config.hostIntroNicknameId != null && players[0]) {
+      players[0].introNicknameId = sanitizeIntroCallId(room.config.hostIntroNicknameId, 'nickname');
+    }
+    if (room.config.guestIntroNameId != null && players[1]) {
+      players[1].introNameId = sanitizeIntroCallId(room.config.guestIntroNameId, 'name');
+    }
+    if (room.config.guestIntroNicknameId != null && players[1]) {
+      players[1].introNicknameId = sanitizeIntroCallId(room.config.guestIntroNicknameId, 'nickname');
     }
   }
   const preview = { game, players };
@@ -2245,6 +2276,12 @@ async function handleMessage(wsId, msg) {
       const hostProfile = ensureUserProfile(db.users[client.username]);
       const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
       const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
+      const hostIntroName = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : hostProfile.introNameId, 'name'
+      );
+      const hostIntroNick = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : hostProfile.introNicknameId, 'nickname'
+      );
       const room = createRoom(wsId, {
         game: msg.game, hostName: client.username,
         guestName: null, tournamentId: msg.tournamentId || null,
@@ -2258,6 +2295,10 @@ async function handleMessage(wsId, msg) {
         guestWalkoutId: '',
         hostStandsOptIn: hostStands,
         guestStandsOptIn: false,
+        hostIntroNameId: hostIntroName,
+        hostIntroNicknameId: hostIntroNick,
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
       });
       client.roomId = room.id;
       send(wsId, { type: 'room_created', roomId: room.id, game: msg.game });
@@ -2291,6 +2332,12 @@ async function handleMessage(wsId, msg) {
       const hostProfile = ensureUserProfile(db.users[client.username]);
       const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
       const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
+      const hostIntroName = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : hostProfile.introNameId, 'name'
+      );
+      const hostIntroNick = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : hostProfile.introNicknameId, 'nickname'
+      );
       const room = createRoom(wsId, {
         game: msg.game, hostName: client.username,
         guestName: `Bot (Level ${botLevel})`, bot: true, botSkill: botLevel,
@@ -2304,6 +2351,10 @@ async function handleMessage(wsId, msg) {
         guestWalkoutId: BOT_WALKOUT_ID,
         hostStandsOptIn: hostStands,
         guestStandsOptIn: false,
+        hostIntroNameId: hostIntroName,
+        hostIntroNicknameId: hostIntroNick,
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
       });
       room.gameState = initGameState(msg.game, room.config);
       client.roomId = room.id;
@@ -2329,6 +2380,12 @@ async function handleMessage(wsId, msg) {
       room.config.guestName = client.username;
       room.config.guestWalkoutId = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : guestProfile.walkoutId);
       room.config.guestStandsOptIn = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : guestProfile.standsOptIn) === '1';
+      room.config.guestIntroNameId = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : guestProfile.introNameId, 'name'
+      );
+      room.config.guestIntroNicknameId = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : guestProfile.introNicknameId, 'nickname'
+      );
       room.gameState = initGameState(room.config.game, room.config);
       room.lastActivity = Date.now();
       client.roomId = room.id;
@@ -2514,6 +2571,12 @@ async function handleMessage(wsId, msg) {
       }
       if (Object.prototype.hasOwnProperty.call(msg, 'standsOptIn')) {
         profile.standsOptIn = sanitizeStandsOptIn(msg.standsOptIn);
+      }
+      if (Object.prototype.hasOwnProperty.call(msg, 'introNameId')) {
+        profile.introNameId = sanitizeIntroCallId(msg.introNameId, 'name');
+      }
+      if (Object.prototype.hasOwnProperty.call(msg, 'introNicknameId')) {
+        profile.introNicknameId = sanitizeIntroCallId(msg.introNicknameId, 'nickname');
       }
       if (Object.prototype.hasOwnProperty.call(msg, 'avatarUrl')) {
         const avatar = sanitizeAvatarDataUrl(msg.avatarUrl);
@@ -2991,6 +3054,10 @@ async function handleMessage(wsId, msg) {
         guestWalkoutId: BOT_WALKOUT_ID,
         hostStandsOptIn: sanitizeStandsOptIn(hostProfile.standsOptIn) === '1',
         guestStandsOptIn: false,
+        hostIntroNameId: sanitizeIntroCallId(hostProfile.introNameId, 'name'),
+        hostIntroNicknameId: sanitizeIntroCallId(hostProfile.introNicknameId, 'nickname'),
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
       });
       room.gameState = initGameState(t.game, room.config);
       client.roomId = room.id;
