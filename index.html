@@ -7287,7 +7287,7 @@ const MATCH_INTRO_SPEECH_MS =
   MATCH_INTRO_SEGMENTS.open.ms +
   MATCH_INTRO_SEGMENTS.enter.ms +
   MATCH_INTRO_SEGMENTS.close.ms +
-  MATCH_INTRO_CALL_MS * 4; // up to name+nickname per player
+  MATCH_INTRO_CALL_MS * 2; // one name XOR nickname call per player
 // Preview: intro speech + name calls + both ~15s walk-outs (+ small buffer).
 const MATCH_PREVIEW_MS = MATCH_INTRO_SPEECH_MS + WALKOUT_CLIP_MS * 2 + 2500;
 const MATCH_PREVIEW_BOT_MS = MATCH_INTRO_SPEECH_MS + WALKOUT_CLIP_MS * 2 + 2500;
@@ -11900,6 +11900,7 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   if (!opts.readOnly) {
     if (typeof p.walkoutId === 'string') setWalkoutId(p.walkoutId, { persistProfile: false });
     if (p.standsOptIn != null) setStandsOptIn(p.standsOptIn === '1' || p.standsOptIn === true, { persistProfile: false });
+    // Mutual exclusion: apply nickname last so it wins if both were ever stored.
     if (typeof p.introNameId === 'string') setIntroNameId(p.introNameId, { persistProfile: false, quiet: true });
     if (typeof p.introNicknameId === 'string') setIntroNicknameId(p.introNicknameId, { persistProfile: false, quiet: true });
   }
@@ -13969,19 +13970,11 @@ function syncIntroCallPrefsUI() {
   }
 }
 
-function previewSelectedIntroName() {
-  const id = getIntroNameId();
-  if (!id) { toast('Pick an intro name first.'); return; }
+function previewSelectedIntroCall() {
+  const id = getIntroNicknameId() || getIntroNameId();
+  if (!id) { toast('Pick a name or nickname first.'); return; }
   const entry = matchIntroCallCatalog?.byId?.[id];
-  if (!entry?.file) { toast('Name clip not loaded yet.'); return; }
-  playMatchIntroCallFile(entry.file);
-}
-
-function previewSelectedIntroNickname() {
-  const id = getIntroNicknameId();
-  if (!id) { toast('Pick an intro nickname first.'); return; }
-  const entry = matchIntroCallCatalog?.byId?.[id];
-  if (!entry?.file) { toast('Nickname clip not loaded yet.'); return; }
+  if (!entry?.file) { toast('Intro call clip not loaded yet.'); return; }
   playMatchIntroCallFile(entry.file);
 }
 
