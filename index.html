@@ -4367,19 +4367,21 @@ body.app-active .arena-bg { animation: none !important; }
             </div>
             <div class="profile-setting-stack" id="pref-intro-call-stack">
               <div class="profile-setting-meta">
-                <span class="profile-setting-label">Ring intro name</span>
-                <span class="profile-setting-hint">Canned first-name call inserted after “first to the stage” / “now entering”, before your walk-out.</span>
+                <span class="profile-setting-label">Ring intro call</span>
+                <span class="profile-setting-hint">Pick either a first name or a nickname — not both. It plays after “first to the stage” / “now entering”, before your walk-out.</span>
               </div>
               <div class="profile-setting-controls walkout-hear">
-                <button type="button" class="btn btn-sm" onclick="previewSelectedIntroName()">Preview name</button>
-                <button type="button" class="btn btn-sm" onclick="previewSelectedIntroNickname()">Preview nickname</button>
+                <button type="button" class="btn btn-sm" onclick="previewSelectedIntroCall()">Preview call</button>
+              </div>
+              <div class="profile-setting-meta" style="margin-top:0.55rem">
+                <span class="profile-setting-label">First name</span>
               </div>
               <input type="search" class="intro-call-filter" id="intro-name-filter" placeholder="Filter names…"
                 oninput="syncIntroCallPrefsUI()" aria-label="Filter intro names">
               <div class="intro-call-picker" id="intro-name-picker" aria-label="Intro first-name calls"></div>
               <div class="profile-setting-meta" style="margin-top:0.85rem">
-                <span class="profile-setting-label">Ring intro nickname</span>
-                <span class="profile-setting-hint">Optional Bruce-style nickname played just before your first name.</span>
+                <span class="profile-setting-label">Nickname</span>
+                <span class="profile-setting-hint">Choosing a nickname clears any selected first name, and vice versa.</span>
               </div>
               <input type="search" class="intro-call-filter" id="intro-nickname-filter" placeholder="Filter nicknames…"
                 oninput="syncIntroCallPrefsUI()" aria-label="Filter intro nicknames">
@@ -13328,27 +13330,30 @@ async function ensureMatchIntroCallCatalog() {
   return matchIntroCallCatalogPromise;
 }
 
-/** Resolve name + nickname call entries for a player (profile fields or username match). */
+/** Resolve exclusive intro call for a player: nickname XOR name (never both). */
 function resolveIntroCallsForPlayer(player, catalog) {
   if (!player || !catalog) return { name: null, nickname: null };
   let name = (player.introNameId && catalog.byId[player.introNameId]) || null;
   let nickname = (player.introNicknameId && catalog.byId[player.introNicknameId]) || null;
 
-  if (!name) {
-    const nameKey = normalizeIntroCallLabel(
-      player.introName || player.firstName || player.announceName || ''
-    );
-    if (nameKey) name = catalog.byNameLabel[nameKey] || null;
-  }
   if (!nickname) {
     const nickKey = normalizeIntroCallLabel(
       player.introNickname || player.nickname || player.announceNickname || ''
     );
     if (nickKey) nickname = catalog.byNickLabel[nickKey] || null;
   }
-
-  // Fallback: first token of username matches a canned first-name clip (Jack, Emma, …).
   if (!name) {
+    const nameKey = normalizeIntroCallLabel(
+      player.introName || player.firstName || player.announceName || ''
+    );
+    if (nameKey) name = catalog.byNameLabel[nameKey] || null;
+  }
+
+  // Explicit profile picks are mutually exclusive — nickname wins if both somehow set.
+  if (nickname && name) name = null;
+
+  // Fallback: first token of username matches a canned first-name clip (only if no nickname).
+  if (!name && !nickname) {
     const userTok = normalizeIntroCallLabel(String(player.username || '').split(/[\s._-]+/)[0]);
     if (userTok) name = catalog.byNameLabel[userTok] || null;
   }
@@ -13386,20 +13391,14 @@ function playMatchIntroCallFile(relFile, { ms = MATCH_INTRO_CALL_MS } = {}) {
   });
 }
 
-/** Play nickname then name (Bruce cadence) for one competitor. Returns true if anything played. */
+/** Play the single chosen intro call (name XOR nickname) for one competitor. */
 async function playIntroCallsForPlayer(player) {
   const catalog = await ensureMatchIntroCallCatalog();
   const { name, nickname } = resolveIntroCallsForPlayer(player, catalog);
-  let played = false;
-  if (nickname?.file) {
-    await playMatchIntroCallFile(nickname.file);
-    played = true;
-  }
-  if (name?.file) {
-    await playMatchIntroCallFile(name.file);
-    played = true;
-  }
-  return played;
+  const clip = nickname || name;
+  if (!clip?.file) return false;
+  await playMatchIntroCallFile(clip.file);
+  return true;
 }
 
 /** Fetch Thunderous Tom generated intro MP3 for the match card. */
@@ -13852,25 +13851,37 @@ function setWalkoutId(id, { persistProfile = true, quiet = false } = {}) {
 
 function setIntroNameId(id, { persistProfile = true, quiet = false } = {}) {
   introNameIdSelected = String(id || '').trim();
+  // Name and nickname are mutually exclusive.
+  if (introNameIdSelected) {
+    introNicknameIdSelected = '';
+    try { localStorage.setItem(INTRO_NICK_ID_KEY, ''); } catch { /* ignore */ }
+    if (S.user?.profile) S.user.profile.introNicknameId = '';
+  }
   try { localStorage.setItem(INTRO_NAME_ID_KEY, introNameIdSelected); } catch { /* ignore */ }
   if (S.user?.profile) S.user.profile.introNameId = introNameIdSelected;
   syncIntroCallPrefsUI();
   if (persistProfile) persistArenaPresencePrefs();
   if (!quiet) {
     const label = matchIntroCallCatalog?.byId?.[introNameIdSelected]?.label;
-    toast(label ? `Intro name: ${label}` : 'Intro name cleared');
+    toast(label ? `Intro call: ${label}` : 'Intro call cleared');
   }
 }
 
 function setIntroNicknameId(id, { persistProfile = true, quiet = false } = {}) {
   introNicknameIdSelected = String(id || '').trim();
+  // Name and nickname are mutually exclusive.
+  if (introNicknameIdSelected) {
+    introNameIdSelected = '';
+    try { localStorage.setItem(INTRO_NAME_ID_KEY, ''); } catch { /* ignore */ }
+    if (S.user?.profile) S.user.profile.introNameId = '';
+  }
   try { localStorage.setItem(INTRO_NICK_ID_KEY, introNicknameIdSelected); } catch { /* ignore */ }
   if (S.user?.profile) S.user.profile.introNicknameId = introNicknameIdSelected;
   syncIntroCallPrefsUI();
   if (persistProfile) persistArenaPresencePrefs();
   if (!quiet) {
     const label = matchIntroCallCatalog?.byId?.[introNicknameIdSelected]?.label;
-    toast(label ? `Intro nickname: ${label}` : 'Intro nickname cleared');
+    toast(label ? `Intro call: ${label}` : 'Intro call cleared');
   }
 }
 
