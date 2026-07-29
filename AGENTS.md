@@ -12,7 +12,9 @@ Deepgram TTS with switchable accent/language locales. Ref Russ calls scores via
 `/api/ref-announce` (default voice `aura-2-perseus-en`). Match intros use canned Bruce-style
 segments in `sfx/` (`match_intro_open_lead` → name/nickname calls from
 `sfx/match_intro_calls/` → walk-out music → `match_intro_enter_lead` → calls → walk-out →
-`match_intro_close`), with `/api/match-intro` kept as an optional TTS fallback. There is no external DB,
+`match_intro_close`). Visit scores play Ralph canned calls from `sfx/ref_calls/` (0–180,
+no-score/bust, game shot variants, you-require). `/api/match-intro` remains an optional TTS
+fallback. There is no external DB,
 no test suite, and no lint config; state lives in a single JSON file. Standard
 commands are in `README.md` / `package.json`.
 

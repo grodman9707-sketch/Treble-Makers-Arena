@@ -3000,6 +3000,16 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .walkout-chip .wo-name { display: block; font-weight: 600; }
 .walkout-chip .wo-id { display: block; opacity: 0.65; font-size: 0.58rem; margin-top: 0.15rem; }
+.intro-call-picker {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 0.35rem; margin-top: 0.45rem; max-height: 160px; overflow-y: auto;
+}
+.intro-call-picker .walkout-chip .wo-id { text-transform: capitalize; }
+.intro-call-filter {
+  width: 100%; margin-top: 0.4rem; background: var(--black); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0.4rem 0.5rem;
+  font-family: 'Exo 2', sans-serif; font-size: 0.78rem;
+}
 .profile-setting-controls.walkout-hear {
   display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.45rem;
 }
@@ -4355,6 +4365,26 @@ body.app-active .arena-bg { animation: none !important; }
                 role="switch" aria-checked="false" aria-label="Stands interactions"
                 onclick="toggleStandsOptIn()"><span class="pref-toggle-knob" aria-hidden="true"></span></button>
             </div>
+            <div class="profile-setting-stack" id="pref-intro-call-stack">
+              <div class="profile-setting-meta">
+                <span class="profile-setting-label">Ring intro name</span>
+                <span class="profile-setting-hint">Canned first-name call inserted after “first to the stage” / “now entering”, before your walk-out.</span>
+              </div>
+              <div class="profile-setting-controls walkout-hear">
+                <button type="button" class="btn btn-sm" onclick="previewSelectedIntroName()">Preview name</button>
+                <button type="button" class="btn btn-sm" onclick="previewSelectedIntroNickname()">Preview nickname</button>
+              </div>
+              <input type="search" class="intro-call-filter" id="intro-name-filter" placeholder="Filter names…"
+                oninput="syncIntroCallPrefsUI()" aria-label="Filter intro names">
+              <div class="intro-call-picker" id="intro-name-picker" aria-label="Intro first-name calls"></div>
+              <div class="profile-setting-meta" style="margin-top:0.85rem">
+                <span class="profile-setting-label">Ring intro nickname</span>
+                <span class="profile-setting-hint">Optional Bruce-style nickname played just before your first name.</span>
+              </div>
+              <input type="search" class="intro-call-filter" id="intro-nickname-filter" placeholder="Filter nicknames…"
+                oninput="syncIntroCallPrefsUI()" aria-label="Filter intro nicknames">
+              <div class="intro-call-picker" id="intro-nickname-picker" aria-label="Intro nickname calls"></div>
+            </div>
             <div class="profile-setting-stack" id="pref-walkout-stack">
               <div class="profile-setting-meta">
                 <span class="profile-setting-label">Walk-out music</span>
@@ -5193,6 +5223,12 @@ function handleWS(msg) {
       }
       if (msg.profile?.standsOptIn != null) {
         setStandsOptIn(msg.profile.standsOptIn === '1' || msg.profile.standsOptIn === true, { persistProfile: false, quiet: true });
+      }
+      if (typeof msg.profile?.introNameId === 'string') {
+        setIntroNameId(msg.profile.introNameId, { persistProfile: false, quiet: true });
+      }
+      if (typeof msg.profile?.introNicknameId === 'string') {
+        setIntroNicknameId(msg.profile.introNicknameId, { persistProfile: false, quiet: true });
       }
       if (msg.token) {
         sessionToken = msg.token;
@@ -11862,10 +11898,14 @@ function renderProfilePage(profile = {}, stats = {}, opts = {}) {
   if (!opts.readOnly) {
     if (typeof p.walkoutId === 'string') setWalkoutId(p.walkoutId, { persistProfile: false });
     if (p.standsOptIn != null) setStandsOptIn(p.standsOptIn === '1' || p.standsOptIn === true, { persistProfile: false });
+    if (typeof p.introNameId === 'string') setIntroNameId(p.introNameId, { persistProfile: false, quiet: true });
+    if (typeof p.introNicknameId === 'string') setIntroNicknameId(p.introNicknameId, { persistProfile: false, quiet: true });
   }
   syncAnnouncePrefsUI();
   syncCrowdAmbientToggles();
   syncStandsWalkoutPrefsUI();
+  ensureMatchIntroCallCatalog().then(() => syncIntroCallPrefsUI()).catch(() => {});
+  ensureRefCallCatalog().catch(() => {});
 }
 
 function onProfileAvatarSelected(event) {
@@ -11929,6 +11969,8 @@ function saveProfile(event) {
     equipment: document.getElementById('profile-equipment')?.value || '',
     walkoutId: getWalkoutId(),
     standsOptIn: getStandsOptIn() ? '1' : '0',
+    introNameId: getIntroNameId(),
+    introNicknameId: getIntroNicknameId(),
   };
   if (pendingProfileAvatar !== null) {
     payload.avatarUrl = pendingProfileAvatar;
@@ -11938,6 +11980,8 @@ function saveProfile(event) {
       ...(S.user.profile || {}),
       walkoutId: payload.walkoutId,
       standsOptIn: payload.standsOptIn,
+      introNameId: payload.introNameId,
+      introNicknameId: payload.introNicknameId,
     };
   }
   wsSend(payload);
@@ -12483,6 +12527,7 @@ function stopAllSpokenAudio() {
   stopAnnounceAudio();
   stopCommentaryAudio();
   stopIntroAudio();
+  if (typeof stopRefCallAudio === 'function') stopRefCallAudio();
 }
 
 function pickBrowserFallbackVoice() {
@@ -13072,8 +13117,95 @@ function scoreToSpokenWordsClient(n) {
 }
 
 function requestAndPlayRefAnnounce() {
-  // Voice score calling removed — walk-out music only.
+  // Legacy Deepgram path removed — Ralph canned clips handle score calls.
   return Promise.resolve();
+}
+
+// ── Ralph referee score / call clips (sfx/ref_calls) ───────────────────────
+const REF_CALLS_DIR = 'sfx/ref_calls';
+const REF_CALL_ASSET_VER = 'ralph-ref1';
+let refCallCatalog = null;
+let refCallCatalogPromise = null;
+let refCallPlayToken = 0;
+let refCallAudioEl = null;
+
+async function ensureRefCallCatalog() {
+  if (refCallCatalog) return refCallCatalog;
+  if (refCallCatalogPromise) return refCallCatalogPromise;
+  refCallCatalogPromise = (async () => {
+    try {
+      const res = await fetch(`/${REF_CALLS_DIR}/catalog.json?v=${REF_CALL_ASSET_VER}`);
+      if (!res.ok) throw new Error('ref catalog ' + res.status);
+      refCallCatalog = await res.json();
+    } catch {
+      refCallCatalog = { scores: {}, calls: {} };
+    }
+    return refCallCatalog;
+  })();
+  return refCallCatalogPromise;
+}
+
+function stopRefCallAudio() {
+  refCallPlayToken += 1;
+  if (!refCallAudioEl) return;
+  try {
+    refCallAudioEl.pause();
+    refCallAudioEl.removeAttribute('src');
+    refCallAudioEl.load();
+  } catch { /* ignore */ }
+  refCallAudioEl = null;
+}
+
+function playRefCallFile(file, { ms = 2500 } = {}) {
+  if (!file) return Promise.resolve();
+  stopRefCallAudio();
+  const token = ++refCallPlayToken;
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      if (refCallAudioEl && refCallAudioEl._refToken === token) refCallAudioEl = null;
+      resolve();
+    };
+    try {
+      unlockCommentaryAudio();
+      const audio = new Audio(`/${REF_CALLS_DIR}/${file}?v=${REF_CALL_ASSET_VER}`);
+      audio._refToken = token;
+      refCallAudioEl = audio;
+      audio.volume = 1;
+      audio.preload = 'auto';
+      audio.onended = () => { if (token === refCallPlayToken) done(); };
+      audio.onerror = done;
+      setTimeout(() => { if (token === refCallPlayToken) done(); }, ms + 800);
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => done());
+    } catch {
+      done();
+    }
+  });
+}
+
+/**
+ * Play Ralph canned call for a visit: bust / game shot / numeric score (0–180).
+ * Triggered per player visit from announceVisitScore.
+ */
+async function playRalphRefCall({ visit, bust, legWon, matchWon } = {}) {
+  const cat = await ensureRefCallCatalog();
+  let file = null;
+  if (matchWon) file = cat.calls?.game_shot_match || cat.calls?.game_shot;
+  else if (legWon) file = cat.calls?.game_shot_leg || cat.calls?.game_shot;
+  else if (bust) file = cat.calls?.bust || cat.calls?.no_score;
+  else {
+    const n = Math.round(Number(visit));
+    if (Number.isFinite(n) && n >= 0 && n <= 180) {
+      file = cat.scores?.[String(n)] || null;
+    } else if (n === 0) {
+      file = cat.calls?.no_score || cat.scores?.['0'] || null;
+    }
+  }
+  if (!file) return;
+  await playRefCallFile(file, { ms: matchWon || legWon ? 2200 : 1800 });
 }
 
 function playBoxingBell() {
@@ -13199,16 +13331,21 @@ async function ensureMatchIntroCallCatalog() {
 /** Resolve name + nickname call entries for a player (profile fields or username match). */
 function resolveIntroCallsForPlayer(player, catalog) {
   if (!player || !catalog) return { name: null, nickname: null };
-  const nameKey = normalizeIntroCallLabel(
-    player.introName || player.firstName || player.announceName || ''
-  );
-  const nickKey = normalizeIntroCallLabel(
-    player.introNickname || player.nickname || player.announceNickname || ''
-  );
-  let name = (nameKey && catalog.byNameLabel[nameKey]) || null;
-  let nickname = (nickKey && catalog.byNickLabel[nickKey])
-    || (player.introNicknameId && catalog.byId[player.introNicknameId])
-    || null;
+  let name = (player.introNameId && catalog.byId[player.introNameId]) || null;
+  let nickname = (player.introNicknameId && catalog.byId[player.introNicknameId]) || null;
+
+  if (!name) {
+    const nameKey = normalizeIntroCallLabel(
+      player.introName || player.firstName || player.announceName || ''
+    );
+    if (nameKey) name = catalog.byNameLabel[nameKey] || null;
+  }
+  if (!nickname) {
+    const nickKey = normalizeIntroCallLabel(
+      player.introNickname || player.nickname || player.announceNickname || ''
+    );
+    if (nickKey) nickname = catalog.byNickLabel[nickKey] || null;
+  }
 
   // Fallback: first token of username matches a canned first-name clip (Jack, Emma, …).
   if (!name) {
@@ -13504,7 +13641,13 @@ function announceVisitScore(display, opts = {}) {
   if (!raw) return;
   const bust = !!opts.bust || /^bust$/i.test(raw);
   const visit = opts.visit != null ? opts.visit : (bust ? 0 : parseAnnounceVisitTotal(raw));
-  // Visual arena moments only — no spoken score calls or commentary.
+  // Ralph ref call for this player's visit, then visual arena moments.
+  playRalphRefCall({
+    visit,
+    bust,
+    legWon: !!opts.legWon,
+    matchWon: !!opts.matchWon,
+  }).catch(() => {});
   announceVisitCommentary({
     player: resolveCommentaryPlayerName(opts),
     visit,
@@ -13546,6 +13689,13 @@ function maybeAnnounceX01Require() {
   if (key === lastX01RequireKey) return;
   lastX01RequireKey = key;
   triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
+  // Ralph: "You require" then remaining score when a finish is on.
+  (async () => {
+    const cat = await ensureRefCallCatalog();
+    if (cat.calls?.you_require) await playRefCallFile(cat.calls.you_require, { ms: 1400 });
+    const scoreFile = cat.scores?.[String(rem)];
+    if (scoreFile) await playRefCallFile(scoreFile, { ms: 1600 });
+  })().catch(() => {});
 }
 
 function announceFromScoreUpdate(msg) {
@@ -13601,8 +13751,12 @@ initAnnounceVoiceList();
 const STANDS_OPTIN_KEY = 'tma-stands-optin';
 const WALKOUT_ID_KEY = 'tma-walkout-id';
 const WALKOUT_HEAR_KEY = 'tma-walkout-hear';
+const INTRO_NAME_ID_KEY = 'tma-intro-name-id';
+const INTRO_NICK_ID_KEY = 'tma-intro-nickname-id';
 let standsOptInOn = (() => { try { return localStorage.getItem(STANDS_OPTIN_KEY) === '1'; } catch { return false; } })();
 let walkoutIdSelected = (() => { try { return localStorage.getItem(WALKOUT_ID_KEY) || ''; } catch { return ''; } })();
+let introNameIdSelected = (() => { try { return localStorage.getItem(INTRO_NAME_ID_KEY) || ''; } catch { return ''; } })();
+let introNicknameIdSelected = (() => { try { return localStorage.getItem(INTRO_NICK_ID_KEY) || ''; } catch { return ''; } })();
 let walkoutHearMode = 'both'; // Match preview always plays both players' walk-outs.
 let matchIntroAnnounced = false;
 let matchIntroPromise = Promise.resolve();
@@ -13649,6 +13803,14 @@ function getWalkoutId() {
   return WALKOUT_BY_ID[walkoutIdSelected] ? walkoutIdSelected : '';
 }
 
+function getIntroNameId() {
+  return introNameIdSelected || '';
+}
+
+function getIntroNicknameId() {
+  return introNicknameIdSelected || '';
+}
+
 function getStandsOptIn() {
   return !!standsOptInOn;
 }
@@ -13661,6 +13823,8 @@ function arenaPresencePrefsPayload() {
   return {
     walkoutId: getWalkoutId(),
     standsOptIn: getStandsOptIn() ? '1' : '0',
+    introNameId: getIntroNameId(),
+    introNicknameId: getIntroNicknameId(),
   };
 }
 
@@ -13671,6 +13835,8 @@ function persistArenaPresencePrefs() {
     type: 'update_profile',
     walkoutId: getWalkoutId(),
     standsOptIn: getStandsOptIn() ? '1' : '0',
+    introNameId: getIntroNameId(),
+    introNicknameId: getIntroNicknameId(),
   });
 }
 
@@ -13682,6 +13848,30 @@ function setWalkoutId(id, { persistProfile = true, quiet = false } = {}) {
   if (persistProfile) persistArenaPresencePrefs();
   if (!quiet && walkoutIdSelected) toast(`Walk-out: ${WALKOUT_BY_ID[walkoutIdSelected].name}`);
   else if (!quiet && !walkoutIdSelected) toast('Walk-out music cleared');
+}
+
+function setIntroNameId(id, { persistProfile = true, quiet = false } = {}) {
+  introNameIdSelected = String(id || '').trim();
+  try { localStorage.setItem(INTRO_NAME_ID_KEY, introNameIdSelected); } catch { /* ignore */ }
+  if (S.user?.profile) S.user.profile.introNameId = introNameIdSelected;
+  syncIntroCallPrefsUI();
+  if (persistProfile) persistArenaPresencePrefs();
+  if (!quiet) {
+    const label = matchIntroCallCatalog?.byId?.[introNameIdSelected]?.label;
+    toast(label ? `Intro name: ${label}` : 'Intro name cleared');
+  }
+}
+
+function setIntroNicknameId(id, { persistProfile = true, quiet = false } = {}) {
+  introNicknameIdSelected = String(id || '').trim();
+  try { localStorage.setItem(INTRO_NICK_ID_KEY, introNicknameIdSelected); } catch { /* ignore */ }
+  if (S.user?.profile) S.user.profile.introNicknameId = introNicknameIdSelected;
+  syncIntroCallPrefsUI();
+  if (persistProfile) persistArenaPresencePrefs();
+  if (!quiet) {
+    const label = matchIntroCallCatalog?.byId?.[introNicknameIdSelected]?.label;
+    toast(label ? `Intro nickname: ${label}` : 'Intro nickname cleared');
+  }
 }
 
 function setStandsOptIn(on, { persistProfile = true, quiet = false } = {}) {
@@ -13703,26 +13893,109 @@ function onWalkoutHearChange() {
   try { localStorage.setItem(WALKOUT_HEAR_KEY, 'both'); } catch { /* ignore */ }
 }
 
+function introCallEntries(kind) {
+  const cat = matchIntroCallCatalog;
+  if (!cat?.raw?.packs) return [];
+  const out = [];
+  for (const gender of Object.keys(cat.raw.packs)) {
+    const pack = cat.raw.packs[gender] || {};
+    const list = kind === 'nickname' ? (pack.nicknames || []) : (pack.names || []);
+    for (const c of list) out.push(c);
+  }
+  return out;
+}
+
+function syncIntroCallPrefsUI() {
+  const namePicker = document.getElementById('intro-name-picker');
+  const nickPicker = document.getElementById('intro-nickname-picker');
+  if (!namePicker && !nickPicker) return;
+
+  const nameFilter = (document.getElementById('intro-name-filter')?.value || '').trim().toLowerCase();
+  const nickFilter = (document.getElementById('intro-nickname-filter')?.value || '').trim().toLowerCase();
+
+  if (namePicker) {
+    const names = introCallEntries('name').filter((c) => {
+      if (!nameFilter) return true;
+      return String(c.label).toLowerCase().includes(nameFilter)
+        || String(c.gender).toLowerCase().includes(nameFilter);
+    });
+    const noneActive = !getIntroNameId();
+    namePicker.innerHTML = `
+      <button type="button" class="walkout-chip${noneActive ? ' active' : ''}" onclick="setIntroNameId('')">
+        <span class="wo-name">None</span>
+        <span class="wo-id">Username fallback</span>
+      </button>
+      ${names.map((c) => `
+        <button type="button" class="walkout-chip${introNameIdSelected === c.id ? ' active' : ''}"
+          onclick="setIntroNameId('${c.id}')">
+          <span class="wo-name">${c.label}</span>
+          <span class="wo-id">${c.gender}</span>
+        </button>
+      `).join('')}
+    `;
+  }
+
+  if (nickPicker) {
+    const nicks = introCallEntries('nickname').filter((c) => {
+      if (!nickFilter) return true;
+      return String(c.label).toLowerCase().includes(nickFilter)
+        || String(c.gender).toLowerCase().includes(nickFilter);
+    });
+    const noneActive = !getIntroNicknameId();
+    nickPicker.innerHTML = `
+      <button type="button" class="walkout-chip${noneActive ? ' active' : ''}" onclick="setIntroNicknameId('')">
+        <span class="wo-name">None</span>
+        <span class="wo-id">No nickname</span>
+      </button>
+      ${nicks.map((c) => `
+        <button type="button" class="walkout-chip${introNicknameIdSelected === c.id ? ' active' : ''}"
+          onclick="setIntroNicknameId('${c.id}')">
+          <span class="wo-name">${c.label}</span>
+          <span class="wo-id">${c.gender}</span>
+        </button>
+      `).join('')}
+    `;
+  }
+}
+
+function previewSelectedIntroName() {
+  const id = getIntroNameId();
+  if (!id) { toast('Pick an intro name first.'); return; }
+  const entry = matchIntroCallCatalog?.byId?.[id];
+  if (!entry?.file) { toast('Name clip not loaded yet.'); return; }
+  playMatchIntroCallFile(entry.file);
+}
+
+function previewSelectedIntroNickname() {
+  const id = getIntroNicknameId();
+  if (!id) { toast('Pick an intro nickname first.'); return; }
+  const entry = matchIntroCallCatalog?.byId?.[id];
+  if (!entry?.file) { toast('Nickname clip not loaded yet.'); return; }
+  playMatchIntroCallFile(entry.file);
+}
+
 function syncStandsWalkoutPrefsUI() {
   const stands = document.getElementById('pref-stands-optin-toggle');
   if (stands) stands.setAttribute('aria-checked', standsOptInOn ? 'true' : 'false');
   const hear = document.getElementById('pref-walkout-hear');
   if (hear) hear.value = 'both';
   const picker = document.getElementById('walkout-picker');
-  if (!picker) return;
-  const noneActive = !getWalkoutId();
-  picker.innerHTML = `
-    <button type="button" class="walkout-chip${noneActive ? ' active' : ''}" onclick="setWalkoutId('')">
-      <span class="wo-name">Arena default</span>
-      <span class="wo-id">House intro clip</span>
-    </button>
-    ${WALKOUT_CATALOG.map(w => `
-      <button type="button" class="walkout-chip${walkoutIdSelected === w.id ? ' active' : ''}" onclick="setWalkoutId('${w.id}')">
-        <span class="wo-name">${w.name}</span>
-        <span class="wo-id">${w.id} · ~12–15s</span>
+  if (picker) {
+    const noneActive = !getWalkoutId();
+    picker.innerHTML = `
+      <button type="button" class="walkout-chip${noneActive ? ' active' : ''}" onclick="setWalkoutId('')">
+        <span class="wo-name">Arena default</span>
+        <span class="wo-id">House intro clip</span>
       </button>
-    `).join('')}
-  `;
+      ${WALKOUT_CATALOG.map(w => `
+        <button type="button" class="walkout-chip${walkoutIdSelected === w.id ? ' active' : ''}" onclick="setWalkoutId('${w.id}')">
+          <span class="wo-name">${w.name}</span>
+          <span class="wo-id">${w.id} · ~12–15s</span>
+        </button>
+      `).join('')}
+    `;
+  }
+  syncIntroCallPrefsUI();
 }
 
 function previewSelectedWalkout() {
@@ -13741,6 +14014,8 @@ function enrichPreviewWithLocalPrefs(preview) {
     if (p.username === S.user?.username) {
       p.walkoutId = getWalkoutId() || p.walkoutId || '';
       p.standsOptIn = getStandsOptIn();
+      p.introNameId = getIntroNameId() || p.introNameId || '';
+      p.introNicknameId = getIntroNicknameId() || p.introNicknameId || '';
     } else if (p.isBot || /bot/i.test(p.username || '')) {
       // Ensure bot opponents always have Sports Intro walk-out music.
       p.walkoutId = sanitizeClientWalkoutId(p.walkoutId) || BOT_WALKOUT_ID;

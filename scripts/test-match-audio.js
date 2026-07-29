@@ -113,6 +113,20 @@ async function main() {
     }
     report.steps.push(`call catalog ready (${catalog.maleNames} name keys)`);
 
+    const refCat = await page.evaluate(async () => {
+      const cat = await ensureRefCallCatalog();
+      return {
+        scores: Object.keys(cat.scores || {}).length,
+        has180: !!(cat.scores || {})['180'],
+        hasGameShot: !!(cat.calls || {}).game_shot,
+      };
+    });
+    report.refCatalog = refCat;
+    if (refCat.scores < 170 || !refCat.has180 || !refCat.hasGameShot) {
+      throw new Error('ref call catalog incomplete: ' + JSON.stringify(refCat));
+    }
+    report.steps.push(`ref catalog ready (${refCat.scores} scores)`);
+
     // Spy walkout IDs played
     await page.evaluate(() => {
       window.__walkoutPlays = 0;
