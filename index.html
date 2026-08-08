@@ -10011,8 +10011,13 @@ function updateMatchUI() {
   const x01Layout = gid('x01-layout');
   const cktLayout = gid('ckt-layout');
   if (isX01Game(g)) {
+    // Evacuate Football cam mounts before hiding the shared match layout.
+    clearFootballFieldLayer();
     if (cktLayout) cktLayout.classList.add('hidden');
-    if (ml) ml.style.display = 'none';
+    if (ml) {
+      ml.classList.remove('football-darts-match');
+      ml.style.display = 'none';
+    }
     if (x01Layout) x01Layout.classList.remove('hidden');
     renderX01Match();
     updateX01Camera();
@@ -10022,7 +10027,11 @@ function updateMatchUI() {
   }
   // Cricket / Tactics use their own marks-board layout.
   if (isCricketGame(g)) {
-    if (ml) ml.style.display = 'none';
+    clearFootballFieldLayer();
+    if (ml) {
+      ml.classList.remove('football-darts-match');
+      ml.style.display = 'none';
+    }
     if (cktLayout) cktLayout.classList.remove('hidden');
     renderCricketMatch();
     updateCricketCamera();
@@ -10082,13 +10091,7 @@ function updateMatchUI() {
   } else {
     gid('cam-score-you-wrap')?.classList.remove('hidden');
     gid('cam-score-opp-wrap')?.classList.remove('hidden');
-  }
-  const fbFieldLayer = document.getElementById('football-field-layer');
-  if (fbFieldLayer && !isFootballDarts) {
-    if (footballCamsMounted) restoreFootballCams();
-    fbFieldLayer.innerHTML = '';
-    fbFieldLayer.classList.add('hidden');
-    fbFieldLayer.setAttribute('aria-hidden', 'true');
+    clearFootballFieldLayer();
   }
   // Scorecard lives inside the GDG-style room now — keep the old slot empty.
   const gcScorecardSlot = document.getElementById('gc-scorecard-slot');
@@ -10098,7 +10101,6 @@ function updateMatchUI() {
   }
   if (!isGolfDarts && !isGolfCheckouts && golfCamsMounted) restoreGolfCams();
   if (!isHalveIt && halveItCamsMounted) restoreHalveItCams();
-  if (!isFootballDarts && footballCamsMounted) restoreFootballCams();
 
   // Webcam turn highlight (Golf / Football mount into a single thrower cam slot)
   clearGcThrowerCam();
@@ -11237,6 +11239,14 @@ function restoreHalveItCams() {
 
 let footballCamsMounted = false;
 
+function footballCamsNeedRestore() {
+  if (footballCamsMounted) return true;
+  const layer = document.getElementById('football-field-layer');
+  const you = document.getElementById('webcam-you');
+  const opp = document.getElementById('webcam-opp');
+  return !!(layer && ((you && layer.contains(you)) || (opp && layer.contains(opp))));
+}
+
 /** Football Darts: one cam box that switches to the active thrower. */
 function mountFootballCams(multiplayer) {
   const playerSlot = document.getElementById('fb-cam-player');
@@ -11247,7 +11257,7 @@ function mountFootballCams(multiplayer) {
   const me = myPlayerIdx();
   // Local pass-and-play shares one device cam; remote/bot swaps by turn.
   const showYou = S.isLocal || !multiplayer || !opp || S.turn === me;
-  const active = showYou ? you : opp;
+  const active = showYou ? you : (opp || you);
   const idle = active === you ? opp : you;
 
   const names = seatPlayerNames();
@@ -11263,21 +11273,23 @@ function mountFootballCams(multiplayer) {
   };
 
   if (footballCamsMounted && active.parentElement === playerSlot) {
-    active.className = 'webcam-cell your-turn';
+    active.classList.add('your-turn');
+    if (idle) idle.classList.remove('your-turn');
     syncBotAvatar();
     return;
   }
 
   parkGolfIdleCam(idle);
   playerSlot.appendChild(active);
-  active.className = 'webcam-cell your-turn';
+  active.classList.add('your-turn');
+  if (idle) idle.classList.remove('your-turn');
   document.getElementById('cam-frame-local')?.classList.remove('fit-contain');
   syncBotAvatar();
   footballCamsMounted = true;
 }
 
 function restoreFootballCams() {
-  if (!footballCamsMounted) return;
+  if (!footballCamsNeedRestore()) return;
   const grid = document.getElementById('webcam-grid');
   const you = document.getElementById('webcam-you');
   const opp = document.getElementById('webcam-opp');
@@ -11285,7 +11297,21 @@ function restoreFootballCams() {
   if (grid && you) grid.appendChild(you);
   if (grid && spacer) grid.appendChild(spacer);
   if (grid && opp) grid.appendChild(opp);
+  // Undo bot-turn display tweaks so the next match starts clean.
+  const remote = document.getElementById('video-remote');
+  if (remote) remote.style.display = '';
+  document.getElementById('bot-avatar')?.classList.add('hidden');
   footballCamsMounted = false;
+}
+
+/** Move live cams out of the Football layer, then clear it. */
+function clearFootballFieldLayer() {
+  restoreFootballCams();
+  const fbFieldLayer = document.getElementById('football-field-layer');
+  if (!fbFieldLayer) return;
+  fbFieldLayer.innerHTML = '';
+  fbFieldLayer.classList.add('hidden');
+  fbFieldLayer.setAttribute('aria-hidden', 'true');
 }
 
 function pickDartboardSegment(segment, num) {
@@ -11690,7 +11716,7 @@ function renderVisualizer() {
     stopGolfDartboardFit();
     // Move live webcam cells back before replacing viz DOM (innerHTML would destroy them).
     if (halveItCamsMounted) restoreHalveItCams();
-    if (footballCamsMounted) restoreFootballCams();
+    clearFootballFieldLayer();
     lbl.textContent = '';
     lbl.style.display = 'none';
     el.innerHTML = renderHalveItDartboard(gs);
@@ -11703,7 +11729,7 @@ function renderVisualizer() {
   lbl.style.display = '';
   if (g === 'Golf Darts') {
     restoreGolfCams();
-    if (footballCamsMounted) restoreFootballCams();
+    clearFootballFieldLayer();
     lbl.textContent = '';
     lbl.style.display = 'none';
     el.innerHTML = renderGolfDartsRoom(gs);
@@ -11716,7 +11742,7 @@ function renderVisualizer() {
   stopGolfDartboardFit();
   if (g === 'Golf Checkouts') {
     restoreGolfCams();
-    if (footballCamsMounted) restoreFootballCams();
+    clearFootballFieldLayer();
     lbl.textContent = '';
     lbl.style.display = 'none';
     el.innerHTML = renderGolfCheckoutsRoom(gs);
@@ -11741,13 +11767,14 @@ function renderVisualizer() {
       const pitchEl = fbLayer.querySelector('.football-pitch');
       const eventsEl = fbLayer.querySelector('.football-events');
       const labelEl = document.getElementById('fb-cam-label');
-      if (existingRoom && pitchEl && eventsEl) {
+      if (existingRoom && pitchEl && eventsEl && document.getElementById('fb-cam-player')) {
         // In-place update keeps the live thrower <video> mounted.
         pitchEl.innerHTML = pitchHtml;
         eventsEl.innerHTML = eventsHtml;
         if (labelEl) labelEl.textContent = `${throwerName} · Throw`;
       } else {
-        if (footballCamsMounted) restoreFootballCams();
+        // Always evacuate cams by containment before wiping the layer.
+        restoreFootballCams();
         fbLayer.innerHTML = `
           <div class="fb-room">
             <div class="fb-cam-col">
@@ -12050,8 +12077,11 @@ function leaveMatch() {
   closeModal('x01-edit-approve-modal');
   restoreGolfCams();
   restoreHalveItCams();
-  restoreFootballCams();
+  clearFootballFieldLayer();
   clearGcThrowerCam();
+  const ml = document.querySelector('.match-layout');
+  ml?.classList.remove('football-darts-match', 'football-darts-arena', 'golf-darts-match', 'golf-checkouts-match', 'halveit-match');
+  document.getElementById('visualizer')?.classList.remove('football-darts-arena', 'golf-darts-arena', 'golf-checkouts-arena', 'halveit-arena');
   if (S.roomId) wsSend({ type: 'leave_room' });
   if (S.roomId && S.isHost) {
     const room = S.lobbies.find(r => r.id === S.roomId);
