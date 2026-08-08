@@ -5005,6 +5005,35 @@ function saveCamViewPrefs() {
   } catch { /* ignore quota / private mode */ }
 }
 
+// #region agent log
+function agentDbg(hypothesisId, location, message, data) {
+  const payload = { sessionId: '087a', hypothesisId, location, message, data: data || {}, timestamp: Date.now() };
+  try { fetch('/api/debug-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => {}); } catch (_) {}
+}
+function agentCamSnapshot() {
+  const you = document.getElementById('webcam-you');
+  const opp = document.getElementById('webcam-opp');
+  const slot = document.getElementById('fb-cam-player');
+  const grid = document.getElementById('webcam-grid');
+  const fb = document.getElementById('football-field-layer');
+  return {
+    videoLocal: !!document.getElementById('video-local'),
+    videoRemote: !!document.getElementById('video-remote'),
+    youParent: you?.parentElement?.id || null,
+    oppParent: opp?.parentElement?.id || null,
+    slotChild: slot?.firstElementChild?.id || null,
+    youInFbLayer: !!(you && fb && fb.contains(you)),
+    oppInFbLayer: !!(opp && fb && fb.contains(opp)),
+    gridDisplay: grid ? getComputedStyle(grid).display : null,
+    footballCamsMounted: typeof footballCamsMounted !== 'undefined' ? footballCamsMounted : null,
+    golfCamsMounted: typeof golfCamsMounted !== 'undefined' ? golfCamsMounted : null,
+    game: typeof S !== 'undefined' ? S.game : null,
+    camReady: typeof S !== 'undefined' ? !!S.camReady : null,
+    hasStream: typeof S !== 'undefined' ? !!S.localStream : null,
+  };
+}
+// #endregion
+
 // ═══════════════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════════════
@@ -5165,6 +5194,9 @@ function wsSend(msg) {
 
   pendingWsMessages.push(msg);
   if (DEBUG) setAuthDebug(`WS queued: ${msg.type}`);
+  // #region agent log
+  agentDbg('E', 'wsSend:queued', 'WS not open — message queued (Unable to connect dead-path never hits)', { type: msg?.type, readyState: S.ws?.readyState ?? null });
+  // #endregion
   return true;
 }
 
@@ -6741,6 +6773,9 @@ async function startCameraPreview() {
   try {
     const hasLiveTrack = !!S.localStream &&
       S.localStream.getVideoTracks().some(t => t.readyState === 'live');
+    // #region agent log
+    agentDbg('A', 'startCameraPreview:entry', 'preview start', { hasLiveTrack, ...agentCamSnapshot() });
+    // #endregion
     if (!hasLiveTrack) {
       S.localStream?.getTracks().forEach(t => t.stop());
       S.localStream = await navigator.mediaDevices.getUserMedia({
@@ -6754,7 +6789,13 @@ async function startCameraPreview() {
     attachLocalCamera();
     applyCamView();
     if (btn) btn.disabled = false;
+    // #region agent log
+    agentDbg('A', 'startCameraPreview:ok', 'preview ok', { tracks: S.localStream?.getVideoTracks()?.map(t => t.readyState), ...agentCamSnapshot() });
+    // #endregion
   } catch (err) {
+    // #region agent log
+    agentDbg('A', 'startCameraPreview:catch', 'preview failed', { name: err?.name, errMsg: String(err?.message || err), ...agentCamSnapshot() });
+    // #endregion
     ph?.classList.remove('hidden');
     if (errEl) {
       errEl.textContent = 'Camera access denied. Allow camera in browser settings, then try Re-enable.';
@@ -6843,6 +6884,9 @@ async function enableCameraFromModal() {
   const btn = document.getElementById('cam-enable-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Enabling...'; }
   try {
+    // #region agent log
+    agentDbg('A', 'enableCameraFromModal:entry', 'enable clicked', agentCamSnapshot());
+    // #endregion
     if (!S.localStream) await startCameraPreview();
     if (!S.localStream) return;
     S.camReady = true;
@@ -6856,6 +6900,9 @@ async function enableCameraFromModal() {
       toast('Camera enabled for this session.');
       if (btn) btn.textContent = 'Camera Active';
     }
+    // #region agent log
+    agentDbg('A', 'enableCameraFromModal:ok', 'enable done', { autoProceed: !!camModalAutoProceed, ...agentCamSnapshot() });
+    // #endregion
   } finally {
     if (btn && !isCamReady()) {
       btn.textContent = 'Enable Camera';
@@ -10085,10 +10132,20 @@ function updateMatchUI() {
   }
   const fbFieldLayer = document.getElementById('football-field-layer');
   if (fbFieldLayer && !isFootballDarts) {
+    // #region agent log
+    agentDbg('D', 'updateMatchUI:clear-fb-layer', 'clearing football layer', {
+      footballCamsMounted,
+      youInLayer: !!(document.getElementById('webcam-you') && fbFieldLayer.contains(document.getElementById('webcam-you'))),
+      ...agentCamSnapshot(),
+    });
+    // #endregion
     if (footballCamsMounted) restoreFootballCams();
     fbFieldLayer.innerHTML = '';
     fbFieldLayer.classList.add('hidden');
     fbFieldLayer.setAttribute('aria-hidden', 'true');
+    // #region agent log
+    agentDbg('D', 'updateMatchUI:cleared-fb-layer', 'after clear', agentCamSnapshot());
+    // #endregion
   }
   // Scorecard lives inside the GDG-style room now — keep the old slot empty.
   const gcScorecardSlot = document.getElementById('gc-scorecard-slot');
@@ -11242,6 +11299,9 @@ function mountFootballCams(multiplayer) {
   const playerSlot = document.getElementById('fb-cam-player');
   const you = document.getElementById('webcam-you');
   const opp = document.getElementById('webcam-opp');
+  // #region agent log
+  agentDbg('B', 'mountFootballCams:entry', 'mount football cams', { multiplayer, turn: S.turn, me: myPlayerIdx(), hasSlot: !!playerSlot, hasYou: !!you, hasOpp: !!opp, ...agentCamSnapshot() });
+  // #endregion
   if (!playerSlot || !you) return;
 
   const me = myPlayerIdx();
@@ -11268,15 +11328,24 @@ function mountFootballCams(multiplayer) {
     return;
   }
 
+  // #region agent log
+  if (!active) agentDbg('C', 'mountFootballCams:null-active', 'active cam is null (golf uses opp||you fallback)', { showYou, multiplayer });
+  // #endregion
   parkGolfIdleCam(idle);
   playerSlot.appendChild(active);
   active.className = 'webcam-cell your-turn';
   document.getElementById('cam-frame-local')?.classList.remove('fit-contain');
   syncBotAvatar();
   footballCamsMounted = true;
+  // #region agent log
+  agentDbg('B', 'mountFootballCams:done', 'mounted', { showYou, activeId: active?.id, idleId: idle?.id, ...agentCamSnapshot() });
+  // #endregion
 }
 
 function restoreFootballCams() {
+  // #region agent log
+  agentDbg('B', 'restoreFootballCams:entry', 'restore football cams', agentCamSnapshot());
+  // #endregion
   if (!footballCamsMounted) return;
   const grid = document.getElementById('webcam-grid');
   const you = document.getElementById('webcam-you');
@@ -11286,6 +11355,9 @@ function restoreFootballCams() {
   if (grid && spacer) grid.appendChild(spacer);
   if (grid && opp) grid.appendChild(opp);
   footballCamsMounted = false;
+  // #region agent log
+  agentDbg('B', 'restoreFootballCams:done', 'restored', agentCamSnapshot());
+  // #endregion
 }
 
 function pickDartboardSegment(segment, num) {
@@ -11743,10 +11815,20 @@ function renderVisualizer() {
       const labelEl = document.getElementById('fb-cam-label');
       if (existingRoom && pitchEl && eventsEl) {
         // In-place update keeps the live thrower <video> mounted.
+        // #region agent log
+        agentDbg('D', 'renderVisualizer:fb-inplace', 'in-place football update', agentCamSnapshot());
+        // #endregion
         pitchEl.innerHTML = pitchHtml;
         eventsEl.innerHTML = eventsHtml;
         if (labelEl) labelEl.textContent = `${throwerName} · Throw`;
       } else {
+        // #region agent log
+        agentDbg('D', 'renderVisualizer:fb-rebuild', 'ABOUT TO rebuild fbLayer innerHTML', {
+          footballCamsMounted,
+          youInLayer: !!(document.getElementById('webcam-you') && fbLayer.contains(document.getElementById('webcam-you'))),
+          ...agentCamSnapshot(),
+        });
+        // #endregion
         if (footballCamsMounted) restoreFootballCams();
         fbLayer.innerHTML = `
           <div class="fb-room">
@@ -11761,6 +11843,9 @@ function renderVisualizer() {
               <div class="football-events">${eventsHtml}</div>
             </div>
           </div>`;
+        // #region agent log
+        agentDbg('D', 'renderVisualizer:fb-rebuilt', 'after fbLayer rebuild', agentCamSnapshot());
+        // #endregion
       }
       const oppLabel = document.getElementById('sb-name-opp')?.textContent || '';
       const multiplayer = S.isBot || S.isLocal || !/^(OPP|WAITING|OPPONENT)/i.test(oppLabel.trim());

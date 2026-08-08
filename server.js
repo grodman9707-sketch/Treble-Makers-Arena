@@ -4640,6 +4640,18 @@ app.get('/healthz', (req, res) => {
   });
 });
 
+// #region agent log
+app.post('/api/debug-log', express.json({ limit: '64kb' }), (req, res) => {
+  try {
+    const line = JSON.stringify({ ...(req.body || {}), timestamp: Date.now() }) + '\n';
+    fs.appendFileSync('/opt/cursor/logs/debug.log', line);
+  } catch (err) {
+    console.warn('[debug-log]', err?.message || err);
+  }
+  res.json({ ok: true });
+});
+// #endregion
+
 // Per-IP rate limit on the upstream-proxy API routes. Static assets are
 // immutable-cached and the SPA fallback is cheap, so neither is limited here;
 // auth/WS abuse is throttled at the socket layer (MAX_WS_PER_IP, AUTH_MAX_ATTEMPTS).
