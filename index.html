@@ -1609,14 +1609,15 @@ body.app-active .arena-bg { animation: none !important; }
 .gdg-scorecard tr.gc-meta-tgt td,
 .gdg-scorecard tr.gc-meta-tgt th { color: var(--gold-dim, #c9a84c); }
 
-/* Football Darts: cams + pitch fill the arena (no wallpaper gaps) */
+/* Football Darts: single thrower cam + portrait pitch filling center */
 .match-layout.football-darts-match .match-main {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: minmax(140px, 1fr) minmax(0, 2fr);
+  grid-template-rows: 1fr;
   background: #0c1f14;
   position: relative;
   overflow: hidden;
+  min-height: calc(100vh - 54px);
 }
 .match-layout.football-darts-match .match-header {
   position: absolute; top: 0; left: 0; right: 0; z-index: 5;
@@ -1624,87 +1625,123 @@ body.app-active .arena-bg { animation: none !important; }
   border-bottom: none; padding: 0.45rem 0.75rem;
 }
 .match-layout.football-darts-match .match-header .mh-status { display: none; }
+.match-layout.football-darts-match .webcam-grid,
+.match-layout.football-darts-match #scoreboard,
+.match-layout.football-darts-match #chat-area,
+.match-layout.football-darts-match .visualizer.football-darts-arena,
+.match-layout.football-darts-match .cam-score-box { display: none !important; }
+.match-layout.football-darts-match .score-input-row { display: none; }
 .match-layout.football-darts-match .football-field-layer {
-  grid-row: 2; grid-column: 1;
-  z-index: 0; min-height: 0; pointer-events: none;
+  grid-row: 1; grid-column: 1;
+  z-index: 0; min-height: 0; height: 100%;
+  pointer-events: none;
 }
 .match-layout.football-darts-match .football-field-layer.hidden { display: none; }
-.match-layout.football-darts-match .webcam-grid {
-  grid-row: 1; z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  justify-items: center;
-  gap: 0;
-  height: auto; min-height: 0;
-  background: rgba(5, 12, 8, 0.92);
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-  padding: 0.45rem 0.65rem;
-}
-.match-layout.football-darts-match .webcam-cell {
-  background: #000;
-  min-height: 0;
-  width: min(100%, var(--cam-box-max));
-  max-width: var(--cam-box-max);
-  aspect-ratio: var(--cam-frame-ratio);
-  height: auto;
-  align-self: center;
-  border-radius: 8px;
-  overflow: hidden;
-}
-.match-layout.football-darts-match .fb-cam-spacer {
-  display: block;
-  width: 14px;
-  min-height: 1px;
-  align-self: stretch;
-  background: transparent;
-}
-.match-layout.football-darts-match .visualizer.football-darts-arena {
-  grid-row: 2; z-index: 1;
-  flex: 1 1 0; min-height: 0;
-  display: flex; flex-direction: column;
-  padding: 0; overflow: hidden;
-  background: transparent;
-  pointer-events: none;
-}
-.match-layout.football-darts-match .visualizer.football-darts-arena #viz-label { display: none !important; }
-.match-layout.football-darts-match .visualizer.football-darts-arena #viz-content {
-  flex: 1 1 0; min-height: 0;
-  display: flex; flex-direction: column; justify-content: flex-end;
-  pointer-events: none;
-}
-.match-layout.football-darts-match #scoreboard { display: none !important; }
-.match-layout.football-darts-match #chat-area { display: none !important; }
-.match-layout.football-darts-match .cam-score-box { display: none !important; }
 .fb-cam-spacer { display: none; }
-.football-pitch {
+.fb-room {
+  display: grid;
+  grid-template-columns: minmax(150px, 240px) minmax(0, 1fr);
   width: 100%; height: 100%;
-  background: linear-gradient(180deg, #1a4a1a, #143a14);
+  min-height: 0;
+  gap: 0.65rem;
+  padding: 2.65rem 0.65rem 0.65rem;
+  box-sizing: border-box;
+}
+.fb-cam-col {
+  display: flex; flex-direction: column; gap: 0.35rem;
+  min-width: 0; min-height: 0;
+  pointer-events: auto;
+}
+.fb-cam-label {
+  font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: 0.12em;
+  color: var(--gold-light); text-transform: uppercase; text-align: center;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+  flex-shrink: 0;
+}
+.fb-cam-wrap {
+  flex: 1 1 0; min-height: 0;
+  border-radius: 8px; overflow: hidden;
+  border: 2px solid rgba(201, 168, 76, 0.45);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;
+}
+.fb-cam-slot {
+  position: relative;
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  max-width: 100%; max-height: 100%;
+  flex-shrink: 0;
+}
+.fb-cam-slot .webcam-cell {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
+  max-width: none; max-height: none;
+  aspect-ratio: auto;
+  border-radius: 0; border: none; box-shadow: none;
+  background: #000;
+}
+.fb-cam-slot .webcam-cell.your-turn { box-shadow: inset 0 0 0 3px var(--gold); }
+.fb-cam-slot .cam-video-frame {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; overflow: hidden;
+}
+.fb-cam-slot .cam-video,
+.fb-cam-slot .cam-video-frame video {
+  width: 100% !important; height: 100% !important;
+  object-fit: cover !important;
+}
+.fb-cam-slot .cam-label { top: 0.45rem; font-size: 0.55rem; z-index: 5; }
+.fb-cam-slot .bot-avatar {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.35rem;
+}
+.fb-cam-slot .bot-avatar-icon { font-size: 2.4rem; }
+.fb-cam-slot .bot-avatar-name { font-size: 0.75rem; }
+.fb-cam-slot .bot-avatar-skill { font-size: 0.58rem; }
+.fb-pitch-col {
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; gap: 0.4rem;
+  pointer-events: none;
+}
+.fb-pitch-col > * { pointer-events: auto; }
+.football-pitch {
+  flex: 1 1 0; min-height: 0; width: 100%;
+  background: linear-gradient(90deg, #1a4a1a, #143a14 45%, #1a4a1a);
   position: relative; overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.25);
 }
 .pitch-lines { position: absolute; inset: 0; }
-.pitch-lines svg { width: 100%; height: 100%; }
+.pitch-lines svg { width: 100%; height: 100%; display: block; }
 .football-ball {
-  position: absolute; font-size: 1.4rem;
+  position: absolute; font-size: 1.45rem;
   transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 10;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  transform: translate(-50%, -50%);
 }
 .fb-goal-score {
-  position: absolute; top: 50%; z-index: 12;
-  transform: translateY(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
-  min-width: 3.4rem; padding: 0.45rem 0.55rem;
+  position: absolute; left: 50%; z-index: 12;
+  transform: translateX(-50%);
+  display: flex; flex-direction: row; align-items: center; gap: 0.55rem;
+  min-width: 0; padding: 0.35rem 0.7rem;
   background: rgba(5, 8, 12, 0.82);
   border: 1px solid rgba(255,255,255,0.28);
   border-radius: 8px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.45);
   pointer-events: none;
 }
-.fb-goal-score.left { left: 7%; }
-.fb-goal-score.right { right: 7%; }
+.fb-goal-score.top { top: 2.5%; }
+.fb-goal-score.bottom { bottom: 2.5%; }
+.fb-goal-score .fb-goal-meta {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
+}
 .fb-goal-score .fb-goal-name {
   font-family: 'Orbitron', monospace; font-size: 0.52rem; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--muted); max-width: 5.5rem;
+  text-transform: uppercase; color: var(--muted); max-width: 7rem;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .fb-goal-score .fb-goal-count {
@@ -1716,14 +1753,9 @@ body.app-active .arena-bg { animation: none !important; }
 .fb-goal-score .fb-goal-label {
   font-size: 0.48rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55);
 }
-.football-viz-foot {
-  flex-shrink: 0;
-  padding: 0 0.85rem 0.65rem;
-  pointer-events: none;
-}
-.football-viz-foot > * { pointer-events: auto; }
 .football-events {
-  margin-top: 0; display: flex; flex-direction: column; gap: 3px;
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 3px;
   max-height: 72px; overflow-y: auto;
   background: rgba(19, 19, 32, 0.78);
   border: 1px solid var(--border); border-radius: 8px;
@@ -1760,6 +1792,13 @@ body.app-active .arena-bg { animation: none !important; }
 .match-layout.football-darts-match .halveit-chat-area {
   min-height: 140px;
   max-height: 240px;
+}
+@media (max-width: 900px) {
+  .fb-room {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(160px, 32%) minmax(0, 1fr);
+  }
+  .fb-cam-col { max-height: 220px; }
 }
 
 /* Snakes & Ladders */
@@ -4041,7 +4080,7 @@ body.app-active .arena-bg { animation: none !important; }
             <button class="btn btn-danger btn-sm" onclick="leaveMatch()">← Leave</button>
           </div>
 
-          <!-- Football Darts: pitch layer (bottom 2/3 under visualizer overlays) -->
+          <!-- Football Darts: thrower cam + portrait pitch (fills match-main) -->
           <div id="football-field-layer" class="football-field-layer hidden" aria-hidden="true"></div>
 
           <!-- Webcams -->
@@ -10036,7 +10075,7 @@ function updateMatchUI() {
   gid('halveit-chat-area')?.classList.toggle('hidden', !showInputChat);
   gid('chat-area')?.classList.toggle('hidden', showInputChat);
   const fbSpacer = document.getElementById('fb-cam-spacer');
-  if (fbSpacer) fbSpacer.style.display = isFootballDarts ? 'block' : 'none';
+  if (fbSpacer) fbSpacer.style.display = 'none';
   if (isFootballDarts) {
     gid('cam-score-you-wrap')?.classList.add('hidden');
     gid('cam-score-opp-wrap')?.classList.add('hidden');
@@ -10046,6 +10085,7 @@ function updateMatchUI() {
   }
   const fbFieldLayer = document.getElementById('football-field-layer');
   if (fbFieldLayer && !isFootballDarts) {
+    if (footballCamsMounted) restoreFootballCams();
     fbFieldLayer.innerHTML = '';
     fbFieldLayer.classList.add('hidden');
     fbFieldLayer.setAttribute('aria-hidden', 'true');
@@ -10058,10 +10098,11 @@ function updateMatchUI() {
   }
   if (!isGolfDarts && !isGolfCheckouts && golfCamsMounted) restoreGolfCams();
   if (!isHalveIt && halveItCamsMounted) restoreHalveItCams();
+  if (!isFootballDarts && footballCamsMounted) restoreFootballCams();
 
-  // Webcam turn highlight (Golf Darts / Checkouts mount into the side cam slot)
+  // Webcam turn highlight (Golf / Football mount into a single thrower cam slot)
   clearGcThrowerCam();
-  if (!isGolfDarts && !isGolfCheckouts) {
+  if (!isGolfDarts && !isGolfCheckouts && !isFootballDarts) {
     const camYou = gid('webcam-you');
     const camOpp = gid('webcam-opp');
     if (camYou) camYou.className = 'webcam-cell' + (isMyTurn ? ' your-turn' : '');
@@ -11194,6 +11235,59 @@ function restoreHalveItCams() {
   halveItCamsMounted = false;
 }
 
+let footballCamsMounted = false;
+
+/** Football Darts: one cam box that switches to the active thrower. */
+function mountFootballCams(multiplayer) {
+  const playerSlot = document.getElementById('fb-cam-player');
+  const you = document.getElementById('webcam-you');
+  const opp = document.getElementById('webcam-opp');
+  if (!playerSlot || !you) return;
+
+  const me = myPlayerIdx();
+  // Local pass-and-play shares one device cam; remote/bot swaps by turn.
+  const showYou = S.isLocal || !multiplayer || !opp || S.turn === me;
+  const active = showYou ? you : opp;
+  const idle = active === you ? opp : you;
+
+  const names = seatPlayerNames();
+  const throwerName = String(names[S.turn] || (showYou ? (S.user.username || 'You') : 'Opponent')).slice(0, 14);
+  const label = document.getElementById('fb-cam-label');
+  if (label) label.textContent = `${throwerName} · Throw`;
+
+  const syncBotAvatar = () => {
+    if (!S.isBot || !opp) return;
+    document.getElementById('bot-avatar')?.classList.toggle('hidden', showYou);
+    const remote = document.getElementById('video-remote');
+    if (remote) remote.style.display = showYou ? '' : 'none';
+  };
+
+  if (footballCamsMounted && active.parentElement === playerSlot) {
+    active.className = 'webcam-cell your-turn';
+    syncBotAvatar();
+    return;
+  }
+
+  parkGolfIdleCam(idle);
+  playerSlot.appendChild(active);
+  active.className = 'webcam-cell your-turn';
+  document.getElementById('cam-frame-local')?.classList.remove('fit-contain');
+  syncBotAvatar();
+  footballCamsMounted = true;
+}
+
+function restoreFootballCams() {
+  if (!footballCamsMounted) return;
+  const grid = document.getElementById('webcam-grid');
+  const you = document.getElementById('webcam-you');
+  const opp = document.getElementById('webcam-opp');
+  const spacer = document.getElementById('fb-cam-spacer');
+  if (grid && you) grid.appendChild(you);
+  if (grid && spacer) grid.appendChild(spacer);
+  if (grid && opp) grid.appendChild(opp);
+  footballCamsMounted = false;
+}
+
 function pickDartboardSegment(segment, num) {
   const inp = document.getElementById('score-input');
   if (!inp || inp.disabled || !isMyMatchTurn()) return;
@@ -11542,44 +11636,49 @@ function renderFootballPitchHtml(gs) {
   const bx = gs?.ballX || 50;
   const goals = gs?.goals || [0, 0];
   const youIdx = myPlayerIdx();
-  const youName = (S.user.username || 'You').slice(0, 10);
-  const oppLabel = document.getElementById('sb-name-opp')?.textContent || document.getElementById('cam-label-opp')?.textContent || 'OPP';
-  const oppName = (oppLabel || 'OPP').slice(0, 10);
-  // Player 0 attacks right goal; player 1 attacks left goal.
-  const leftIdx = 1;
-  const rightIdx = 0;
-  const leftName = leftIdx === youIdx ? youName : oppName;
-  const rightName = rightIdx === youIdx ? youName : oppName;
-  const leftYou = leftIdx === youIdx;
-  const rightYou = rightIdx === youIdx;
+  const names = seatPlayerNames();
+  const youName = String(names[youIdx] || S.user.username || 'You').slice(0, 10);
+  const oppName = String(names[1 - youIdx] || 'OPP').slice(0, 10);
+  // Portrait pitch (landscape rotated 90° CW): top was left (P1), bottom was right (P0).
+  // Player 0 attacks toward bottom; player 1 attacks toward top.
+  const topIdx = 1;
+  const bottomIdx = 0;
+  const topName = topIdx === youIdx ? youName : oppName;
+  const bottomName = bottomIdx === youIdx ? youName : oppName;
+  const topYou = topIdx === youIdx;
+  const bottomYou = bottomIdx === youIdx;
   return `
     <div class="pitch-lines">
-      <svg viewBox="0 0 400 220" xmlns="http://www.w3.org/2000/svg">
-        <rect width="400" height="220" fill="none"/>
-        <rect x="5" y="5" width="390" height="210" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" rx="3"/>
-        <line x1="200" y1="5" x2="200" y2="215" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-        <circle cx="200" cy="110" r="35" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-        <rect x="5" y="75" width="55" height="70" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
-        <rect x="340" y="75" width="55" height="70" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
-        <rect x="0" y="90" width="8" height="40" fill="none" stroke="white" stroke-width="2" opacity="0.7"/>
-        <rect x="392" y="90" width="8" height="40" fill="none" stroke="white" stroke-width="2" opacity="0.7"/>
-        ${Array(6).fill(0).map((_, i) => `<rect x="${i * 68 + 5}" y="5" width="34" height="210" fill="rgba(42,120,42,0.08)"/>`).join('')}
-        <circle cx="70" cy="110" r="3" fill="rgba(255,255,255,0.5)"/>
-        <circle cx="330" cy="110" r="3" fill="rgba(255,255,255,0.5)"/>
-        <circle cx="200" cy="110" r="3" fill="rgba(255,255,255,0.5)"/>
+      <svg viewBox="0 0 220 400" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+        <rect width="220" height="400" fill="none"/>
+        <rect x="5" y="5" width="210" height="390" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" rx="3"/>
+        <line x1="5" y1="200" x2="215" y2="200" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
+        <circle cx="110" cy="200" r="35" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
+        <rect x="75" y="5" width="70" height="55" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+        <rect x="75" y="340" width="70" height="55" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+        <rect x="90" y="0" width="40" height="8" fill="none" stroke="white" stroke-width="2" opacity="0.7"/>
+        <rect x="90" y="392" width="40" height="8" fill="none" stroke="white" stroke-width="2" opacity="0.7"/>
+        ${Array(6).fill(0).map((_, i) => `<rect x="5" y="${i * 68 + 5}" width="210" height="34" fill="rgba(42,120,42,0.08)"/>`).join('')}
+        <circle cx="110" cy="70" r="3" fill="rgba(255,255,255,0.5)"/>
+        <circle cx="110" cy="330" r="3" fill="rgba(255,255,255,0.5)"/>
+        <circle cx="110" cy="200" r="3" fill="rgba(255,255,255,0.5)"/>
       </svg>
     </div>
-    <div class="fb-goal-score left${leftYou ? ' you' : ' opp'}">
-      <span class="fb-goal-label">Goal</span>
-      <span class="fb-goal-name">${leftName}</span>
-      <span class="fb-goal-count">${goals[leftIdx] || 0}</span>
+    <div class="fb-goal-score top${topYou ? ' you' : ' opp'}">
+      <span class="fb-goal-count">${goals[topIdx] || 0}</span>
+      <div class="fb-goal-meta">
+        <span class="fb-goal-label">Goal</span>
+        <span class="fb-goal-name">${topName}</span>
+      </div>
     </div>
-    <div class="fb-goal-score right${rightYou ? ' you' : ' opp'}">
-      <span class="fb-goal-label">Goal</span>
-      <span class="fb-goal-name">${rightName}</span>
-      <span class="fb-goal-count">${goals[rightIdx] || 0}</span>
+    <div class="fb-goal-score bottom${bottomYou ? ' you' : ' opp'}">
+      <span class="fb-goal-count">${goals[bottomIdx] || 0}</span>
+      <div class="fb-goal-meta">
+        <span class="fb-goal-label">Goal</span>
+        <span class="fb-goal-name">${bottomName}</span>
+      </div>
     </div>
-    <div class="football-ball" style="left:calc(${bx}% - 12px);top:calc(50% - 12px)">⚽</div>`;
+    <div class="football-ball" style="left:50%;top:${bx}%">⚽</div>`;
 }
 
 function renderVisualizer() {
@@ -11591,6 +11690,7 @@ function renderVisualizer() {
     stopGolfDartboardFit();
     // Move live webcam cells back before replacing viz DOM (innerHTML would destroy them).
     if (halveItCamsMounted) restoreHalveItCams();
+    if (footballCamsMounted) restoreFootballCams();
     lbl.textContent = '';
     lbl.style.display = 'none';
     el.innerHTML = renderHalveItDartboard(gs);
@@ -11603,6 +11703,7 @@ function renderVisualizer() {
   lbl.style.display = '';
   if (g === 'Golf Darts') {
     restoreGolfCams();
+    if (footballCamsMounted) restoreFootballCams();
     lbl.textContent = '';
     lbl.style.display = 'none';
     el.innerHTML = renderGolfDartsRoom(gs);
@@ -11615,6 +11716,7 @@ function renderVisualizer() {
   stopGolfDartboardFit();
   if (g === 'Golf Checkouts') {
     restoreGolfCams();
+    if (footballCamsMounted) restoreFootballCams();
     lbl.textContent = '';
     lbl.style.display = 'none';
     el.innerHTML = renderGolfCheckoutsRoom(gs);
@@ -11625,18 +11727,45 @@ function renderVisualizer() {
   } else if (g === 'Football Darts') {
     lbl.textContent = '';
     lbl.style.display = 'none';
+    el.innerHTML = '';
     const fbLayer = document.getElementById('football-field-layer');
     if (fbLayer) {
       fbLayer.classList.remove('hidden');
       fbLayer.setAttribute('aria-hidden', 'false');
-      fbLayer.innerHTML = `<div class="football-pitch">${renderFootballPitchHtml(gs)}</div>`;
+      const eventsHtml = (gs.events || []).slice(0, 5).map(e => `<div class="football-event">${e.text}</div>`).join('')
+        || '<div class="football-event" style="font-style:italic">Hit DBull to take first possession</div>';
+      const names = seatPlayerNames();
+      const throwerName = String(names[S.turn] || 'Player').slice(0, 14);
+      const pitchHtml = renderFootballPitchHtml(gs);
+      const existingRoom = fbLayer.querySelector('.fb-room');
+      const pitchEl = fbLayer.querySelector('.football-pitch');
+      const eventsEl = fbLayer.querySelector('.football-events');
+      const labelEl = document.getElementById('fb-cam-label');
+      if (existingRoom && pitchEl && eventsEl) {
+        // In-place update keeps the live thrower <video> mounted.
+        pitchEl.innerHTML = pitchHtml;
+        eventsEl.innerHTML = eventsHtml;
+        if (labelEl) labelEl.textContent = `${throwerName} · Throw`;
+      } else {
+        if (footballCamsMounted) restoreFootballCams();
+        fbLayer.innerHTML = `
+          <div class="fb-room">
+            <div class="fb-cam-col">
+              <div class="fb-cam-label" id="fb-cam-label">${throwerName} · Throw</div>
+              <div class="fb-cam-wrap">
+                <div class="fb-cam-slot" id="fb-cam-player"></div>
+              </div>
+            </div>
+            <div class="fb-pitch-col">
+              <div class="football-pitch">${pitchHtml}</div>
+              <div class="football-events">${eventsHtml}</div>
+            </div>
+          </div>`;
+      }
+      const oppLabel = document.getElementById('sb-name-opp')?.textContent || '';
+      const multiplayer = S.isBot || S.isLocal || !/^(OPP|WAITING|OPPONENT)/i.test(oppLabel.trim());
+      mountFootballCams(multiplayer);
     }
-    el.innerHTML = `
-      <div class="football-viz-foot">
-        <div class="football-events">
-          ${(gs.events || []).slice(0, 5).map(e => `<div class="football-event">${e.text}</div>`).join('') || '<div class="football-event" style="font-style:italic">Hit DBull to take first possession</div>'}
-        </div>
-      </div>`;
 
   } else if (g === 'Snakes & Ladders') {
     lbl.textContent = 'Snakes & Ladders Board';
@@ -11921,6 +12050,7 @@ function leaveMatch() {
   closeModal('x01-edit-approve-modal');
   restoreGolfCams();
   restoreHalveItCams();
+  restoreFootballCams();
   clearGcThrowerCam();
   if (S.roomId) wsSend({ type: 'leave_room' });
   if (S.roomId && S.isHost) {
