@@ -2414,9 +2414,22 @@ async function handleMessage(wsId, msg) {
       client.roomId = msg.roomId;
       send(wsId, { type: 'spectating', roomId: room.id, game: room.config.game,
         hostName: room.config.hostName, guestName: room.config.guestName,
+        hostSeat: roomHostSeat(room), guestSeat: roomGuestSeat(room),
         scores: room.scores, history: room.history, turn: room.turn,
         gameState: room.gameState || null,
+        bot: !!room.config.bot,
+        botSkill: room.config.botSkill,
         standsOptIn: roomStandsOptInMap(room) });
+      // Ask both players to fan out their camera to this spectator.
+      const joined = {
+        type: 'spectator_joined',
+        roomId: room.id,
+        spectatorWsId: wsId,
+        username: client.username || 'Fan',
+      };
+      if (room.hostWsId) send(room.hostWsId, joined);
+      if (room.guestWsId) send(room.guestWsId, joined);
+      broadcastLobbyUpdate();
       break;
     }
 
@@ -2609,8 +2622,28 @@ async function handleMessage(wsId, msg) {
     case 'webrtc_ice': {
       const room = rooms.get(client.roomId);
       if (!room) return;
-      const targetId = room.hostWsId === wsId ? room.guestWsId : room.hostWsId;
-      if (targetId) send(targetId, msg);
+      const spectSet = spectators.get(room.id);
+      const isHost = room.hostWsId === wsId;
+      const isGuest = room.guestWsId === wsId;
+      const isSpectator = !!spectSet?.has(wsId);
+      if (!isHost && !isGuest && !isSpectator) return;
+
+      const fromRole = isHost ? 'host' : (isGuest ? 'guest' : 'spectator');
+      const payload = { ...msg, fromWsId: wsId, fromRole };
+      delete payload.targetWsId;
+
+      let targetId = msg.targetWsId;
+      if (!targetId) {
+        // Legacy player↔player path (no explicit target).
+        if (isHost) targetId = room.guestWsId;
+        else if (isGuest) targetId = room.hostWsId;
+      }
+      if (!targetId || targetId === wsId) return;
+
+      const targetOk = targetId === room.hostWsId
+        || targetId === room.guestWsId
+        || !!spectSet?.has(targetId);
+      if (targetOk) send(targetId, payload);
       break;
     }
 
@@ -2845,9 +2878,13 @@ async function handleMessage(wsId, msg) {
             }
           }
         }
+        const wasSpectator = spectators.get(room.id)?.has(wsId);
         spectators.get(room.id)?.delete(wsId);
         const isParticipant = room.hostWsId === wsId || room.guestWsId === wsId;
-        if (room.hostWsId === wsId && room.status === 'waiting') {
+        if (wasSpectator && !isParticipant) {
+          notifySpectatorLeft(room, wsId);
+          broadcastLobbyUpdate();
+        } else if (room.hostWsId === wsId && room.status === 'waiting') {
           rooms.delete(room.id);
           spectators.delete(room.id);
           broadcastLobbyUpdate();
@@ -3296,24 +3333,38 @@ function handleDisconnect(wsId) {
   if (client?.roomId) {
     const room = rooms.get(client.roomId);
     if (room) {
-      if (room.status === 'waiting' && !room.config.bot) {
+      const spectSet = spectators.get(client.roomId);
+      const wasSpectator = !!spectSet?.has(wsId);
+      const isParticipant = room.hostWsId === wsId || room.guestWsId === wsId;
+      spectSet?.delete(wsId);
+
+      if (wasSpectator && !isParticipant) {
+        notifySpectatorLeft(room, wsId);
+        broadcastLobbyUpdate();
+      } else if (room.status === 'waiting' && !room.config.bot) {
         rooms.delete(client.roomId);
         spectators.delete(client.roomId);
         broadcastLobbyUpdate();
-      } else if (room.status === 'active') {
+      } else if (room.status === 'active' && isParticipant) {
         if (room.config.bot) {
           rooms.delete(client.roomId);
           spectators.delete(client.roomId);
+          broadcastLobbyUpdate();
         } else {
           const otherId = room.hostWsId === wsId ? room.guestWsId : room.hostWsId;
           if (otherId) send(otherId, { type: 'opponent_disconnected', roomId: room.id });
+          // Also tell remaining spectators the match ended.
+          spectSet?.forEach(sid => send(sid, { type: 'opponent_disconnected', roomId: room.id }));
           room.status = 'finished';
           room.lastActivity = Date.now();
           broadcastLobbyUpdate();
         }
+      } else if (room.guestWsId === wsId) {
+        room.guestWsId = null;
       }
+    } else {
+      spectators.get(client.roomId)?.delete(wsId);
     }
-    spectators.get(client.roomId)?.delete(wsId);
   }
   clients.delete(wsId);
   broadcastPresence();
@@ -3949,6 +4000,14 @@ function broadcastLobbyUpdate() {
       spectators: spectators.get(r.id)?.size || 0
     }));
   broadcastAll({ type: 'lobby_update', rooms: openRooms });
+}
+
+/** Tell host/guest a spectator left so they can tear down that peer connection. */
+function notifySpectatorLeft(room, spectatorWsId) {
+  if (!room || !spectatorWsId) return;
+  const payload = { type: 'spectator_left', roomId: room.id, spectatorWsId };
+  if (room.hostWsId) send(room.hostWsId, payload);
+  if (room.guestWsId) send(room.guestWsId, payload);
 }
 
 function shouldSwitchTurn(game, gameState) {
