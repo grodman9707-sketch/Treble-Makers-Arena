@@ -2259,11 +2259,7 @@ async function handleMessage(wsId, msg) {
       const openRooms = [...rooms.values()]
         .filter(r => (r.status === 'waiting' || r.status === 'active') && !r.config.bot)
         .filter(r => isAdmin || !UNDER_CONSTRUCTION_GAMES.has(r.config.game))
-        .map(r => ({
-          id: r.id, game: r.config.game, hostName: r.config.hostName,
-          status: r.status, createdAt: r.createdAt,
-          spectators: spectators.get(r.id)?.size || 0
-        }));
+        .map(lobbyRoomPayload);
       send(wsId, { type: 'lobby', rooms: openRooms });
       break;
     }
@@ -2367,10 +2363,60 @@ async function handleMessage(wsId, msg) {
       break;
     }
 
+    case 'create_local_room': {
+      if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
+      if (!canPlayGame(msg.game, client.username)) {
+        return send(wsId, { type: 'error', message: underConstructionMessage() });
+      }
+      const hostProfile = ensureUserProfile(db.users[client.username]);
+      const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
+      const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
+      const hostIntroName = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : hostProfile.introNameId, 'name'
+      );
+      const hostIntroNick = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : hostProfile.introNicknameId, 'nickname'
+      );
+      const guestName = (typeof msg.guestName === 'string' && msg.guestName.trim())
+        ? msg.guestName.trim().slice(0, 24)
+        : 'Player 2';
+      const room = createRoom(wsId, {
+        game: msg.game, hostName: client.username,
+        guestName, local: true, bot: false,
+        variation: msg.variation || null, startRule: msg.startRule || null,
+        finishRule: msg.finishRule || null, x01Base: msg.x01Base || null,
+        legs: msg.legs || null,
+        visitTimerSeconds: parseInt(msg.visitTimerSeconds, 10) || 0,
+        golfCourse: msg.golfCourse || 'B',
+        capEnabled: msg.capEnabled !== false,
+        hostWalkoutId: hostWalkout,
+        guestWalkoutId: '',
+        hostStandsOptIn: hostStands,
+        guestStandsOptIn: false,
+        hostIntroNameId: hostIntroName,
+        hostIntroNicknameId: hostIntroNick,
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
+      });
+      // Local rooms start active immediately (pass-and-play on one device).
+      room.status = 'active';
+      room.gameState = initGameState(msg.game, room.config);
+      client.roomId = room.id;
+      send(wsId, {
+        type: 'local_room_started', roomId: room.id, game: msg.game,
+        opponentName: guestName, gameState: room.gameState,
+        guestName,
+      });
+      broadcastLobbyUpdate();
+      break;
+    }
+
     case 'join_room': {
       if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
       const room = rooms.get(msg.roomId);
-      if (!room || room.status !== 'waiting') return send(wsId, { type: 'error', message: 'Room not available.' });
+      if (!room || room.status !== 'waiting' || room.config.local || room.config.bot) {
+        return send(wsId, { type: 'error', message: 'Room not available.' });
+      }
       if (!canPlayGame(room.config.game, client.username)) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
@@ -2419,6 +2465,7 @@ async function handleMessage(wsId, msg) {
         gameState: room.gameState || null,
         bot: !!room.config.bot,
         botSkill: room.config.botSkill,
+        local: !!room.config.local,
         standsOptIn: roomStandsOptInMap(room) });
       // Ask both players to fan out their camera to this spectator.
       const joined = {
@@ -2651,9 +2698,18 @@ async function handleMessage(wsId, msg) {
     case 'submit_score': {
       const room = rooms.get(client.roomId);
       if (!room || room.status !== 'active') return;
-      const playerIdx = seatOfWs(room, wsId);
-      if (playerIdx < 0) return;
-      if (room.turn !== playerIdx) return send(wsId, { type: 'error', message: 'Not your turn.' });
+      const isLocalRoom = !!room.config.local;
+      let playerIdx;
+      if (isLocalRoom) {
+        // Pass-and-play: only the host device submits, for whichever seat is up.
+        if (room.hostWsId !== wsId) return;
+        playerIdx = typeof msg.playerIdx === 'number' ? msg.playerIdx : room.turn;
+        if (playerIdx !== 0 && playerIdx !== 1) playerIdx = room.turn;
+      } else {
+        playerIdx = seatOfWs(room, wsId);
+        if (playerIdx < 0) return;
+        if (room.turn !== playerIdx) return send(wsId, { type: 'error', message: 'Not your turn.' });
+      }
 
       room.gameState = msg.gameState
         ? structuredClone(msg.gameState)
@@ -2661,9 +2717,16 @@ async function handleMessage(wsId, msg) {
       room.lastActivity = Date.now();
       room.scores[playerIdx] += msg.delta || 0;
       if (msg.absoluteScore !== undefined) room.scores[playerIdx] = msg.absoluteScore;
-      room.history.unshift({ player: client.username, score: msg.displayScore, note: msg.note, ts: Date.now() });
+      const scorerName = isLocalRoom
+        ? (typeof msg.scorerName === 'string' && msg.scorerName.trim()
+          ? msg.scorerName.trim().slice(0, 40)
+          : (nameAtSeat(room, playerIdx) || client.username))
+        : client.username;
+      room.history.unshift({ player: scorerName, score: msg.displayScore, note: msg.note, ts: Date.now() });
       if (room.history.length > 50) room.history.pop();
-      accrueCareerVisit(room, client.username, msg.displayScore, { checkout: msg.x01Checkout });
+      if (!isLocalRoom) {
+        accrueCareerVisit(room, client.username, msg.displayScore, { checkout: msg.x01Checkout });
+      }
       room.round = Math.floor(room.history.length / 2);
       const turnEnded = shouldSwitchTurn(room.config.game, room.gameState);
       if (turnEnded) {
@@ -2684,7 +2747,9 @@ async function handleMessage(wsId, msg) {
         round: room.round, history: room.history.slice(0, 1),
         gameState: room.gameState
       };
-      broadcastToRoom(room, update);
+      // Local host already applied optimistically — only push to the stands.
+      if (isLocalRoom) broadcastToSpectators(room, update);
+      else broadcastToRoom(room, update);
 
       let gameOver = msg.gameOver;
       let winnerName = msg.winner;
@@ -2710,12 +2775,15 @@ async function handleMessage(wsId, msg) {
       if (gameOver) {
         room.status = 'finished';
         room.lastActivity = Date.now();
-        commitCareerStats(room);
-        const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
-        if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
+        if (!isLocalRoom) {
+          commitCareerStats(room);
+          const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
+          if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
+        }
         const endMsg = buildGameOverMessage(room, winnerName, msg.matchStats);
-        broadcastToRoom(room, endMsg);
-        if (room.config.tournamentId && room.config.bracketMatchId && winnerName) {
+        if (isLocalRoom) broadcastToSpectators(room, endMsg);
+        else broadcastToRoom(room, endMsg);
+        if (!isLocalRoom && room.config.tournamentId && room.config.bracketMatchId && winnerName) {
           recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, winnerName);
         }
         broadcastLobbyUpdate();
@@ -2741,7 +2809,8 @@ async function handleMessage(wsId, msg) {
         type: 'score_update', scores: room.scores, turn: room.turn,
         round: room.round, history: [], gameState: room.gameState
       };
-      broadcastToRoom(room, update);
+      if (room.config.local) broadcastToSpectators(room, update);
+      else broadcastToRoom(room, update);
       break;
     }
 
@@ -2842,7 +2911,8 @@ async function handleMessage(wsId, msg) {
         type: 'score_update', scores: room.scores, turn: room.turn,
         round: room.round, history: [], gameState: room.gameState
       };
-      broadcastToRoom(room, update);
+      if (room.config.local) broadcastToSpectators(room, update);
+      else broadcastToRoom(room, update);
       if (room.config.bot && room.turn === botSeat(room)) scheduleBotMove(room.id);
       break;
     }
@@ -2853,10 +2923,27 @@ async function handleMessage(wsId, msg) {
       if (!room || room.status !== 'active') return;
       const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 200) : '';
       if (!text) return;
+      const spectSet = spectators.get(room.id);
+      const isSpectator = !!spectSet?.has(wsId);
+      const isPlayer = room.hostWsId === wsId || room.guestWsId === wsId;
+      if (!isPlayer && !isSpectator) return;
+
+      // 'players' = host/guest only; 'all' = players + stands.
+      let channel = msg.channel === 'all' ? 'all' : 'players';
+      if (isSpectator) channel = 'all'; // fans can only write to All
+      if (channel === 'players' && !isPlayer) return;
+
       const chatMsg = {
-        type: 'chat', roomId: room.id, from: client.username, text, ts: Date.now()
+        type: 'chat',
+        roomId: room.id,
+        from: client.username,
+        text,
+        channel,
+        fromSpectator: isSpectator,
+        ts: Date.now(),
       };
-      broadcastToRoom(room, chatMsg);
+      if (channel === 'players') broadcastToPlayers(room, chatMsg);
+      else broadcastToRoom(room, chatMsg);
       break;
     }
 
@@ -3991,14 +4078,39 @@ function broadcastToRoom(room, msg) {
   spectators.get(room.id)?.forEach(sid => sendRaw(sid, str));
 }
 
+/** Host + guest only (Players chat / private match events). */
+function broadcastToPlayers(room, msg) {
+  if (!room) return;
+  const str = JSON.stringify(msg);
+  sendRaw(room.hostWsId, str);
+  if (room.guestWsId) sendRaw(room.guestWsId, str);
+}
+
+/** Spectators only — used for local-match state sync without echoing to the host. */
+function broadcastToSpectators(room, msg) {
+  if (!room) return;
+  const str = JSON.stringify(msg);
+  spectators.get(room.id)?.forEach(sid => sendRaw(sid, str));
+}
+
+function lobbyRoomPayload(r) {
+  return {
+    id: r.id,
+    game: r.config.game,
+    hostName: r.config.hostName,
+    guestName: r.config.guestName || null,
+    status: r.status,
+    createdAt: r.createdAt,
+    spectators: spectators.get(r.id)?.size || 0,
+    local: !!r.config.local,
+    bot: !!r.config.bot,
+  };
+}
+
 function broadcastLobbyUpdate() {
   const openRooms = [...rooms.values()]
     .filter(r => (r.status === 'waiting' || r.status === 'active') && !r.config.bot)
-    .map(r => ({
-      id: r.id, game: r.config.game, hostName: r.config.hostName,
-      status: r.status, createdAt: r.createdAt,
-      spectators: spectators.get(r.id)?.size || 0
-    }));
+    .map(lobbyRoomPayload);
   broadcastAll({ type: 'lobby_update', rooms: openRooms });
 }
 
