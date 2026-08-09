@@ -1648,31 +1648,36 @@ body.app-active .arena-bg { animation: none !important; }
   box-sizing: border-box;
 }
 .fb-cam-col {
-  display: flex; flex-direction: column; gap: 0.35rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.35rem;
   min-width: 0; min-height: 0;
   pointer-events: auto;
+  container-type: size;
 }
 .fb-cam-label {
   font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: 0.12em;
   color: var(--gold-light); text-transform: uppercase; text-align: center;
   text-shadow: 0 1px 4px rgba(0,0,0,0.85);
   flex-shrink: 0;
+  width: 100%;
 }
 .fb-cam-wrap {
-  flex: 1 1 0; min-height: 0;
+  /* True square cam box inscribed in the cam column */
+  width: min(100%, max(0px, calc(100cqh - 1.4rem)));
+  aspect-ratio: 1 / 1;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 0 auto;
+  position: relative;
   border-radius: 8px; overflow: hidden;
   border: 2px solid rgba(201, 168, 76, 0.45);
   box-shadow: 0 4px 18px rgba(0,0,0,0.45);
   background: #000;
-  display: flex; align-items: center; justify-content: center;
-  container-type: size;
 }
 .fb-cam-slot {
-  position: relative;
-  width: min(100cqw, 100cqh);
-  height: min(100cqw, 100cqh);
-  max-width: 100%; max-height: 100%;
-  flex-shrink: 0;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
 }
 .fb-cam-slot .webcam-cell {
   position: absolute; inset: 0;
@@ -1686,11 +1691,13 @@ body.app-active .arena-bg { animation: none !important; }
 .fb-cam-slot .cam-video-frame {
   position: absolute; inset: 0;
   width: 100%; height: 100%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: #000;
 }
 .fb-cam-slot .cam-video,
 .fb-cam-slot .cam-video-frame video {
   width: 100% !important; height: 100% !important;
-  object-fit: cover !important;
+  object-fit: contain !important;
 }
 .fb-cam-slot .cam-label { top: 0.45rem; font-size: 0.55rem; z-index: 5; }
 .fb-cam-slot .bot-avatar {
@@ -1825,9 +1832,14 @@ body.app-active .arena-bg { animation: none !important; }
 @media (max-width: 900px) {
   .fb-room {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(160px, 32%) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
-  .fb-cam-col { max-height: 220px; }
+  .fb-cam-col {
+    max-height: none;
+    width: min(220px, 70vw);
+    justify-self: center;
+  }
+  .fb-cam-wrap { width: 100%; }
 }
 
 /* Snakes & Ladders */
@@ -6729,9 +6741,13 @@ function setCamFit(fit) {
 function applyCamView() {
   document.documentElement.style.setProperty('--cam-zoom', String(S.camView.zoom));
   const golfCam = S.game === 'Golf Darts';
-  ['cam-preview-frame', 'cam-frame-local'].forEach(id => {
+  const footballCam = S.game === 'Football Darts';
+  ['cam-preview-frame', 'cam-frame-local', 'cam-frame-remote'].forEach(id => {
     const frame = document.getElementById(id);
-    if (frame) frame.classList.toggle('fit-contain', !golfCam && S.camView.fit === 'contain');
+    if (!frame) return;
+    // Football thrower cam always fits the full stream inside the square box.
+    const contain = footballCam || (!golfCam && S.camView.fit === 'contain');
+    frame.classList.toggle('fit-contain', contain);
   });
   // X01 / Cricket use a separate single-feed <video> — apply local zoom there too.
   applySpecialtyCamZoom();
@@ -11305,6 +11321,9 @@ function mountFootballCams(multiplayer) {
   if (footballCamsMounted && active.parentElement === playerSlot) {
     active.classList.add('your-turn');
     if (idle) idle.classList.remove('your-turn');
+    document.getElementById('cam-frame-local')?.classList.add('fit-contain');
+    document.getElementById('cam-frame-remote')?.classList.add('fit-contain');
+    applyCamView();
     syncBotAvatar();
     return;
   }
@@ -11313,7 +11332,9 @@ function mountFootballCams(multiplayer) {
   playerSlot.appendChild(active);
   active.classList.add('your-turn');
   if (idle) idle.classList.remove('your-turn');
-  document.getElementById('cam-frame-local')?.classList.remove('fit-contain');
+  document.getElementById('cam-frame-local')?.classList.add('fit-contain');
+  document.getElementById('cam-frame-remote')?.classList.add('fit-contain');
+  applyCamView();
   syncBotAvatar();
   footballCamsMounted = true;
 }
