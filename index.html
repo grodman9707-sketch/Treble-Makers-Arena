@@ -1691,12 +1691,15 @@ body.app-active .arena-bg { animation: none !important; }
 .fb-cam-slot .cam-video-frame {
   position: absolute; inset: 0;
   width: 100%; height: 100%; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
   background: #000;
 }
+/* Match Camera Setup framing: cover + --cam-zoom on local feed */
 .fb-cam-slot .cam-video,
 .fb-cam-slot .cam-video-frame video {
   width: 100% !important; height: 100% !important;
+  object-fit: cover !important;
+}
+.fb-cam-slot .cam-video-frame.fit-contain video.cam-video {
   object-fit: contain !important;
 }
 .fb-cam-slot .cam-label { top: 0.45rem; font-size: 0.55rem; z-index: 5; }
@@ -6741,13 +6744,9 @@ function setCamFit(fit) {
 function applyCamView() {
   document.documentElement.style.setProperty('--cam-zoom', String(S.camView.zoom));
   const golfCam = S.game === 'Golf Darts';
-  const footballCam = S.game === 'Football Darts';
-  ['cam-preview-frame', 'cam-frame-local', 'cam-frame-remote'].forEach(id => {
+  ['cam-preview-frame', 'cam-frame-local'].forEach(id => {
     const frame = document.getElementById(id);
-    if (!frame) return;
-    // Football thrower cam always fits the full stream inside the square box.
-    const contain = footballCam || (!golfCam && S.camView.fit === 'contain');
-    frame.classList.toggle('fit-contain', contain);
+    if (frame) frame.classList.toggle('fit-contain', !golfCam && S.camView.fit === 'contain');
   });
   // X01 / Cricket use a separate single-feed <video> — apply local zoom there too.
   applySpecialtyCamZoom();
@@ -11321,8 +11320,6 @@ function mountFootballCams(multiplayer) {
   if (footballCamsMounted && active.parentElement === playerSlot) {
     active.classList.add('your-turn');
     if (idle) idle.classList.remove('your-turn');
-    document.getElementById('cam-frame-local')?.classList.add('fit-contain');
-    document.getElementById('cam-frame-remote')?.classList.add('fit-contain');
     applyCamView();
     syncBotAvatar();
     return;
@@ -11332,8 +11329,7 @@ function mountFootballCams(multiplayer) {
   playerSlot.appendChild(active);
   active.classList.add('your-turn');
   if (idle) idle.classList.remove('your-turn');
-  document.getElementById('cam-frame-local')?.classList.add('fit-contain');
-  document.getElementById('cam-frame-remote')?.classList.add('fit-contain');
+  // Reuse Camera Setup zoom/fit framing on the square thrower cam.
   applyCamView();
   syncBotAvatar();
   footballCamsMounted = true;
