@@ -3608,6 +3608,10 @@ function computeBotMove(room) {
     if (!hasPossession) {
       if (rand() < difficulty * 0.55) {
         gs.possession = playerIdx;
+        // P0 attacks toward high ballX (bottom); P1 toward low ballX (top).
+        gs.ballX = playerIdx === 0
+          ? Math.max(gs.ballX || 50, 62)
+          : Math.min(gs.ballX || 50, 38);
         gs.events.unshift({ text: `🟢 ${botName} took possession!` });
         move.displayScore = 'DBULL';
         move.note = 'BOT took possession!';
@@ -3620,7 +3624,10 @@ function computeBotMove(room) {
     } else if (rand() < difficulty) {
       const useDBull = rand() < 0.12;
       gs.goals[playerIdx] = (gs.goals[playerIdx] || 0) + 1;
-      gs.ballX = Math.max(5, (gs.ballX || 50) - 15);
+      gs.ballX = playerIdx === 0
+        ? Math.min(95, (gs.ballX || 50) + 15)
+        : Math.max(5, (gs.ballX || 50) - 15);
+      gs.lastGoal = { player: playerIdx, id: Date.now() };
       gs.events.unshift({ text: `⚽ GOAL by ${botName}!` });
       move.delta = 1;
       scored = true;
