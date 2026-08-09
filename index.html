@@ -2064,6 +2064,33 @@ body.app-active .arena-bg { animation: none !important; }
   color: var(--text); font-family: 'Exo 2', sans-serif; font-size: 0.82rem;
 }
 .chat-input-row input:focus { outline: none; border-color: var(--gold); }
+.chat-msg.fan .chat-from { color: #6db8e8; }
+.chat-channel-tabs {
+  display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;
+}
+.chat-tab {
+  position: relative; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.35);
+  color: var(--muted); border-radius: 999px; padding: 0.2rem 0.55rem;
+  font-family: 'Exo 2', sans-serif; font-size: 0.68rem; letter-spacing: 0.04em;
+  text-transform: uppercase; cursor: pointer;
+}
+.chat-tab:hover { border-color: rgba(201,168,76,0.45); color: var(--silver-light); }
+.chat-tab.active {
+  border-color: rgba(201,168,76,0.65); color: var(--gold-light);
+  background: rgba(201,168,76,0.12);
+}
+.chat-tab.priority-pulse { box-shadow: 0 0 0 1px rgba(201,168,76,0.55); }
+.chat-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.05rem; height: 1.05rem; margin-left: 0.28rem; padding: 0 0.28rem;
+  border-radius: 999px; font-size: 0.62rem; font-weight: 700; line-height: 1;
+  background: #3d7ec9; color: #fff; vertical-align: middle;
+}
+.chat-badge.dot-only { min-width: 0.55rem; width: 0.55rem; height: 0.55rem; padding: 0; font-size: 0; }
+.chat-badge.players { background: var(--gold); color: #1a1408; }
+.chat-badge.hidden { display: none !important; }
+.ckt-chat-btn.has-unread { border-color: rgba(61,126,201,0.7); }
+.ckt-chat-btn.has-unread.priority { border-color: rgba(201,168,76,0.85); }
 
 /* ════════════════════════════════════════════
    ██ TOURNAMENTS PAGE
@@ -4586,7 +4613,7 @@ body.app-active .arena-bg { animation: none !important; }
             <option value="local">Play Local (same device)</option>
           </select>
           <div id="local-match-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
-            Same-device pass-and-play for unlocked games — no camera or online opponent.
+            Same-device pass-and-play — listed live in the Stands so fans can watch and chat.
           </div>
         </div>
         <div class="form-group" id="invite-friend-row">
@@ -5395,6 +5422,25 @@ function handleWS(msg) {
         ? `🏆 ${msg.tournamentName} — bracket match started!`
         : `Bot match started — Level ${normalizeBotLevel(S.botSkill)}. Good luck!`);
       break;
+    case 'local_room_started':
+      S.roomId = msg.roomId;
+      S.isHost = true;
+      S.isLocal = true;
+      S.isBot = false;
+      S.game = msg.game;
+      resetMatchSeats();
+      S.mySeat = 0;
+      {
+        const p1 = (S.user.username || 'Player 1').trim() || 'Player 1';
+        const p2 = (msg.guestName || msg.opponentName || 'Player 2').trim() || 'Player 2';
+        S.localNames = [p1, p2];
+        S.opponentName = p2;
+        S.matchHostName = p1;
+        S.matchGuestName = p2;
+        startMatchUI(msg.game, p2, false, msg.gameState, null);
+      }
+      toast('Local match — pass the device between turns. Visible in the Stands.');
+      break;
     case 'joined_room':
       S.roomId = msg.roomId; S.isHost = false; S.game = msg.game;
       resetMatchSeats();
@@ -5465,7 +5511,7 @@ function handleWS(msg) {
       break;
     case 'chat':
       if (!S.roomId || (msg.roomId && msg.roomId !== S.roomId)) break;
-      addChatMsg(msg.from, msg.text);
+      receiveChatMessage(msg);
       break;
     case 'tournaments':
       S.tournaments = msg.data || [];
@@ -5538,6 +5584,7 @@ function handleWS(msg) {
       }
       S.mySeat = 0; // Neutral broadcast view: seat 0 left, seat 1 right
       if (msg.botSkill != null) S.botSkill = normalizeBotLevel(msg.botSkill);
+      S.isLocal = !!msg.local;
       S.roleStreams = { host: null, guest: null };
       S.spectatePeers = new Map();
       startMatchUI(
@@ -6489,23 +6536,27 @@ function matchCard(r, isActive) {
   const isMine = r.hostName === S.user.username;
   const canJoin = canPlayGame(r.game, S.user);
   const canWatch = canJoin;
+  const isLocal = !!r.local;
   const expiresIn = Math.max(0, 180 - Math.floor((Date.now() - r.createdAt) / 1000));
   const expLabel = expiresIn >= 60 ? `${Math.ceil(expiresIn / 60)}m left` : `${expiresIn}s left`;
   const constructionBadge = isGameUnderConstruction(r.game)
     ? '<span class="mc-tag">🚧 Under Construction</span>' : '';
+  const vsLine = r.guestName
+    ? `<div class="mc-host">${usernameLinkHtml(r.hostName)} <span style="color:var(--muted)">vs</span> ${isLocal || r.bot ? escapeHtml(r.guestName) : usernameLinkHtml(r.guestName)}</div>`
+    : `<div class="mc-host">Host: <strong>${usernameLinkHtml(r.hostName)}</strong></div>`;
   return `<div class="match-card">
     <div class="mc-game">${r.game}</div>
-    <div class="mc-host">Host: <strong>${usernameLinkHtml(r.hostName)}</strong></div>
+    ${vsLine}
     <div class="mc-tags">
       <span class="mc-tag ${isActive ? 'live' : 'waiting'}">${isActive ? '● LIVE' : '⌛ WAITING'}</span>
-      <span class="mc-tag">📹 CAM REQ</span>
+      ${isLocal ? '<span class="mc-tag">🖥 LOCAL</span>' : '<span class="mc-tag">📹 CAM REQ</span>'}
       ${constructionBadge}
       <span class="mc-tag">${age}</span>
       ${!isActive ? `<span class="mc-tag">⏱ ${expLabel}</span>` : ''}
       ${r.spectators > 0 ? `<span class="mc-tag">👁 ${r.spectators}</span>` : ''}
     </div>
     <div class="mc-actions">
-      ${!isActive && canJoin ? `<button class="btn btn-gold btn-sm" onclick="joinRoom('${r.id}','${r.game}','${r.hostName}')">Join →</button>` : ''}
+      ${!isActive && !isLocal && canJoin ? `<button class="btn btn-gold btn-sm" onclick="joinRoom('${r.id}','${r.game}','${r.hostName}')">Join →</button>` : ''}
       ${!isActive && isMine ? `<button class="btn btn-danger btn-sm" onclick="cancelRoom('${r.id}')">Remove</button>` : ''}
       ${canWatch ? `<button class="btn btn-sm" onclick="spectateRoom('${r.id}','${r.game}','${r.hostName}')">👁 Watch</button>` : ''}
     </div>
@@ -7001,28 +7052,21 @@ function supportsLocalPlay(game) {
   return canPlayGame(game || S.game, S.user);
 }
 
-/** Same-device pass-and-play — no camera, WebRTC, or online opponent. */
+/** Same-device pass-and-play — registers a live room so the Stands can watch. */
 function startLocalMatch() {
   if (!supportsLocalPlay(S.game)) {
     toast('This game is under construction. Admin access only.');
     return;
   }
   closeModal('create-match-modal');
-  S.isLocal = true;
-  S.isBot = false;
-  S.isHost = true;
-  S.roomId = null;
-  S.hostSeat = 0;
-  S.guestSeat = 1;
-  S.mySeat = 0;
-  S.turn = 0;
-  const p1 = (S.user.username || 'Player 1').trim() || 'Player 1';
   const p2 = 'Player 2';
-  S.localNames = [p1, p2];
-  S.opponentName = p2;
-  const gs = initGS(S.game);
-  startMatchUI(S.game, p2, false, gs, null);
-  toast('Local match — pass the device between turns.');
+  wsSend({
+    type: 'create_local_room',
+    game: S.game,
+    guestName: p2,
+    ...(S.matchVariation || {}),
+    ...arenaPresencePrefsPayload(),
+  });
 }
 
 function attachLocalCamera() {
@@ -7509,7 +7553,7 @@ function setHalveItInputMode(mode) {
 
 function startMatchUI(game, opponentName, spectating = false, gameState = null, matchPreview = null) {
   resetChatUI();
-  setChatEnabled(!spectating && !S.isLocal);
+  configureMatchChat({ spectating });
   applySpectatingMode(spectating);
   resetMatchDrama();
   resetCommentaryMemory();
@@ -8921,7 +8965,7 @@ function submitX01() {
 
   const winner = res.matchOver ? names[p] : null;
   const newGs = JSON.parse(JSON.stringify(gs));
-  if (!S.isLocal) {
+  if (S.roomId) {
     wsSend({
       type: 'submit_score',
       delta: 0,
@@ -8933,7 +8977,8 @@ function submitX01() {
       winner,
       highScore: Math.max(...gs.points),
       x01Checkout: res.legWon ? startRem : undefined,
-      matchStats: { scores: [gs.legs[0], gs.legs[1]], time: Math.floor((Date.now() - S.stats.startTime) / 1000), bestRound: Math.max(...gs.points) }
+      matchStats: { scores: [gs.legs[0], gs.legs[1]], time: Math.floor((Date.now() - S.stats.startTime) / 1000), bestRound: Math.max(...gs.points) },
+      ...(S.isLocal ? { playerIdx: p, scorerName: names[p] } : {}),
     });
   }
 
@@ -8969,7 +9014,7 @@ function undoX01() {
   S.gameState = JSON.parse(JSON.stringify(snap.gameState));
   S.scores = [...snap.scores];
   S.turn = snap.turn;
-  if (!S.isLocal) {
+  if (S.roomId) {
     wsSend({
       type: 'x01_undo',
       gameState: S.gameState,
@@ -9460,7 +9505,7 @@ function cktSubmitVisit() {
 
   const winner = res.matchOver ? names[res.winnerIdx] : null;
   const newGs = JSON.parse(JSON.stringify(gs));
-  if (!S.isLocal) {
+  if (S.roomId) {
     wsSend({
       type: 'submit_score',
       delta: 0,
@@ -9475,7 +9520,8 @@ function cktSubmitVisit() {
         scores: [gs.legs?.[0] || 0, gs.legs?.[1] || 0],
         time: Math.floor((Date.now() - S.stats.startTime) / 1000),
         bestRound: res.points
-      }
+      },
+      ...(S.isLocal ? { playerIdx: p, scorerName: names[p] } : {}),
     });
   }
 
@@ -9510,7 +9556,7 @@ function cktUndo() {
   S.gameState = JSON.parse(JSON.stringify(snap.gameState));
   S.scores = [...snap.scores];
   S.turn = snap.turn;
-  if (!S.isLocal) {
+  if (S.roomId) {
     wsSend({ type: 'cricket_undo', gameState: S.gameState, scores: S.scores, turn: S.turn });
   }
   updateMatchUI();
@@ -10133,13 +10179,18 @@ function submitScore(opts = {}) {
   if (!winner) winner = determineWinner(g, S.scores, gs);
 
   const newGs = JSON.parse(JSON.stringify(gs));
-  if (!S.isLocal) {
+  if (S.roomId) {
+    const localIdx = myPlayerIdx();
+    const scorerName = S.isLocal
+      ? (S.localNames?.[localIdx] || S.user.username || `Player ${localIdx + 1}`)
+      : (S.user.username || 'You');
     wsSend({
       type: 'submit_score', delta, absoluteScore, displayScore, note,
       gameState: newGs, gameOver,
       winner: gameOver ? winner : null,
       highScore: S.stats.highScore,
-      matchStats: { scores: S.scores, time: Math.floor((Date.now()-S.stats.startTime)/1000), bestRound: S.stats.bestRound }
+      matchStats: { scores: S.scores, time: Math.floor((Date.now()-S.stats.startTime)/1000), bestRound: S.stats.bestRound },
+      ...(S.isLocal ? { playerIdx: localIdx, scorerName } : {}),
     });
   }
 
@@ -12324,20 +12375,121 @@ function buildClockSVG(yourProg, oppProg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  CHAT
+//  CHAT  (Players channel + All / stands channel)
 // ═══════════════════════════════════════════════════════════
-const CHAT_WELCOME_HTML = '<div class="chat-msg system"><span class="chat-text">Match chat started. Good luck! 🎯</span></div>';
+const CHAT_WELCOME = {
+  players: 'Players chat — private to the two at the oche.',
+  all: 'All chat — players and the stands. Fans can reply here.',
+};
 const CHAT_CONTAINER_IDS = ['chat-messages', 'x01-chat-messages', 'halveit-chat-messages', 'ckt-chat-messages'];
+const CHAT_AREA_SPECS = [
+  { area: 'x01-chat-area', messages: 'x01-chat-messages', headerSel: '#x01-chat-area .sidebar-panel-header' },
+  { area: 'chat-area', messages: 'chat-messages', headerSel: '#chat-area .sidebar-panel-header' },
+  { area: 'halveit-chat-area', messages: 'halveit-chat-messages', headerSel: '#halveit-chat-area .sidebar-panel-header' },
+  { area: 'ckt-chat-popup', messages: 'ckt-chat-messages', headerSel: '#ckt-chat-popup .sidebar-panel-header' },
+];
+
+let chatChannel = 'players'; // 'players' | 'all'
+let chatLogs = { players: [], all: [] };
+let chatUnread = { players: 0, all: 0 };
 
 function resetChatUI() {
+  chatLogs = { players: [], all: [] };
+  chatUnread = { players: 0, all: 0 };
+  chatChannel = S.isSpectating || S.isLocal ? 'all' : 'players';
   CHAT_CONTAINER_IDS.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = CHAT_WELCOME_HTML;
+    if (el) el.innerHTML = '';
   });
   document.querySelectorAll('#chat-input, #x01-chat-input, #halveit-chat-input, #ckt-chat-input').forEach(el => {
     if (el) { el.value = ''; el.disabled = false; }
   });
   toggleCktChatPopup(false);
+  ensureChatChannelTabs();
+  renderActiveChatChannel();
+  updateChatBadges();
+}
+
+function configureMatchChat({ spectating = false } = {}) {
+  chatChannel = spectating || S.isLocal ? 'all' : 'players';
+  ensureChatChannelTabs();
+  // Spectators only use All; players can use both. Local (with room) can use both.
+  const enabled = !!S.roomId;
+  setChatEnabled(enabled);
+  document.querySelectorAll('.chat-tab[data-channel="players"]').forEach(tab => {
+    tab.classList.toggle('hidden', !!spectating);
+  });
+  renderActiveChatChannel();
+  updateChatBadges();
+  syncChatPlaceholders();
+}
+
+function ensureChatChannelTabs() {
+  CHAT_AREA_SPECS.forEach(spec => {
+    const header = document.querySelector(spec.headerSel);
+    if (!header) return;
+    let tabs = header.querySelector('.chat-channel-tabs');
+    if (tabs) return;
+    const closeBtn = header.querySelector('.ckt-chat-close');
+    tabs = document.createElement('div');
+    tabs.className = 'chat-channel-tabs';
+    tabs.innerHTML = `
+      <button type="button" class="chat-tab" data-channel="players" onclick="setChatChannel('players')">
+        Players<span class="chat-badge players hidden" data-badge="players"></span>
+      </button>
+      <button type="button" class="chat-tab" data-channel="all" onclick="setChatChannel('all')">
+        All<span class="chat-badge hidden" data-badge="all"></span>
+      </button>`;
+    header.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'chat-header-label';
+    label.textContent = 'Match Chat';
+    label.style.marginRight = '0.55rem';
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.alignItems = 'center';
+    left.style.gap = '0.45rem';
+    left.style.flexWrap = 'wrap';
+    left.appendChild(label);
+    left.appendChild(tabs);
+    header.appendChild(left);
+    if (closeBtn) header.appendChild(closeBtn);
+    else if (spec.area === 'ckt-chat-popup') {
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'ckt-chat-close';
+      close.title = 'Close';
+      close.textContent = '×';
+      close.onclick = () => toggleCktChatPopup(false);
+      header.appendChild(close);
+    }
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.gap = '0.5rem';
+    header.style.flexWrap = 'wrap';
+  });
+}
+
+function setChatChannel(channel) {
+  if (channel !== 'players' && channel !== 'all') return;
+  if (S.isSpectating && channel === 'players') return;
+  chatChannel = channel;
+  chatUnread[channel] = 0;
+  renderActiveChatChannel();
+  updateChatBadges();
+  syncChatPlaceholders();
+  const inp = activeChatInput();
+  try { inp?.focus({ preventScroll: true }); } catch { try { inp?.focus(); } catch { /* ignore */ } }
+}
+
+function syncChatPlaceholders() {
+  const ph = chatChannel === 'all'
+    ? (S.isSpectating ? 'Cheer the match…' : 'Message players & stands…')
+    : 'Message your opponent…';
+  document.querySelectorAll('#chat-input, #x01-chat-input, #halveit-chat-input, #ckt-chat-input').forEach(el => {
+    if (el) el.placeholder = ph;
+  });
 }
 
 function setChatEnabled(enabled) {
@@ -12350,8 +12502,96 @@ function sendChat() {
   const inp = activeChatInput();
   const txt = (inp?.value || '').trim();
   if (!txt || !S.roomId) return;
-  wsSend({ type: 'chat', text: txt });
-  document.querySelectorAll('#chat-input, #x01-chat-input, #halveit-chat-input, #ckt-chat-input').forEach(el => { if (el) el.value = ''; });
+  const channel = S.isSpectating ? 'all' : chatChannel;
+  wsSend({ type: 'chat', text: txt, channel });
+  document.querySelectorAll('#chat-input, #x01-chat-input, #halveit-chat-input, #ckt-chat-input').forEach(el => {
+    if (el) el.value = '';
+  });
+}
+
+function receiveChatMessage(msg) {
+  const channel = msg.channel === 'all' ? 'all' : 'players';
+  // Spectators never see Players chat.
+  if (S.isSpectating && channel === 'players') return;
+  const entry = {
+    from: msg.from,
+    text: msg.text,
+    systemText: null,
+    fromSpectator: !!msg.fromSpectator,
+    ts: msg.ts || Date.now(),
+  };
+  chatLogs[channel].push(entry);
+  if (chatLogs[channel].length > 200) chatLogs[channel].shift();
+
+  if (channel === chatChannel) {
+    appendChatMessageToAllContainers(entry);
+  } else {
+    // Silent indicator only — never toast / steal focus for All chat.
+    chatUnread[channel] = Math.min(99, (chatUnread[channel] || 0) + 1);
+    updateChatBadges();
+    // Players chat takes priority: if a private message arrives while on All, pulse Players.
+    if (channel === 'players') {
+      document.querySelectorAll('.chat-tab[data-channel="players"]').forEach(tab => {
+        tab.classList.add('priority-pulse');
+      });
+    }
+  }
+}
+
+function appendChatMessageToAllContainers(entry) {
+  CHAT_CONTAINER_IDS.forEach(id => {
+    appendChatMessage(document.getElementById(id), entry.from, entry.text, entry.systemText, entry.fromSpectator);
+  });
+}
+
+function renderActiveChatChannel() {
+  const log = chatLogs[chatChannel] || [];
+  CHAT_CONTAINER_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    if (!log.length) {
+      appendChatMessage(el, null, null, CHAT_WELCOME[chatChannel] || CHAT_WELCOME.players);
+      return;
+    }
+    log.forEach(entry => {
+      appendChatMessage(el, entry.from, entry.text, entry.systemText, entry.fromSpectator);
+    });
+  });
+  document.querySelectorAll('.chat-tab').forEach(tab => {
+    const ch = tab.dataset.channel;
+    tab.classList.toggle('active', ch === chatChannel);
+    if (ch === chatChannel) tab.classList.remove('priority-pulse');
+  });
+}
+
+function updateChatBadges() {
+  document.querySelectorAll('[data-badge]').forEach(badge => {
+    const ch = badge.getAttribute('data-badge');
+    const n = chatUnread[ch] || 0;
+    if (!n || ch === chatChannel) {
+      badge.classList.add('hidden');
+      badge.textContent = '';
+      return;
+    }
+    badge.classList.remove('hidden');
+    // All chat: quiet blue dot (or count). Players: gold count (priority).
+    if (ch === 'all' && n < 2) {
+      badge.classList.add('dot-only');
+      badge.classList.remove('players');
+      badge.textContent = '';
+    } else {
+      badge.classList.remove('dot-only');
+      badge.classList.toggle('players', ch === 'players');
+      badge.textContent = String(n);
+    }
+  });
+  const cktBtn = document.getElementById('ckt-chat-btn');
+  if (cktBtn) {
+    const any = (chatUnread.players || 0) + (chatUnread.all || 0);
+    cktBtn.classList.toggle('has-unread', any > 0);
+    cktBtn.classList.toggle('priority', (chatUnread.players || 0) > 0);
+  }
 }
 
 function toggleCktChatPopup(forceOpen) {
@@ -12360,6 +12600,9 @@ function toggleCktChatPopup(forceOpen) {
   const open = forceOpen === true ? true : forceOpen === false ? false : popup.classList.contains('hidden');
   popup.classList.toggle('hidden', !open);
   if (open) {
+    // Opening chat clears the active channel's unread.
+    chatUnread[chatChannel] = 0;
+    updateChatBadges();
     const inp = document.getElementById('ckt-chat-input');
     try { inp?.focus({ preventScroll: true }); } catch (e) { try { inp?.focus(); } catch (e2) {} }
   }
@@ -12376,30 +12619,36 @@ function activeChatInput() {
     return document.getElementById('x01-chat-input') || document.getElementById('chat-input');
   }
   const ml = document.querySelector('.match-layout');
-  if (ml?.classList.contains('halveit-match') || ml?.classList.contains('golf-darts-match') || ml?.classList.contains('football-darts-match')) {
+  if (ml?.classList.contains('halveit-match') || ml?.classList.contains('golf-darts-match') || ml?.classList.contains('football-darts-match') || ml?.classList.contains('golf-checkouts-match')) {
     return document.getElementById('halveit-chat-input') || document.getElementById('chat-input');
   }
   return document.getElementById('chat-input');
 }
 
-function appendChatMessage(container, from, text, systemText) {
+function appendChatMessage(container, from, text, systemText, fromSpectator) {
   if (!container) return;
   const d = document.createElement('div');
   if (systemText) {
     d.className = 'chat-msg system';
     d.innerHTML = `<span class="chat-text">${systemText}</span>`;
   } else {
-    d.className = 'chat-msg';
-    d.innerHTML = `<span class="chat-from">${usernameLinkHtml(from)}:</span><span class="chat-text">${text}</span>`;
+    d.className = 'chat-msg' + (fromSpectator ? ' fan' : '');
+    d.innerHTML = `<span class="chat-from">${usernameLinkHtml(from)}${fromSpectator ? ' 👁' : ''}:</span><span class="chat-text">${escapeHtml(text)}</span>`;
   }
   container.appendChild(d);
   container.scrollTop = container.scrollHeight;
 }
 
 function addChatMsg(from, text, systemText) {
-  CHAT_CONTAINER_IDS.forEach(id => {
-    appendChatMessage(document.getElementById(id), from, text, systemText);
-  });
+  // Legacy helper — treat as Players-channel / system for both logs when needed.
+  if (systemText) {
+    const entry = { from: null, text: null, systemText, fromSpectator: false, ts: Date.now() };
+    chatLogs.players.push(entry);
+    chatLogs.all.push(entry);
+    if (chatChannel === 'players' || chatChannel === 'all') appendChatMessageToAllContainers(entry);
+    return;
+  }
+  receiveChatMessage({ from, text, channel: 'players' });
 }
 
 // ═══════════════════════════════════════════════════════════
