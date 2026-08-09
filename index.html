@@ -3022,10 +3022,6 @@ body.app-active .arena-bg { animation: none !important; }
   opacity: 0; transition: opacity 0.25s; pointer-events: none;
 }
 .arena-changeover.show { opacity: 1; }
-#page-match.stage-pip .x01-cam-frame,
-#page-match.stage-pip .ckt-cam-frame {
-  box-shadow: 0 0 0 2px rgba(201,168,76,0.55), 0 12px 40px rgba(0,0,0,0.45);
-}
 #page-match.spectating .x01-input-wrap,
 #page-match.spectating #ckt-pad,
 #page-match.spectating #number-pad,
@@ -5061,6 +5057,13 @@ const S = {
   gameState: {},
   stats: { highScore: 0, turnsPlayed: 0, startTime: null, bestRound: 0 },
   localStream: null, peerConn: null, remoteStream: null,
+  // Spectator fan-out: players keep per-spectator peer connections; spectators
+  // keep per-role peers and MediaStreams keyed by host/guest role.
+  spectatorPeers: null,
+  spectatePeers: null,
+  roleStreams: null,
+  matchHostName: null,
+  matchGuestName: null,
   camReady: false,
   opponentName: 'Opponent',
   iceCandidateQueue: [],
@@ -5512,14 +5515,37 @@ function handleWS(msg) {
     case 'webrtc_offer': handleRTCOffer(msg); break;
     case 'webrtc_answer': handleRTCAnswer(msg); break;
     case 'webrtc_ice': handleRTCIce(msg); break;
+    case 'spectator_joined':
+      if (!S.isSpectating) offerCamToSpectator(msg.spectatorWsId);
+      break;
+    case 'spectator_left':
+      closeSpectatorPeer(msg.spectatorWsId);
+      break;
     case 'spectating':
       S.game = msg.game;
       S.roomId = msg.roomId || S.roomId;
+      S.isHost = false;
+      S.matchHostName = msg.hostName || null;
+      S.matchGuestName = msg.guestName || null;
       S.scores = Array.isArray(msg.scores) ? msg.scores.slice(0, 2) : [0, 0];
       S.turn = typeof msg.turn === 'number' ? msg.turn : 0;
       if (Array.isArray(msg.history)) S.history = msg.history.slice();
       S.standsOptInMap = msg.standsOptIn && typeof msg.standsOptIn === 'object' ? msg.standsOptIn : {};
-      startMatchUI(msg.game, msg.guestName ? `${msg.hostName} vs ${msg.guestName}` : msg.hostName, true, msg.gameState || null);
+      if (typeof msg.hostSeat === 'number' || typeof msg.guestSeat === 'number') {
+        applyMatchSeats(msg.hostSeat, msg.guestSeat);
+      } else {
+        resetMatchSeats();
+      }
+      S.mySeat = 0; // Neutral broadcast view: seat 0 left, seat 1 right
+      if (msg.botSkill != null) S.botSkill = normalizeBotLevel(msg.botSkill);
+      S.roleStreams = { host: null, guest: null };
+      S.spectatePeers = new Map();
+      startMatchUI(
+        msg.game,
+        msg.guestName || msg.hostName,
+        true,
+        msg.gameState || null
+      );
       break;
     case 'gallery_reaction':
       handleGalleryReaction(msg);
@@ -7082,6 +7108,218 @@ function attachRemoteStream(stream) {
   attachBullCornerCams();
 }
 
+function ensureSpectatorPeerMap() {
+  if (!(S.spectatorPeers instanceof Map)) S.spectatorPeers = new Map();
+  return S.spectatorPeers;
+}
+
+function ensureSpectatePeerMap() {
+  if (!(S.spectatePeers instanceof Map)) S.spectatePeers = new Map();
+  return S.spectatePeers;
+}
+
+function closeSpectatorPeer(spectatorWsId) {
+  if (!spectatorWsId || !(S.spectatorPeers instanceof Map)) return;
+  const entry = S.spectatorPeers.get(spectatorWsId);
+  if (!entry) return;
+  try { entry.pc?.close(); } catch { /* ignore */ }
+  S.spectatorPeers.delete(spectatorWsId);
+}
+
+function closeAllSpectatorPeers() {
+  if (S.spectatorPeers instanceof Map) {
+    S.spectatorPeers.forEach(entry => {
+      try { entry.pc?.close(); } catch { /* ignore */ }
+    });
+  }
+  S.spectatorPeers = null;
+}
+
+function closeSpectatePeers() {
+  if (S.spectatePeers instanceof Map) {
+    S.spectatePeers.forEach(pc => {
+      try { pc?.close(); } catch { /* ignore */ }
+    });
+  }
+  S.spectatePeers = null;
+  S.roleStreams = null;
+}
+
+function spectatorSeatStreams() {
+  const streams = [null, null];
+  if (!S.roleStreams) return streams;
+  const hs = S.hostSeat ?? 0;
+  const gs = S.guestSeat ?? 1;
+  if (S.roleStreams.host) streams[hs] = S.roleStreams.host;
+  if (S.roleStreams.guest) streams[gs] = S.roleStreams.guest;
+  return streams;
+}
+
+function rebindSpectatorSeatVideos() {
+  if (!S.isSpectating) return;
+  const streams = spectatorSeatStreams();
+  if (streams[0]) {
+    bindVideoElement(document.getElementById('video-local'), streams[0], { muted: true });
+    const ph = document.getElementById('cam-placeholder-you');
+    if (ph) ph.style.display = 'none';
+  }
+  if (streams[1]) {
+    bindVideoElement(document.getElementById('video-remote'), streams[1], { muted: true });
+    const ph = document.getElementById('cam-placeholder-opp');
+    if (ph) ph.style.display = 'none';
+  }
+  if (isX01Game(S.game)) updateX01Camera();
+  if (isCricketGame(S.game)) updateCricketCamera();
+  attachBullCornerCams();
+}
+
+/** Players: push local camera to a newly joined spectator. */
+async function offerCamToSpectator(spectatorWsId) {
+  if (!spectatorWsId || S.isSpectating || !S.localStream || !S.roomId) return;
+  const map = ensureSpectatorPeerMap();
+  closeSpectatorPeer(spectatorWsId);
+
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const iceQueue = [];
+  map.set(spectatorWsId, { pc, iceQueue });
+
+  S.localStream.getTracks().forEach(t => pc.addTrack(t, S.localStream));
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      wsSend({ type: 'webrtc_ice', candidate: e.candidate, targetWsId: spectatorWsId });
+    }
+  };
+
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    wsSend({
+      type: 'webrtc_offer',
+      sdp: offer,
+      targetWsId: spectatorWsId,
+      fromRole: S.isHost ? 'host' : 'guest',
+    });
+  } catch (err) {
+    console.warn('offerCamToSpectator failed:', err?.message || err);
+    closeSpectatorPeer(spectatorWsId);
+  }
+}
+
+/** Bind a received player cam into the spectator seat slots / match videos. */
+function attachSpectatorRoleStream(role, stream) {
+  if (!stream || !S.isSpectating) return;
+  const key = role === 'guest' ? 'guest' : 'host';
+  if (!S.roleStreams) S.roleStreams = { host: null, guest: null };
+  S.roleStreams[key] = stream;
+  rebindSpectatorSeatVideos();
+  updateMatchUI();
+}
+
+/** Current thrower feed for spectators (mirrors how players bind X01/Cricket cam). */
+function spectatorThrowerStream() {
+  const streams = spectatorSeatStreams();
+  if (S.isBot) {
+    // Vs bot, players keep the human cam on the thrower view for both turns.
+    return streams[S.hostSeat ?? 0] || streams.find(Boolean) || null;
+  }
+  return streams[typeof S.turn === 'number' ? S.turn : 0] || null;
+}
+
+async function flushPeerIceQueue(pc, queue) {
+  if (!pc || !queue?.length) return;
+  const queued = queue.splice(0, queue.length);
+  for (const candidate of queued) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.warn('addIceCandidate failed:', err?.message || err);
+    }
+  }
+}
+
+async function handleSpectateOffer(msg) {
+  if (!msg?.sdp || !msg.fromWsId || !msg.fromRole) return;
+  const role = msg.fromRole === 'guest' ? 'guest' : 'host';
+  const map = ensureSpectatePeerMap();
+  const existing = map.get(role);
+  if (existing) {
+    try { existing.close(); } catch { /* ignore */ }
+  }
+
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const iceQueue = [];
+  pc._spectateIceQueue = iceQueue;
+  map.set(role, pc);
+
+  pc.ontrack = (e) => {
+    const stream = e.streams?.[0] || (e.track ? new MediaStream([e.track]) : null);
+    attachSpectatorRoleStream(role, stream);
+  };
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      wsSend({ type: 'webrtc_ice', candidate: e.candidate, targetWsId: msg.fromWsId });
+    }
+  };
+
+  try {
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    wsSend({ type: 'webrtc_answer', sdp: answer, targetWsId: msg.fromWsId });
+    await flushPeerIceQueue(pc, iceQueue);
+  } catch (err) {
+    console.warn('handleSpectateOffer failed:', err?.message || err);
+  }
+}
+
+async function handleSpectatorAnswer(msg) {
+  if (!msg?.sdp || !msg.fromWsId) return;
+  const entry = S.spectatorPeers?.get(msg.fromWsId);
+  if (!entry?.pc) return;
+  try {
+    await entry.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    await flushPeerIceQueue(entry.pc, entry.iceQueue);
+  } catch (err) {
+    console.warn('handleSpectatorAnswer failed:', err?.message || err);
+  }
+}
+
+async function handleSpectatorIce(msg) {
+  if (!msg?.candidate || !msg.fromWsId) return;
+  // Player receiving ICE from a spectator
+  const asPublisher = S.spectatorPeers?.get(msg.fromWsId);
+  if (asPublisher?.pc) {
+    if (asPublisher.pc.remoteDescription) {
+      try {
+        await asPublisher.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+      } catch (err) {
+        console.warn('addIceCandidate failed:', err?.message || err);
+      }
+    } else {
+      asPublisher.iceQueue.push(msg.candidate);
+    }
+    return true;
+  }
+  // Spectator receiving ICE from a player (host/guest)
+  if (S.isSpectating && msg.fromRole) {
+    const role = msg.fromRole === 'guest' ? 'guest' : 'host';
+    const pc = S.spectatePeers?.get(role);
+    if (!pc) return true;
+    if (pc.remoteDescription) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+      } catch (err) {
+        console.warn('addIceCandidate failed:', err?.message || err);
+      }
+    } else {
+      (pc._spectateIceQueue || (pc._spectateIceQueue = [])).push(msg.candidate);
+    }
+    return true;
+  }
+  return false;
+}
+
 async function initWebRTC(createOffer) {
   // Replace any stale peer without wiping ICE that arrived before the offer.
   if (S.peerConn) {
@@ -7119,6 +7357,12 @@ async function initWebRTC(createOffer) {
 
 async function handleRTCOffer(msg) {
   if (!msg?.sdp) return;
+  if (S.isSpectating) {
+    await handleSpectateOffer(msg);
+    return;
+  }
+  // Spectators never send offers to players; ignore stray offers.
+  if (msg.fromRole === 'spectator') return;
   if (!S.peerConn) await initWebRTC(false);
   await S.peerConn.setRemoteDescription(new RTCSessionDescription(msg.sdp));
   const answer = await S.peerConn.createAnswer();
@@ -7128,7 +7372,12 @@ async function handleRTCOffer(msg) {
 }
 
 async function handleRTCAnswer(msg) {
-  if (!S.peerConn || !msg?.sdp) return;
+  if (!msg?.sdp) return;
+  if (msg.fromRole === 'spectator') {
+    await handleSpectatorAnswer(msg);
+    return;
+  }
+  if (!S.peerConn) return;
   await S.peerConn.setRemoteDescription(new RTCSessionDescription(msg.sdp));
   // Critical: early ICE from the answerer was queued before remoteDescription
   // existed — without flushing, the host often never completes the connection
@@ -7138,6 +7387,7 @@ async function handleRTCAnswer(msg) {
 
 async function handleRTCIce(msg) {
   if (!msg?.candidate) return;
+  if (await handleSpectatorIce(msg)) return;
   if (S.peerConn?.remoteDescription) {
     try {
       await S.peerConn.addIceCandidate(new RTCIceCandidate(msg.candidate));
@@ -7156,22 +7406,35 @@ function closePeerConnection() {
   S.peerConn = null;
   S.remoteStream = null;
   S.iceCandidateQueue = [];
+  closeAllSpectatorPeers();
+  closeSpectatePeers();
   const remoteVid = document.getElementById('video-remote');
   if (remoteVid) remoteVid.srcObject = null;
 }
 
 /** Swap live tracks into an existing peer connection after Re-enable. */
 async function replaceLocalPeerTracks() {
-  if (!S.peerConn || !S.localStream) return;
-  const senders = S.peerConn.getSenders();
+  if (!S.localStream) return;
   const videoTrack = S.localStream.getVideoTracks()[0] || null;
-  const videoSender = senders.find(s => !s.track || s.track.kind === 'video');
-  if (videoSender) {
-    try { await videoSender.replaceTrack(videoTrack); } catch (err) {
-      console.warn('replaceTrack failed:', err?.message || err);
+
+  const replaceOnPc = async (pc) => {
+    if (!pc) return;
+    const senders = pc.getSenders();
+    const videoSender = senders.find(s => !s.track || s.track.kind === 'video');
+    if (videoSender) {
+      try { await videoSender.replaceTrack(videoTrack); } catch (err) {
+        console.warn('replaceTrack failed:', err?.message || err);
+      }
+    } else if (videoTrack) {
+      pc.addTrack(videoTrack, S.localStream);
     }
-  } else if (videoTrack) {
-    S.peerConn.addTrack(videoTrack, S.localStream);
+  };
+
+  await replaceOnPc(S.peerConn);
+  if (S.spectatorPeers instanceof Map) {
+    for (const entry of S.spectatorPeers.values()) {
+      await replaceOnPc(entry.pc);
+    }
   }
 }
 
@@ -7275,14 +7538,23 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   }
   if (!spectating) attachLocalCamera();
 
+  const seatNames = spectating ? seatPlayerNames() : null;
   document.getElementById('mh-game').textContent = announceGameLabel(
     matchPreview || { game, x01Base: gameState?.base || S.matchVariation?.x01Base }
   );
-  document.getElementById('sb-name-you').textContent = (S.user.username || 'You').toUpperCase();
-  document.getElementById('sb-name-opp').textContent = (opponentName || 'Opponent').toUpperCase();
-  document.getElementById('cam-label-you').textContent = S.user.username?.toUpperCase() || 'YOU';
-  document.getElementById('cam-label-opp').textContent = (opponentName || 'OPP').toUpperCase();
-  S.isBot = /bot/i.test(opponentName || '');
+  if (spectating && seatNames) {
+    document.getElementById('sb-name-you').textContent = (seatNames[0] || 'Player 1').toUpperCase();
+    document.getElementById('sb-name-opp').textContent = (seatNames[1] || 'Player 2').toUpperCase();
+    document.getElementById('cam-label-you').textContent = (seatNames[0] || 'P1').toUpperCase();
+    document.getElementById('cam-label-opp').textContent = (seatNames[1] || 'P2').toUpperCase();
+    S.isBot = !!(/bot/i.test(S.matchGuestName || '') || /bot/i.test(opponentName || ''));
+  } else {
+    document.getElementById('sb-name-you').textContent = (S.user.username || 'You').toUpperCase();
+    document.getElementById('sb-name-opp').textContent = (opponentName || 'Opponent').toUpperCase();
+    document.getElementById('cam-label-you').textContent = S.user.username?.toUpperCase() || 'YOU';
+    document.getElementById('cam-label-opp').textContent = (opponentName || 'OPP').toUpperCase();
+    S.isBot = /bot/i.test(opponentName || '');
+  }
 
   updateCamSettingsLock(game);
   updateMatchConstructionBanner(game);
@@ -7605,7 +7877,9 @@ function quickPickStarter(starterIdx) {
 function applyMatchSeats(hostSeat, guestSeat) {
   S.hostSeat = hostSeat === 1 ? 1 : 0;
   S.guestSeat = guestSeat === 0 ? 0 : 1;
-  S.mySeat = S.isHost ? S.hostSeat : S.guestSeat;
+  // Spectators keep a neutral seat-0-left broadcast view.
+  S.mySeat = S.isSpectating ? 0 : (S.isHost ? S.hostSeat : S.guestSeat);
+  if (S.isSpectating) rebindSpectatorSeatVideos();
 }
 
 function resetMatchSeats() {
@@ -7618,6 +7892,11 @@ function resetMatchSeats() {
 function seatPlayerNames() {
   if (S.isLocal && Array.isArray(S.localNames) && S.localNames.length >= 2) {
     return [S.localNames[0], S.localNames[1]];
+  }
+  if (S.isSpectating && (S.matchHostName || S.matchGuestName)) {
+    const host = S.matchHostName || 'Host';
+    const guest = S.matchGuestName || 'Guest';
+    return (S.hostSeat ?? 0) === 0 ? [host, guest] : [guest, host];
   }
   const host = S.isHost ? (S.user.username || 'You') : (S.opponentName || 'Opponent');
   const guest = S.isHost ? (S.opponentName || 'Opponent') : (S.user.username || 'You');
@@ -7726,7 +8005,14 @@ function attachBullCornerCams() {
   const v1 = document.getElementById('bull-cam-1');
   const f0 = document.getElementById('bull-fallback-0');
   const f1 = document.getElementById('bull-fallback-1');
-  if (S.isHost) {
+  if (S.isSpectating) {
+    const streams = spectatorSeatStreams();
+    const s0 = streams[0];
+    const s1 = streams[1];
+    if (v0 && s0) { bindVideoElement(v0, s0, { muted: true }); if (f0) f0.style.display = 'none'; }
+    if (v1 && s1) { bindVideoElement(v1, s1, { muted: true }); if (f1) f1.style.display = 'none'; }
+    else if (f1) f1.style.display = '';
+  } else if (S.isHost) {
     if (v0 && S.localStream) { bindVideoElement(v0, S.localStream, { muted: true }); if (f0) f0.style.display = 'none'; }
     if (v1 && S.remoteStream) { bindVideoElement(v1, S.remoteStream, { muted: true }); if (f1) f1.style.display = 'none'; }
     else if (f1) f1.style.display = '';
@@ -9405,10 +9691,15 @@ function updateCricketCamera() {
   const v = document.getElementById('ckt-cam-video');
   if (!v) return;
   const isMyTurn = isMyMatchTurn();
-  const botTurn = S.isBot && !isMyTurn;
+  const botTurn = S.isBot && (S.isSpectating ? S.turn !== (S.hostSeat ?? 0) : !isMyTurn);
   let stream;
-  if (isMyTurn || S.isBot) stream = S.localStream;
-  else stream = S.remoteStream || S.localStream;
+  if (S.isSpectating) {
+    stream = spectatorThrowerStream();
+  } else if (isMyTurn || S.isBot) {
+    stream = S.localStream;
+  } else {
+    stream = S.remoteStream || S.localStream;
+  }
   if (stream) bindVideoElement(v, stream, { muted: true });
   applySpecialtyCamZoom();
   const badge = document.getElementById('ckt-cam-badge');
@@ -10108,6 +10399,14 @@ function updateMatchUI() {
     gid('sb-name-opp').textContent = n1;
     gid('cam-label-you').textContent = n0;
     gid('cam-label-opp').textContent = n1;
+  } else if (S.isSpectating) {
+    const names = seatPlayerNames();
+    const n0 = (names[0] || 'Player 1').toUpperCase();
+    const n1 = (names[1] || 'Player 2').toUpperCase();
+    gid('sb-name-you').textContent = n0;
+    gid('sb-name-opp').textContent = n1;
+    gid('cam-label-you').textContent = n0;
+    gid('cam-label-opp').textContent = n1;
   }
   gid('cam-score-you').textContent = S.scores[me];
   gid('cam-score-opp').textContent = S.scores[opp];
@@ -10152,14 +10451,21 @@ function updateMatchUI() {
   if (!isGolfDarts && !isGolfCheckouts && !isFootballDarts) {
     const camYou = gid('webcam-you');
     const camOpp = gid('webcam-opp');
-    if (camYou) camYou.className = 'webcam-cell' + (isMyTurn ? ' your-turn' : '');
-    if (camOpp) camOpp.className = 'webcam-cell' + (!isMyTurn ? ' your-turn' : '');
+    const youActive = S.isSpectating ? S.turn === me : isMyTurn;
+    const oppActive = S.isSpectating ? S.turn === opp : !isMyTurn;
+    if (camYou) camYou.className = 'webcam-cell' + (youActive ? ' your-turn' : '');
+    if (camOpp) camOpp.className = 'webcam-cell' + (oppActive ? ' your-turn' : '');
   }
 
   // Turn
   const gcCanThrow = isGolfCheckouts && gcPlayerCanThrow(gs, myPlayerIdx());
   const gcInputActive = isGolfCheckouts ? (isMyTurn && gcCanThrow) : isMyTurn;
-  gid('turn-name').textContent = gcInputActive ? 'Your Turn' : (isMyTurn && isGolfCheckouts ? 'Waiting on hole' : (isMyTurn ? 'Your Turn' : "Opponent's Turn"));
+  if (S.isSpectating) {
+    const names = seatPlayerNames();
+    gid('turn-name').textContent = `${names[S.turn] || 'Player'}'s Turn`;
+  } else {
+    gid('turn-name').textContent = gcInputActive ? 'Your Turn' : (isMyTurn && isGolfCheckouts ? 'Waiting on hole' : (isMyTurn ? 'Your Turn' : "Opponent's Turn"));
+  }
   if (isGolfCheckouts && isMyTurn && !gcCanThrow) {
     const prog = gs.playerProgress?.[myPlayerIdx()] || {};
     const capOn = gs.capEnabled !== false;
@@ -10755,9 +11061,11 @@ function updateX01Camera() {
   const v = document.getElementById('x01-cam-video');
   if (!v) return;
   const isMyTurn = isMyMatchTurn();
-  const botTurn = S.isBot && !isMyTurn;
+  const botTurn = S.isBot && (S.isSpectating ? S.turn !== (S.hostSeat ?? 0) : !isMyTurn);
   let stream;
-  if (isMyTurn || S.isBot) {
+  if (S.isSpectating) {
+    stream = spectatorThrowerStream();
+  } else if (isMyTurn || S.isBot) {
     stream = S.localStream;            // human's feed (also shown during bot's turn)
   } else {
     stream = S.remoteStream || S.localStream; // PvP opponent's turn
@@ -10787,7 +11095,10 @@ function syncGcThrowerCam() {
 
   const me = myPlayerIdx();
   // Local pass-and-play shares one device cam (myPlayerIdx follows turn).
-  const showYou = S.isLocal || !opp || S.turn === me;
+  // Spectators use the same seat-0-left view and follow S.turn.
+  const showYou = S.isSpectating
+    ? S.turn === me
+    : (S.isLocal || !opp || S.turn === me);
 
   you.className = 'webcam-cell'
     + (showYou ? ' your-turn' : '')
@@ -10907,6 +11218,8 @@ function isMyMatchTurn() {
 }
 
 function myPlayerIdx() {
+  // Spectators use a neutral broadcast view: seat 0 left / seat 1 right.
+  if (S.isSpectating) return 0;
   // Local pass-and-play: whoever's turn it is enters the score on this device.
   if (S.isLocal) return typeof S.turn === 'number' ? S.turn : 0;
   if (typeof S.mySeat === 'number') return S.mySeat;
@@ -14906,7 +15219,13 @@ function applySpectatingMode(on) {
   S.isSpectating = !!on;
   const page = document.getElementById('page-match');
   page?.classList.toggle('spectating', !!on);
-  page?.classList.toggle('stage-pip', !!on);
+  page?.classList.remove('stage-pip');
+  if (!on) {
+    S.matchHostName = null;
+    S.matchGuestName = null;
+    closeAllSpectatorPeers();
+    closeSpectatePeers();
+  }
   updateGalleryReactionBar();
 }
 
