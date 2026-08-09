@@ -1648,31 +1648,36 @@ body.app-active .arena-bg { animation: none !important; }
   box-sizing: border-box;
 }
 .fb-cam-col {
-  display: flex; flex-direction: column; gap: 0.35rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.35rem;
   min-width: 0; min-height: 0;
   pointer-events: auto;
+  container-type: size;
 }
 .fb-cam-label {
   font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: 0.12em;
   color: var(--gold-light); text-transform: uppercase; text-align: center;
   text-shadow: 0 1px 4px rgba(0,0,0,0.85);
   flex-shrink: 0;
+  width: 100%;
 }
 .fb-cam-wrap {
-  flex: 1 1 0; min-height: 0;
+  /* True square cam box inscribed in the cam column */
+  width: min(100%, max(0px, calc(100cqh - 1.4rem)));
+  aspect-ratio: 1 / 1;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 0 auto;
+  position: relative;
   border-radius: 8px; overflow: hidden;
   border: 2px solid rgba(201, 168, 76, 0.45);
   box-shadow: 0 4px 18px rgba(0,0,0,0.45);
   background: #000;
-  display: flex; align-items: center; justify-content: center;
-  container-type: size;
 }
 .fb-cam-slot {
-  position: relative;
-  width: min(100cqw, 100cqh);
-  height: min(100cqw, 100cqh);
-  max-width: 100%; max-height: 100%;
-  flex-shrink: 0;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
 }
 .fb-cam-slot .webcam-cell {
   position: absolute; inset: 0;
@@ -1686,11 +1691,13 @@ body.app-active .arena-bg { animation: none !important; }
 .fb-cam-slot .cam-video-frame {
   position: absolute; inset: 0;
   width: 100%; height: 100%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: #000;
 }
 .fb-cam-slot .cam-video,
 .fb-cam-slot .cam-video-frame video {
   width: 100% !important; height: 100% !important;
-  object-fit: cover !important;
+  object-fit: contain !important;
 }
 .fb-cam-slot .cam-label { top: 0.45rem; font-size: 0.55rem; z-index: 5; }
 .fb-cam-slot .bot-avatar {
@@ -1718,10 +1725,39 @@ body.app-active .arena-bg { animation: none !important; }
 .pitch-lines { position: absolute; inset: 0; }
 .pitch-lines svg { width: 100%; height: 100%; display: block; }
 .football-ball {
-  position: absolute; font-size: 1.45rem;
-  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 10;
+  position: absolute; font-size: 2.175rem; /* 1.45rem + 50% */
+  transition: top 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 10;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
   transform: translate(-50%, -50%);
+  line-height: 1;
+  pointer-events: none;
+}
+.fb-goal-burst {
+  position: absolute; left: 50%; z-index: 14;
+  transform: translate(-50%, -50%);
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(1.4rem, 4.5vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #fff8c8;
+  text-shadow:
+    0 0 12px rgba(201, 168, 76, 0.95),
+    0 0 28px rgba(255, 80, 40, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: fbGoalBurst 1.6s ease-out forwards;
+}
+.fb-goal-burst.top { top: 14%; }
+.fb-goal-burst.bottom { top: 86%; }
+@keyframes fbGoalBurst {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.35); }
+  18%  { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+  40%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-goal-burst { animation-duration: 0.01ms; animation-iteration-count: 1; }
 }
 .fb-goal-score {
   position: absolute; left: 50%; z-index: 12;
@@ -1796,9 +1832,14 @@ body.app-active .arena-bg { animation: none !important; }
 @media (max-width: 900px) {
   .fb-room {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(160px, 32%) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
-  .fb-cam-col { max-height: 220px; }
+  .fb-cam-col {
+    max-height: none;
+    width: min(220px, 70vw);
+    justify-self: center;
+  }
+  .fb-cam-wrap { width: 100%; }
 }
 
 /* Snakes & Ladders */
@@ -6700,9 +6741,13 @@ function setCamFit(fit) {
 function applyCamView() {
   document.documentElement.style.setProperty('--cam-zoom', String(S.camView.zoom));
   const golfCam = S.game === 'Golf Darts';
-  ['cam-preview-frame', 'cam-frame-local'].forEach(id => {
+  const footballCam = S.game === 'Football Darts';
+  ['cam-preview-frame', 'cam-frame-local', 'cam-frame-remote'].forEach(id => {
     const frame = document.getElementById(id);
-    if (frame) frame.classList.toggle('fit-contain', !golfCam && S.camView.fit === 'contain');
+    if (!frame) return;
+    // Football thrower cam always fits the full stream inside the square box.
+    const contain = footballCam || (!golfCam && S.camView.fit === 'contain');
+    frame.classList.toggle('fit-contain', contain);
   });
   // X01 / Cricket use a separate single-feed <video> — apply local zoom there too.
   applySpecialtyCamZoom();
@@ -9637,6 +9682,7 @@ function submitScore(opts = {}) {
     if (!hasPossession) {
       if (isDBull) {
         gs.possession = player;
+        gs.ballX = footballBallXForPossession(player, gs.ballX);
         gs.events.unshift({ text: `🟢 ${pname} took possession!` });
         note = 'Possession!';
         displayScore = 'DBULL';
@@ -9647,8 +9693,8 @@ function submitScore(opts = {}) {
       }
     } else if (isDouble || isDBull) {
       gs.goals[player] = (gs.goals[player] || 0) + 1;
-      if (player === 0) gs.ballX = Math.min(95, (gs.ballX || 50) + 15);
-      else gs.ballX = Math.max(5, (gs.ballX || 50) - 15);
+      gs.ballX = footballAdvanceBallX(player, gs.ballX);
+      gs.lastGoal = { player, id: Date.now() };
       gs.events.unshift({ text: `⚽ GOAL by ${pname}!` });
       delta = 1;
       scored = true;
@@ -11275,6 +11321,9 @@ function mountFootballCams(multiplayer) {
   if (footballCamsMounted && active.parentElement === playerSlot) {
     active.classList.add('your-turn');
     if (idle) idle.classList.remove('your-turn');
+    document.getElementById('cam-frame-local')?.classList.add('fit-contain');
+    document.getElementById('cam-frame-remote')?.classList.add('fit-contain');
+    applyCamView();
     syncBotAvatar();
     return;
   }
@@ -11283,7 +11332,9 @@ function mountFootballCams(multiplayer) {
   playerSlot.appendChild(active);
   active.classList.add('your-turn');
   if (idle) idle.classList.remove('your-turn');
-  document.getElementById('cam-frame-local')?.classList.remove('fit-contain');
+  document.getElementById('cam-frame-local')?.classList.add('fit-contain');
+  document.getElementById('cam-frame-remote')?.classList.add('fit-contain');
+  applyCamView();
   syncBotAvatar();
   footballCamsMounted = true;
 }
@@ -11658,8 +11709,22 @@ function renderGolfCheckoutsRoom(gs) {
     </div>`;
 }
 
+/** Portrait pitch: P0 attacks bottom (high %), P1 attacks top (low %). */
+function footballBallXForPossession(player, current) {
+  const x = Number.isFinite(current) ? current : 50;
+  if (player === 0) return Math.max(x, 62);
+  if (player === 1) return Math.min(x, 38);
+  return 50;
+}
+
+function footballAdvanceBallX(player, current) {
+  const x = Number.isFinite(current) ? current : 50;
+  if (player === 0) return Math.min(95, x + 15);
+  if (player === 1) return Math.max(5, x - 15);
+  return x;
+}
+
 function renderFootballPitchHtml(gs) {
-  const bx = gs?.ballX || 50;
   const goals = gs?.goals || [0, 0];
   const youIdx = myPlayerIdx();
   const names = seatPlayerNames();
@@ -11673,6 +11738,21 @@ function renderFootballPitchHtml(gs) {
   const bottomName = bottomIdx === youIdx ? youName : oppName;
   const topYou = topIdx === youIdx;
   const bottomYou = bottomIdx === youIdx;
+  // Keep the ball on the possession side even if ballX drifted from an older client.
+  let bx = gs?.ballX ?? 50;
+  if (gs?.possession === 0 || gs?.possession === 1) {
+    bx = footballBallXForPossession(gs.possession, bx);
+  } else {
+    bx = 50;
+  }
+  const lastGoal = gs?.lastGoal;
+  const goalFresh = lastGoal && (Date.now() - (lastGoal.id || 0) < 1800);
+  const goalSide = goalFresh
+    ? (lastGoal.player === 0 ? 'bottom' : lastGoal.player === 1 ? 'top' : '')
+    : '';
+  const goalBurst = goalSide
+    ? `<div class="fb-goal-burst ${goalSide}" data-goal-id="${lastGoal.id}">GOAL!!!!</div>`
+    : '';
   return `
     <div class="pitch-lines">
       <svg viewBox="0 0 220 400" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
@@ -11704,6 +11784,7 @@ function renderFootballPitchHtml(gs) {
         <span class="fb-goal-name">${bottomName}</span>
       </div>
     </div>
+    ${goalBurst}
     <div class="football-ball" style="left:50%;top:${bx}%">⚽</div>`;
 }
 
@@ -11769,7 +11850,15 @@ function renderVisualizer() {
       const labelEl = document.getElementById('fb-cam-label');
       if (existingRoom && pitchEl && eventsEl && document.getElementById('fb-cam-player')) {
         // In-place update keeps the live thrower <video> mounted.
+        // Preserve an in-flight GOAL!!!! burst so UI refreshes don't restart it.
+        const prevBurst = pitchEl.querySelector('.fb-goal-burst');
+        const prevGoalId = prevBurst?.getAttribute('data-goal-id') || '';
         pitchEl.innerHTML = pitchHtml;
+        const nextBurst = pitchEl.querySelector('.fb-goal-burst');
+        const nextGoalId = nextBurst?.getAttribute('data-goal-id') || '';
+        if (prevBurst && prevGoalId && prevGoalId === nextGoalId && nextBurst) {
+          nextBurst.replaceWith(prevBurst);
+        }
         eventsEl.innerHTML = eventsHtml;
         if (labelEl) labelEl.textContent = `${throwerName} · Throw`;
       } else {
