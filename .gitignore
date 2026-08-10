@@ -22,6 +22,7 @@ npm_install*.log
 # Debug / temp
 .tmp_ws_debug.txt
 *.tmp_ws_debug.txt
+treble_arena_background_wdl_backup.png
 
 # OS / editor
 .DS_Store

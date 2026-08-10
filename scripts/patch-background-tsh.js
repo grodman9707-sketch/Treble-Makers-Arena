@@ -4,6 +4,10 @@
  * Replace the integrated WDL wall lettering and the small bottom-bar WDL crest
  * in treble_arena_background.png with TSH branding.
  *
+ * Prefers a scene-matched "integrated" TSH letter render (same slant, metal,
+ * circuit connections, dartboard behind) soft-blended into the original
+ * arena background so the letters feel mounted in the scene like WDL.
+ *
  * Usage:  node scripts/patch-background-tsh.js
  */
 const path = require('path');
@@ -13,14 +17,21 @@ const Jimp = require('jimp');
 const ROOT = path.resolve(__dirname, '..');
 const BG = path.join(ROOT, 'treble_arena_background.png');
 const BG_BACKUP = path.join(ROOT, 'treble_arena_background_wdl_backup.png');
-const LETTERS = path.join(ROOT, 'tsh-images/_originals/TSH_wall_letters.png');
+const LETTERS_INTEGRATED = path.join(ROOT, 'tsh-images/_originals/TSH_wall_letters_integrated.png');
+const LETTERS_FALLBACK = path.join(ROOT, 'tsh-images/_originals/TSH_wall_letters.png');
 const CREST = path.join(ROOT, 'tsh-images/_originals/TSH_Main_Crest.png');
+
+// Soft-blend window covering the old WDL wall-sign letters (full-image coords).
+// Kept taller on the letter faces, shorter into the circuit shelf so original
+// gold traces still appear to plug into the underside of the glyphs.
+const LETTER_BLEND = { x: 960, y: 175, w: 520, h: 290, feather: 42 };
+// Bottom-bar crest between TOKYO / NEW YORK.
+const BOTTOM_CREST = { cx: 760, cy: 925, size: 82 };
 
 function lum(r, g, b) {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
-/** Soft circular alpha for a rectangular paste region. */
 function softCircleAlpha(dx, dy, rx, ry) {
   const nx = dx / rx;
   const ny = dy / ry;
@@ -30,7 +41,6 @@ function softCircleAlpha(dx, dy, rx, ry) {
   return 1 - (d - 0.72) / 0.28;
 }
 
-/** Soft-edged axis-aligned rectangle wipe (1 at centre, fades near edges). */
 function softRectAlpha(dx, dy, hw, hh, feather) {
   const ax = Math.abs(dx);
   const ay = Math.abs(dy);
@@ -77,7 +87,6 @@ async function cutBlackBg(srcAbs, tLow = 28) {
   for (let idx = 0; idx < n; idx++) {
     if (bg[idx]) data[idx * 4 + 3] = 0;
   }
-  // Trim to opaque bbox
   let minX = w, minY = h, maxX = -1, maxY = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -93,7 +102,6 @@ async function cutBlackBg(srcAbs, tLow = 28) {
   return img.crop(minX, minY, maxX - minX + 1, maxY - minY + 1);
 }
 
-/** Paint a dark elliptical patch (covers old WDL letters) using nearby dark samples. */
 function sampleFill(bg, cx, cy, rx) {
   const { width: w, height: h, data } = bg.bitmap;
   let rs = 0, gs = 0, bs = 0, cnt = 0;
@@ -120,7 +128,6 @@ function sampleFill(bg, cx, cy, rx) {
 function coverEllipse(bg, cx, cy, rx, ry) {
   const { width: w, height: h, data } = bg.bitmap;
   const fill = sampleFill(bg, cx, cy, rx);
-
   for (let y = Math.max(0, cy - ry); y < Math.min(h, cy + ry); y++) {
     for (let x = Math.max(0, cx - rx); x < Math.min(w, cx + rx); x++) {
       const a = softCircleAlpha(x - cx, y - cy, rx, ry);
@@ -136,7 +143,6 @@ function coverEllipse(bg, cx, cy, rx, ry) {
 function coverRect(bg, cx, cy, hw, hh, feather = 18) {
   const { width: w, height: h, data } = bg.bitmap;
   const fill = sampleFill(bg, cx, cy, hw);
-
   for (let y = Math.max(0, cy - hh); y < Math.min(h, cy + hh); y++) {
     for (let x = Math.max(0, cx - hw); x < Math.min(w, cx + hw); x++) {
       const a = softRectAlpha(x - cx, y - cy, hw, hh, feather);
@@ -173,41 +179,74 @@ function compositeCentered(bg, overlay, cx, cy, targetW, opacity = 1) {
   }
 }
 
-(async () => {
-  if (!fs.existsSync(LETTERS)) throw new Error('Missing ' + LETTERS);
-  if (!fs.existsSync(CREST)) throw new Error('Missing ' + CREST);
-
-  // Keep a one-time backup of the original WDL background if not already saved.
-  if (!fs.existsSync(BG_BACKUP)) {
-    fs.copyFileSync(BG, BG_BACKUP);
-    console.log('Backed up original background ->', path.relative(ROOT, BG_BACKUP));
+/**
+ * Soft-blend a same-sized scene render into bg over a feathered rectangle.
+ * Used so integrated TSH wall letters inherit the arena lighting / circuits.
+ */
+function softBlendRegion(bg, src, region) {
+  if (src.bitmap.width !== bg.bitmap.width || src.bitmap.height !== bg.bitmap.height) {
+    src = src.clone().resize(bg.bitmap.width, bg.bitmap.height);
   }
+  const { x, y, w, h, feather } = region;
+  const { width: bw, height: bh, data: bd } = bg.bitmap;
+  const sd = src.bitmap.data;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const hw = w / 2;
+  const hh = h / 2;
 
-  const bg = await Jimp.read(BG_BACKUP);
-  console.log('Loaded background', bg.bitmap.width, 'x', bg.bitmap.height);
+  for (let py = Math.max(0, y); py < Math.min(bh, y + h); py++) {
+    for (let px = Math.max(0, x); px < Math.min(bw, x + w); px++) {
+      const a = softRectAlpha(px - cx, py - cy, hw, hh, feather);
+      if (a <= 0.01) continue;
+      // Bias toward the source in the centre so WDL glyphs are fully replaced.
+      const mix = Math.min(1, a * 1.05);
+      const i = (py * bw + px) * 4;
+      bd[i] = Math.round(bd[i] * (1 - mix) + sd[i] * mix);
+      bd[i + 1] = Math.round(bd[i + 1] * (1 - mix) + sd[i + 1] * mix);
+      bd[i + 2] = Math.round(bd[i + 2] * (1 - mix) + sd[i + 2] * mix);
+    }
+  }
+}
 
-  // Cover the large 3D WDL wall letters (upper-right stadium wall).
-  // Hard rectangular wipe first so leftover "L"/bevels from "WDL" disappear.
+async function pasteFallbackLetters(bg) {
+  // Legacy path: wipe + flat letter overlay (used only if integrated render missing).
   coverRect(bg, 1210, 330, 340, 170, 22);
   coverEllipse(bg, 1205, 335, 310, 175);
   coverEllipse(bg, 1360, 300, 180, 155);
-  console.log('Covered WDL wall lettering region');
-
-  // Cover the small bottom-bar WDL crest (+ faint embossed watermark) between TOKYO / NEW YORK.
-  coverRect(bg, 760, 930, 78, 55, 12);
-  coverEllipse(bg, 760, 925, 70, 48);
-  coverEllipse(bg, 760, 955, 90, 40);
-  console.log('Covered bottom-bar WDL crest region');
-
-  const letters = await cutBlackBg(LETTERS, 30);
-  const crest = await cutBlackBg(CREST, 12);
-
-  // Place TSH wall letters over the covered WDL area.
+  const letters = await cutBlackBg(LETTERS_FALLBACK, 30);
   compositeCentered(bg, letters, 1195, 325, 480, 0.98);
-  console.log('Composited TSH wall letters');
+}
 
-  // Place a small TSH main crest on the bottom bar.
-  compositeCentered(bg, crest, 760, 925, 82, 1);
+(async () => {
+  if (!fs.existsSync(CREST)) throw new Error('Missing ' + CREST);
+  if (!fs.existsSync(BG_BACKUP)) {
+    throw new Error(
+      'Missing WDL background backup at ' + path.relative(ROOT, BG_BACKUP) +
+      '. Restore with: git show main:treble_arena_background.png > treble_arena_background_wdl_backup.png'
+    );
+  }
+
+  const bg = await Jimp.read(BG_BACKUP);
+  console.log('Loaded WDL backup background', bg.bitmap.width, 'x', bg.bitmap.height);
+
+  if (fs.existsSync(LETTERS_INTEGRATED)) {
+    const integrated = await Jimp.read(LETTERS_INTEGRATED);
+    softBlendRegion(bg, integrated, LETTER_BLEND);
+    console.log('Soft-blended integrated TSH wall letters from', path.relative(ROOT, LETTERS_INTEGRATED));
+  } else if (fs.existsSync(LETTERS_FALLBACK)) {
+    console.warn('Integrated letter render missing — using flat fallback letters');
+    await pasteFallbackLetters(bg);
+  } else {
+    throw new Error('No TSH wall letter source found');
+  }
+
+  // Cover + replace the small bottom-bar WDL crest between TOKYO / NEW YORK.
+  coverRect(bg, BOTTOM_CREST.cx, BOTTOM_CREST.cy + 5, 78, 55, 12);
+  coverEllipse(bg, BOTTOM_CREST.cx, BOTTOM_CREST.cy, 70, 48);
+  coverEllipse(bg, BOTTOM_CREST.cx, BOTTOM_CREST.cy + 30, 90, 40);
+  const crest = await cutBlackBg(CREST, 12);
+  compositeCentered(bg, crest, BOTTOM_CREST.cx, BOTTOM_CREST.cy, BOTTOM_CREST.size, 1);
   console.log('Composited TSH bottom crest');
 
   await bg.writeAsync(BG);
