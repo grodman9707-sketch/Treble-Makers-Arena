@@ -74,7 +74,7 @@ npm run build   # copy new WebP into public/
 
 - `treble_arena_background.png` → `treble_arena_background.webp`
 - `treblemak_crests/_originals/` → `remove-crest-bg.js` → `Treble-makers_Main_Crest.png` → WebP
-- `wdl-images/_originals/` → same pipeline for WDL crests
+- `tsh-images/_originals/` → same pipeline for TSH main + regional crests
 - `lazy-images/_originals/` + `LazyLeagues_Crest_metal.png` → Lazy Leagues partner crest
 - `Golf Darts/par-3-course.png` → WebP
 - `golf_imgs/Hole N.png` → `trim-golf-courses.js` → `hole-N.webp`
@@ -170,7 +170,7 @@ public/             Generated client bundle (gitignored)
 backups/            Timestamped data.json snapshots (gitignored)
 docs/               Game rules reference
 treblemak_crests/   Main crest source art + _originals/
-wdl-images/         WDL crest source art + _originals/
+tsh-images/         TSH crest source art + _originals/
 lazy-images/        Lazy Leagues partner crest art + _originals/
 golf_imgs/          Golf Checkouts hole source PNGs + WebP output
 Golf Darts/         Golf Darts course illustration source
