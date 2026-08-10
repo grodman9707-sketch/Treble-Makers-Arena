@@ -46,24 +46,21 @@ const TASKS = [
     tLow: 6,
   },
   {
-    src: 'wdl-images/_originals/WDL_American_Crest.png',
-    out: 'wdl-images/WDL_American_Crest.png',
-    tLow: 10,
+    src: 'tsh-images/_originals/TSH_Main_Crest.png',
+    out: 'tsh-images/TSH_Main_Crest.png',
+    // Dark PCB field behind the circular crest — keep threshold low so neon-blue
+    // glow and brushed-metal rim stay intact.
+    tLow: 12,
   },
   {
-    src: 'wdl-images/_originals/WDL_Crest.jpeg',
-    out: 'wdl-images/WDL_Crest.png',
-    tLow: 10,
+    src: 'tsh-images/_originals/TSH_American_Crest.png',
+    out: 'tsh-images/TSH_American_Crest.png',
+    tLow: 12,
   },
   {
-    src: 'wdl-images/_originals/WDL_European_Crest.jpg',
-    out: 'wdl-images/WDL_European_Crest.png',
-    tLow: 10,
-  },
-  {
-    src: 'wdl-images/_originals/WDL_UK_Crest.jpg',
-    out: 'wdl-images/WDL_UK_Crest.png',
-    tLow: 10,
+    src: 'tsh-images/_originals/TSH_European_Crest.png',
+    out: 'tsh-images/TSH_European_Crest.png',
+    tLow: 12,
   },
   {
     src: 'lazy-images/_originals/LazyLeagues_Crest.png',

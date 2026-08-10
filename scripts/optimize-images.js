@@ -27,15 +27,14 @@ const TASKS = [
   { src: 'treble_arena_background.png',                       out: 'treble_arena_background.webp',                       width: 1600, quality: 72, alpha: false },
   // Main crest: displayed up to 400px → 800px. Keep transparency.
   { src: 'treblemak_crests/Treble-makers_Main_Crest.png',     out: 'treblemak_crests/Treble-makers_Main_Crest.webp',     width: 800,  quality: 82, alpha: true },
-  // WDL partner crest: displayed up to 182px → 400px.
-  { src: 'wdl-images/WDL_Crest.png',                          out: 'wdl-images/WDL_Crest.webp',                          width: 400,  quality: 82, alpha: true },
+  // TSH partner crest: displayed up to 182px → 400px.
+  { src: 'tsh-images/TSH_Main_Crest.png',                     out: 'tsh-images/TSH_Main_Crest.webp',                     width: 400,  quality: 82, alpha: true },
   // Lazy Leagues partner crest: displayed up to 182px → 400px.
   // Uses the metalized cut-out so the partner logo matches the other metal crests.
   { src: 'lazy-images/LazyLeagues_Crest_metal.png',           out: 'lazy-images/LazyLeagues_Crest.webp',                 width: 400,  quality: 82, alpha: true },
-  // Sub-league crests: displayed 91px → 200px.
-  { src: 'wdl-images/WDL_American_Crest.png',                 out: 'wdl-images/WDL_American_Crest.webp',                 width: 200,  quality: 82, alpha: true },
-  { src: 'wdl-images/WDL_European_Crest.png',                 out: 'wdl-images/WDL_European_Crest.webp',                 width: 200,  quality: 82, alpha: true },
-  { src: 'wdl-images/WDL_UK_Crest.png',                       out: 'wdl-images/WDL_UK_Crest.webp',                       width: 200,  quality: 82, alpha: true },
+  // Sub-league crests: displayed 91px → 200px. (2 TSH regionals replace 3 WDL.)
+  { src: 'tsh-images/TSH_American_Crest.png',                 out: 'tsh-images/TSH_American_Crest.webp',                 width: 200,  quality: 82, alpha: true },
+  { src: 'tsh-images/TSH_European_Crest.png',                 out: 'tsh-images/TSH_European_Crest.webp',                 width: 200,  quality: 82, alpha: true },
   // Golf course illustration (rendered at scale(2)): cap to 1200px wide.
   { src: 'Golf Darts/par-3-course.png',                       out: 'Golf Darts/par-3-course.webp',                       width: 1200, quality: 78, alpha: true },
 ];
