@@ -7604,6 +7604,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
 
   matchIntroAnnounced = false;
   matchIntroPromise = Promise.resolve();
+  cancelMatchIntroSequence();
   if (!spectating && matchPreview?.players?.length >= 2) {
     hideAllMatchLayouts();
     pendingMatchPreview = enrichPreviewWithLocalPrefs(matchPreview);
