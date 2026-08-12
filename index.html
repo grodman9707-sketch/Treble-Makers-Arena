@@ -34,7 +34,7 @@
   --cam-frame-ratio: 1 / 1;
   --cam-zoom: 1.15;
   /* Player-cam target size — stretch fills remaining center column up to this. */
-  --cam-box-max: 640px;
+  --cam-box-max: 512px; /* 640px − 20% */
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -3183,7 +3183,7 @@ body.app-active .arena-bg { animation: none !important; }
 .x01-leg-history {
   flex: 1; display: flex; gap: 0.75rem; align-items: flex-start; flex-wrap: wrap;
   background: rgba(10, 12, 18, 0.94); border: 1px solid var(--border); border-radius: 10px;
-  padding: 0.75rem; min-height: 180px; overflow: auto; align-content: flex-start;
+  padding: 0.75rem; min-height: 90px; overflow: auto; align-content: flex-start;
 }
 .x01-leg-col { min-width: 90px; }
 .x01-leg-badge {
@@ -3206,7 +3206,8 @@ body.app-active .arena-bg { animation: none !important; }
 .x01-side { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; }
 .x01-cam { display: flex; flex-shrink: 0; justify-content: center; }
 .x01-chat-area {
-  flex: 1; min-height: 140px; max-height: 280px;
+  /* +50% vs prior flex:1 / max-height:280px share of the side column */
+  flex: 3 1 0; min-height: 210px; max-height: 420px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
 }
 .x01-cam-frame {
@@ -3242,25 +3243,25 @@ body.app-active .arena-bg { animation: none !important; }
   display: flex;
   flex-direction: column;
 }
-/* Largest square player-cam under the score entry (pre-shrink stretch). */
+/* Largest square player-cam under the score entry (−20% vs prior stretch). */
 .x01-center .x01-cam {
   flex: 1 1 auto;
-  min-height: min(280px, 40vmin);
+  min-height: min(224px, 32vmin);
   display: flex;
   align-items: center;
   justify-content: center;
   container-type: size;
 }
 .x01-center .x01-cam-frame {
-  width: min(100cqw, 100cqh, var(--cam-box-max, 640px));
+  width: min(100cqw, 100cqh, var(--cam-box-max, 512px));
   max-width: 100%;
   max-height: 100%;
   height: auto;
   aspect-ratio: var(--cam-frame-ratio);
   align-self: center;
 }
-/* Score-recording log: locked height, scrolls as new scores are added. */
-.x01-side .x01-leg-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* Score log (−50% side share) scrolls; match chat takes the larger share. */
+.x01-side .x01-leg-history { flex: 1 1 0; min-height: 0; max-height: 38%; overflow-y: auto; }
 
 /* ════════════════════════════════════════════
    CRICKET / TACTICS MATCH (marks board)
@@ -7603,6 +7604,7 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
 
   matchIntroAnnounced = false;
   matchIntroPromise = Promise.resolve();
+  cancelMatchIntroSequence();
   if (!spectating && matchPreview?.players?.length >= 2) {
     hideAllMatchLayouts();
     pendingMatchPreview = enrichPreviewWithLocalPrefs(matchPreview);
@@ -7878,29 +7880,29 @@ function hideMatchPreviewOverlay() {
 function beginMatchAfterPreview() {
   hideMatchPreviewOverlay();
   hideStarterOverlays();
-  stopWalkoutAudio();
-  stopIntroAudio();
+  // Do NOT stop intro/walk-out here — that cut off the ring announcer mid-phrase when
+  // the host picked a starter early. Await the in-flight sequence instead.
   updateMatchUI();
   signalMatchUiReady();
-  // Warm-up countdown before first dart (intro + walk-ons already ran on preview).
-  playCrowdBurst('cheer');
-  pulseArenaLighting();
-  showArenaBumper('GAME ON', {
-    kicker: S.game || 'MATCH',
-    sub: `${(S.user?.username || 'Player')} vs ${(S.opponentName || 'Opponent')}`,
-    ms: 1600
-  });
-  runWarmupCountdown(() => {
-    const afterIntro = () => {
+
+  const kickoff = () => {
+    playCrowdBurst('cheer');
+    pulseArenaLighting();
+    showArenaBumper('GAME ON', {
+      kicker: S.game || 'MATCH',
+      sub: `${(S.user?.username || 'Player')} vs ${(S.opponentName || 'Opponent')}`,
+      ms: 1600
+    });
+    runWarmupCountdown(() => {
       maybeAnnounceX01Require();
       startAmbientBed();
-    };
-    if (!matchIntroAnnounced) {
-      runMatchIntroAnnounce(pendingMatchPreview).finally(afterIntro);
-    } else {
-      afterIntro();
-    }
-  });
+    });
+  };
+
+  const intro = matchIntroAnnounced
+    ? (matchIntroPromise || Promise.resolve())
+    : runMatchIntroAnnounce(pendingMatchPreview);
+  Promise.resolve(intro).finally(kickoff);
 }
 
 function signalMatchUiReady() {
@@ -8994,7 +8996,9 @@ function submitX01() {
       matchWon: !!res.matchOver,
       winner
     });
-    if (!res.matchOver) maybeAnnounceX01Require();
+    if (!res.matchOver && !res.legWon) {
+      maybeAnnounceX01Require({ seat: p, remaining: gs.remaining[p] });
+    }
   }
   updateMatchUI();
   if (res.matchOver) {
@@ -11037,59 +11041,42 @@ function renderX01History(gs) {
     return;
   }
 
-  // Decide whether the incremental fast-path is safe, else full rebuild.
-  const renderedTotal = x01HistRendered.reduce((a, n) => a + n, 0);
-  const totalEntries = legs.reduce((a, l) => a + l.length, 0);
-  const histSig = legs.map(leg => (leg || []).map(entry => `${entry.p}:${entry.v}:${entry.bust ? 1 : 0}`).join(',')).join('|');
-  let needFull = !histEl.querySelector('.x01-leg-col')
-    || legs.length < x01HistRendered.length
-    || totalEntries < renderedTotal; // undo / reset shrank the log
-  if (!needFull && x01HistSig && totalEntries === renderedTotal && histSig !== x01HistSig) {
-    needFull = true; // an edit changed an existing visit in place
-  }
-  if (!needFull) {
-    for (let i = 0; i < x01HistRendered.length; i++) {
-      if (!legs[i] || legs[i].length < x01HistRendered[i]) { needFull = true; break; }
-    }
-  }
+  // Only the current (latest) leg — prior legs stay out of the score box.
+  const li = legs.length - 1;
+  const leg = legs[li] || [];
+  const histSig = `${li}|` + leg.map(entry => `${entry.p}:${entry.v}:${entry.bust ? 1 : 0}`).join(',');
+  const renderedLen = x01HistRendered[0] || 0;
+  const sameLeg = histEl.querySelector(`.x01-leg-col[data-leg="${li}"]`);
+  let needFull = !sameLeg
+    || leg.length < renderedLen
+    || (x01HistSig && leg.length === renderedLen && histSig !== x01HistSig);
+  if (!needFull && x01HistSig && x01HistSig.split('|')[0] !== String(li)) needFull = true;
 
   if (needFull) {
-    histEl.innerHTML = legs.map((leg, li) => {
-      const rows = leg.map(x01TurnRowHtml).join('');
-      return `<div class="x01-leg-col" data-leg="${li}">
+    const rows = leg.map(x01TurnRowHtml).join('');
+    histEl.innerHTML = `<div class="x01-leg-col" data-leg="${li}">
         <div class="x01-leg-badge">#${li + 1}</div>
         <div class="x01-leg-turns">${rows || '<div class="x01-turn-empty">—</div>'}</div>
       </div>`;
-    }).join('');
-    x01HistRendered = legs.map(l => l.length);
+    x01HistRendered = [leg.length];
     x01HistSig = histSig;
     return;
   }
 
-  // Incremental: add any brand-new leg columns, append only new turn rows.
-  for (let li = 0; li < legs.length; li++) {
-    let col = histEl.querySelector(`.x01-leg-col[data-leg="${li}"]`);
-    if (!col) {
-      col = document.createElement('div');
-      col.className = 'x01-leg-col';
-      col.dataset.leg = String(li);
-      col.innerHTML = `<div class="x01-leg-badge">#${li + 1}</div><div class="x01-leg-turns"><div class="x01-turn-empty">—</div></div>`;
-      histEl.appendChild(col);
-      x01HistRendered[li] = 0;
+  // Incremental: append only new turn rows for the current leg.
+  const col = sameLeg;
+  const turnsEl = col.querySelector('.x01-leg-turns');
+  const already = renderedLen;
+  const now = leg.length;
+  if (now > already) {
+    if (already === 0) {
+      const ph = turnsEl.querySelector('.x01-turn-empty');
+      if (ph) ph.remove();
     }
-    const turnsEl = col.querySelector('.x01-leg-turns');
-    const already = x01HistRendered[li] || 0;
-    const now = legs[li].length;
-    if (now > already) {
-      if (already === 0) {
-        const ph = turnsEl.querySelector('.x01-turn-empty');
-        if (ph) ph.remove();
-      }
-      let html = '';
-      for (let k = already; k < now; k++) html += x01TurnRowHtml(legs[li][k]);
-      turnsEl.insertAdjacentHTML('beforeend', html);
-      x01HistRendered[li] = now;
-    }
+    let html = '';
+    for (let k = already; k < now; k++) html += x01TurnRowHtml(leg[k]);
+    turnsEl.insertAdjacentHTML('beforeend', html);
+    x01HistRendered = [now];
   }
   x01HistSig = histSig;
 }
@@ -12708,6 +12695,11 @@ function leaveMatch() {
   hideMatchPreviewOverlay();
   clearStarterFlow();
   pendingMatchPreview = null;
+  cancelMatchIntroSequence();
+  matchIntroAnnounced = false;
+  matchIntroPromise = Promise.resolve();
+  stopRefCallAudio();
+  refAnnounceChain = Promise.resolve();
   stopX01VisitTimer();
   stopAmbientBed();
   applySpectatingMode(false);
@@ -13379,6 +13371,8 @@ let commentaryTurnNumber = 0;
 let lastX01RequireKey = '';
 let lastAnnounceWinKey = '';
 let announceSpeakQueue = Promise.resolve();
+/** Serializes Ralph visit calls + "you require" so checkout audio never cuts the score. */
+let refAnnounceChain = Promise.resolve();
 let announceAudio = null;
 let announceObjectUrl = null;
 let commentaryAudio = null;
@@ -13391,6 +13385,7 @@ let deepgramReady = null; // Deepgram-only (ring intro can work without Groq)
 let introAudio = null;
 let introObjectUrl = null;
 let introPlayToken = 0;
+let matchIntroSeqToken = 0;
 let boxingBellAudio = null;
 
 function resetCommentaryMemory() {
@@ -13472,6 +13467,21 @@ function stopIntroAudio() {
     try { URL.revokeObjectURL(introObjectUrl); } catch { /* ignore */ }
     introObjectUrl = null;
   }
+}
+
+/** Abort an in-flight match-intro sequence (leave match / hard reset). */
+function cancelMatchIntroSequence() {
+  matchIntroSeqToken += 1;
+  stopIntroAudio();
+  if (typeof stopWalkoutAudio === 'function') stopWalkoutAudio();
+  try {
+    if (boxingBellAudio) {
+      boxingBellAudio.pause();
+      boxingBellAudio.removeAttribute('src');
+      boxingBellAudio.load();
+    }
+  } catch { /* ignore */ }
+  boxingBellAudio = null;
 }
 
 function stopAllSpokenAudio() {
@@ -14107,17 +14117,37 @@ function stopRefCallAudio() {
   refCallAudioEl = null;
 }
 
+/**
+ * Play one Ralph clip and wait until it truly ends.
+ * Short safety timeouts previously resolved while audio kept playing, so the next
+ * clip (or walk-out channel) overlapped and sounded scrambled / cut off.
+ */
 function playRefCallFile(file, { ms = 2500 } = {}) {
   if (!file) return Promise.resolve();
   stopRefCallAudio();
   const token = ++refCallPlayToken;
   return new Promise((resolve) => {
     let settled = false;
-    const done = () => {
+    let safety = null;
+    const done = (stopPlayback = false) => {
       if (settled) return;
       settled = true;
+      if (safety != null) clearTimeout(safety);
+      if (stopPlayback && refCallAudioEl && refCallAudioEl._refToken === token) {
+        try {
+          refCallAudioEl.pause();
+          refCallAudioEl.removeAttribute('src');
+          refCallAudioEl.load();
+        } catch { /* ignore */ }
+      }
       if (refCallAudioEl && refCallAudioEl._refToken === token) refCallAudioEl = null;
       resolve();
+    };
+    const armSafety = (waitMs) => {
+      if (safety != null) clearTimeout(safety);
+      safety = setTimeout(() => {
+        if (token === refCallPlayToken) done(true);
+      }, waitMs);
     };
     try {
       unlockCommentaryAudio();
@@ -14126,15 +14156,26 @@ function playRefCallFile(file, { ms = 2500 } = {}) {
       refCallAudioEl = audio;
       audio.volume = 1;
       audio.preload = 'auto';
-      audio.onended = () => { if (token === refCallPlayToken) done(); };
-      audio.onerror = done;
-      setTimeout(() => { if (token === refCallPlayToken) done(); }, ms + 800);
+      audio.onended = () => { if (token === refCallPlayToken) done(false); };
+      audio.onerror = () => done(false);
+      // Generous fallback; prefer real duration once metadata loads.
+      armSafety(Math.max((ms || 2500) + 2500, 10000));
+      audio.addEventListener('loadedmetadata', () => {
+        if (token !== refCallPlayToken || settled) return;
+        const dur = Number(audio.duration);
+        if (Number.isFinite(dur) && dur > 0) armSafety(dur * 1000 + 600);
+      });
       const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(() => done());
+      if (p && typeof p.catch === 'function') p.catch(() => done(false));
     } catch {
-      done();
+      done(false);
     }
   });
+}
+
+function queueRefAnnounce(task) {
+  refAnnounceChain = refAnnounceChain.then(() => task()).catch(() => {});
+  return refAnnounceChain;
 }
 
 /**
@@ -14156,7 +14197,7 @@ async function playRalphRefCall({ visit, bust, legWon, matchWon } = {}) {
     }
   }
   if (!file) return;
-  await playRefCallFile(file, { ms: matchWon || legWon ? 2200 : 1800 });
+  await playRefCallFile(file, { ms: matchWon || legWon ? 2800 : 3200 });
 }
 
 function playBoxingBell() {
@@ -14172,17 +14213,21 @@ function playBoxingBell() {
       const audio = new Audio('/sfx/boxing_bell.mp3');
       boxingBellAudio = audio;
       let settled = false;
-      const done = () => {
+      const done = (stopPlayback = false) => {
         if (settled) return;
         settled = true;
+        if (stopPlayback) {
+          try { audio.pause(); } catch { /* ignore */ }
+        }
+        if (boxingBellAudio === audio) boxingBellAudio = null;
         resolve();
       };
-      audio.onended = done;
-      audio.onerror = done;
+      audio.onended = () => done(false);
+      audio.onerror = () => done(false);
       // Don't block the intro forever if the file is missing — cap wait.
-      setTimeout(done, 1200);
+      setTimeout(() => done(true), 2000);
       const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(() => done());
+      if (p && typeof p.catch === 'function') p.catch(() => done(false));
     } catch {
       resolve();
     }
@@ -14197,38 +14242,57 @@ function playMatchIntroSegment(key) {
   const seg = MATCH_INTRO_SEGMENTS[key];
   if (!seg?.file) return Promise.resolve();
 
+  // Keep ring speech and walk-out on separate channels from overlapping.
+  if (typeof stopWalkoutAudio === 'function') stopWalkoutAudio();
   stopIntroAudio();
   const token = ++introPlayToken;
   return new Promise((resolve) => {
     let settled = false;
-    const done = () => {
+    let safety = null;
+    const done = (stopPlayback = false) => {
       if (settled) return;
       settled = true;
+      if (safety != null) clearTimeout(safety);
+      if (stopPlayback && introAudio && introAudio._introToken === token) {
+        try {
+          introAudio.pause();
+          introAudio.src = '';
+        } catch { /* ignore */ }
+      }
       if (introAudio && introAudio._introToken === token) introAudio = null;
       resolve();
+    };
+    const armSafety = (waitMs) => {
+      if (safety != null) clearTimeout(safety);
+      safety = setTimeout(() => {
+        if (token !== introPlayToken) return;
+        done(true);
+      }, waitMs);
     };
     try {
       unlockCommentaryAudio();
       const audio = new Audio(`/sfx/${seg.file}?v=${MATCH_INTRO_ASSET_VER}`);
-      audio._introDone = done;
+      audio._introDone = () => done(false);
       audio._introToken = token;
       introAudio = audio;
       audio.volume = 1;
       audio.preload = 'auto';
       audio.onended = () => {
         if (token !== introPlayToken) return;
-        done();
+        done(false);
       };
-      audio.onerror = done;
-      // Cap wait so a missing file cannot stall kickoff.
-      setTimeout(() => {
-        if (token !== introPlayToken) return;
-        done();
-      }, (seg.ms || 5000) + 1500);
+      audio.onerror = () => done(false);
+      // Prefer real duration; keep a generous fallback so missing files cannot stall kickoff.
+      armSafety(Math.max((seg.ms || 5000) + 4000, 20000));
+      audio.addEventListener('loadedmetadata', () => {
+        if (token !== introPlayToken || settled) return;
+        const dur = Number(audio.duration);
+        if (Number.isFinite(dur) && dur > 0) armSafety(dur * 1000 + 800);
+      });
       const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(() => done());
+      if (p && typeof p.catch === 'function') p.catch(() => done(false));
     } catch {
-      done();
+      done(false);
     }
   });
 }
@@ -14315,27 +14379,47 @@ function playMatchIntroCallFile(relFile, { ms = MATCH_INTRO_CALL_MS } = {}) {
   const token = ++introPlayToken;
   return new Promise((resolve) => {
     let settled = false;
-    const done = () => {
+    let safety = null;
+    const done = (stopPlayback = false) => {
       if (settled) return;
       settled = true;
+      if (safety != null) clearTimeout(safety);
+      if (stopPlayback && introAudio && introAudio._introToken === token) {
+        try {
+          introAudio.pause();
+          introAudio.src = '';
+        } catch { /* ignore */ }
+      }
       if (introAudio && introAudio._introToken === token) introAudio = null;
       resolve();
+    };
+    const armSafety = (waitMs) => {
+      if (safety != null) clearTimeout(safety);
+      safety = setTimeout(() => {
+        if (token !== introPlayToken) return;
+        done(true);
+      }, waitMs);
     };
     try {
       unlockCommentaryAudio();
       const audio = new Audio(`/${MATCH_INTRO_CALLS_DIR}/${relFile}?v=${MATCH_INTRO_CALL_VER}`);
-      audio._introDone = done;
+      audio._introDone = () => done(false);
       audio._introToken = token;
       introAudio = audio;
       audio.volume = 1;
       audio.preload = 'auto';
-      audio.onended = () => { if (token === introPlayToken) done(); };
-      audio.onerror = done;
-      setTimeout(() => { if (token === introPlayToken) done(); }, ms + 1200);
+      audio.onended = () => { if (token === introPlayToken) done(false); };
+      audio.onerror = () => done(false);
+      armSafety(Math.max((ms || MATCH_INTRO_CALL_MS) + 2500, 6000));
+      audio.addEventListener('loadedmetadata', () => {
+        if (token !== introPlayToken || settled) return;
+        const dur = Number(audio.duration);
+        if (Number.isFinite(dur) && dur > 0) armSafety(dur * 1000 + 600);
+      });
       const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(() => done());
+      if (p && typeof p.catch === 'function') p.catch(() => done(false));
     } catch {
-      done();
+      done(false);
     }
   });
 }
@@ -14589,13 +14673,13 @@ function announceVisitScore(display, opts = {}) {
   if (!raw) return;
   const bust = !!opts.bust || /^bust$/i.test(raw);
   const visit = opts.visit != null ? opts.visit : (bust ? 0 : parseAnnounceVisitTotal(raw));
-  // Ralph ref call for this player's visit, then visual arena moments.
-  playRalphRefCall({
+  // Queue Ralph so the visit total finishes before any follow-up "you require".
+  queueRefAnnounce(() => playRalphRefCall({
     visit,
     bust,
     legWon: !!opts.legWon,
     matchWon: !!opts.matchWon,
-  }).catch(() => {});
+  }));
   announceVisitCommentary({
     player: resolveCommentaryPlayerName(opts),
     visit,
@@ -14624,26 +14708,37 @@ function announceMatchWin(winner, { forceLine = false } = {}) {
   lastAnnounceWinKey = key;
 }
 
-function maybeAnnounceX01Require() {
+/**
+ * Ralph "You require" + remaining after a visit that leaves a checkout,
+ * or at match start for the player about to throw.
+ * opts.seat / opts.remaining target the scorer (not necessarily S.turn after the visit).
+ */
+function maybeAnnounceX01Require(opts = {}) {
   if (!isX01Game(S.game)) return;
   const gs = S.gameState;
   if (!gs?.remaining) return;
-  const active = typeof S.turn === 'number' ? S.turn : 0;
-  const rem = gs.remaining[active];
+  const seat = typeof opts.seat === 'number'
+    ? opts.seat
+    : (typeof S.turn === 'number' ? S.turn : 0);
+  const rem = opts.remaining != null ? Number(opts.remaining) : gs.remaining[seat];
   if (!(rem > 0 && rem <= 170 && x01IsValidCheckout(rem, gs.finishRule || 'double-out'))) {
     return;
   }
-  const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${active}|${rem}`;
+  // Dedup per visit so local + network echo does not double-call; still re-announce
+  // when the same checkout is left again later in the leg.
+  const visitCount = (gs.legLog || []).reduce((a, l) => a + ((l && l.length) || 0), 0);
+  const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${seat}|${rem}|${visitCount}|${opts.seat != null ? 'v' : 't'}`;
   if (key === lastX01RequireKey) return;
   lastX01RequireKey = key;
   triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
-  // Ralph: "You require" then remaining score when a finish is on.
-  (async () => {
+  // After the visit score clip: "You require" then the remaining finish.
+  queueRefAnnounce(async () => {
     const cat = await ensureRefCallCatalog();
-    if (cat.calls?.you_require) await playRefCallFile(cat.calls.you_require, { ms: 1400 });
+    const requireCall = cat.calls?.you_require || cat.calls?.still_remaining;
+    if (requireCall) await playRefCallFile(requireCall, { ms: 2000 });
     const scoreFile = cat.scores?.[String(rem)];
-    if (scoreFile) await playRefCallFile(scoreFile, { ms: 1600 });
-  })().catch(() => {});
+    if (scoreFile) await playRefCallFile(scoreFile, { ms: 3200 });
+  });
 }
 
 function announceFromScoreUpdate(msg) {
@@ -14658,11 +14753,13 @@ function announceFromScoreUpdate(msg) {
   const bust = /^bust$/i.test(String(display).trim()) || /bust/i.test(note);
   let visit = parseAnnounceVisitTotal(display);
   let remaining;
+  let scorerSeat = null;
 
   if (isX01Game(S.game) && S.gameState) {
     const last = x01LastVisitEntry(S.gameState);
     if (last?.entry) {
       visit = last.entry.v;
+      scorerSeat = last.entry.p;
       if (last.entry.bust) {
         remaining = S.gameState.remaining?.[last.entry.p];
       } else if (matchWon || legWon || (!last.isCurrentLeg && last.entry.v != null)) {
@@ -14682,7 +14779,12 @@ function announceFromScoreUpdate(msg) {
     matchWon,
     winner: matchWon ? (msg.history?.[0]?.player || null) : null
   });
-  if (!matchWon) maybeAnnounceX01Require();
+  // Announce require for the player who just scored (previous visit total plays first via queue).
+  if (!matchWon && !legWon && scorerSeat != null && remaining > 0) {
+    maybeAnnounceX01Require({ seat: scorerSeat, remaining });
+  } else if (!matchWon && !legWon) {
+    maybeAnnounceX01Require();
+  }
 }
 
 function initAnnounceVoiceList() {
@@ -15005,12 +15107,14 @@ function defaultWalkoutId() {
 function runMatchIntroAnnounce(preview) {
   if (matchIntroAnnounced) return matchIntroPromise;
   matchIntroAnnounced = true;
+  const seq = ++matchIntroSeqToken;
   const { players, a, b } = matchIntroPlayersAndNames(preview);
   const list = (players.length ? players : [{ username: a }, { username: b }])
     .filter((p) => p?.username);
 
   matchIntroPromise = (async () => {
     await ensureMatchIntroCallCatalog();
+    if (seq !== matchIntroSeqToken) return;
     const p1 = list[0] || { username: a };
     const p2 = list[1] || list[0] || { username: b };
     const catalog = matchIntroCallCatalog;
@@ -15020,12 +15124,19 @@ function runMatchIntroAnnounce(preview) {
     const p2Has = !!(p2Calls.name || p2Calls.nickname);
 
     await playBoxingBell();
+    if (seq !== matchIntroSeqToken) return;
     await playMatchIntroSegment(p1Has ? 'open' : 'openFull');
+    if (seq !== matchIntroSeqToken) return;
     if (p1Has) await playIntroCallsForPlayer(p1);
+    if (seq !== matchIntroSeqToken) return;
     await playWalkoutForPlayer(p1);
+    if (seq !== matchIntroSeqToken) return;
     await playMatchIntroSegment(p2Has ? 'enter' : 'enterFull');
+    if (seq !== matchIntroSeqToken) return;
     if (p2Has) await playIntroCallsForPlayer(p2);
+    if (seq !== matchIntroSeqToken) return;
     await playWalkoutForPlayer(p2);
+    if (seq !== matchIntroSeqToken) return;
     await playMatchIntroSegment('close');
   })().catch(() => {});
 
@@ -15074,6 +15185,7 @@ function playWalkoutSting(id) {
   if (!entry?.file) return Promise.resolve();
 
   // Cancel any in-flight clip so preview / sequence handoffs stay clean.
+  stopIntroAudio();
   if (walkoutAudioEl) {
     try {
       walkoutAudioEl.pause();
