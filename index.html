@@ -2959,6 +2959,27 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .x01-edit-score-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-light); }
 .x01-edit-score-btn:disabled { opacity: 0.38; cursor: default; }
+.x01-visit-line {
+  display: flex; align-items: center; gap: 0.35rem; width: 100%;
+}
+.x01-visit-line.right { flex-direction: row-reverse; }
+.x01-visit-line .x01-turn-row { flex-shrink: 0; }
+.x01-visit-edit-input {
+  width: 3.4rem; min-width: 3.4rem; padding: 0.2rem 0.3rem;
+  border-radius: 5px; border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.45); color: #f0f2f8;
+  font-family: 'Orbitron', monospace; font-size: 0.72rem; text-align: center;
+}
+.x01-visit-edit-input:focus {
+  outline: none; border-color: var(--gold); background: rgba(0,0,0,0.65);
+}
+.x01-visit-edit-save {
+  width: 1.55rem; height: 1.55rem; border-radius: 5px; padding: 0;
+  border: 1px solid rgba(255,255,255,0.16); background: rgba(109,191,130,0.25);
+  color: #b8f0c6; cursor: pointer; font-size: 0.75rem; line-height: 1;
+  flex-shrink: 0;
+}
+.x01-visit-edit-save:hover { filter: brightness(1.12); border-color: #6dbf82; }
 .x01-remaining {
   font-family: 'Orbitron', monospace; font-size: 2.9rem; font-weight: 800; line-height: 1;
   height: 2.9rem; margin: 0.2rem 0 0.55rem; color: var(--silver-light);
@@ -3185,10 +3206,14 @@ body.app-active .arena-bg { animation: none !important; }
   background: rgba(10, 12, 18, 0.94); border: 1px solid var(--border); border-radius: 10px;
   padding: 0.75rem; min-height: 90px; overflow: auto; align-content: flex-start;
 }
-.x01-leg-col { min-width: 90px; }
+.x01-leg-col { min-width: 150px; width: 100%; }
 .x01-leg-badge {
   display: inline-block; background: #d6452a; color: #fff; font-family: 'Orbitron', monospace;
   font-size: 0.7rem; border-radius: 5px; padding: 2px 8px; margin-bottom: 0.5rem;
+}
+.x01-leg-hint {
+  font-size: 0.62rem; color: var(--muted); letter-spacing: 0.02em; margin: -0.2rem 0 0.45rem;
+  line-height: 1.3;
 }
 .x01-leg-turns { display: flex; flex-direction: column; gap: 0.3rem; }
 .x01-turn-row {
@@ -8996,9 +9021,8 @@ function submitX01() {
       matchWon: !!res.matchOver,
       winner
     });
-    if (!res.matchOver && !res.legWon) {
-      maybeAnnounceX01Require({ seat: p, remaining: gs.remaining[p] });
-    }
+    // "You require" belongs to the player about to throw (S.turn), not the scorer.
+    if (!res.matchOver) maybeAnnounceX01Require();
   }
   updateMatchUI();
   if (res.matchOver) {
@@ -9118,9 +9142,28 @@ function commitX01Edit(payload, { toastMsg } = {}) {
 }
 
 function editX01Score(playerIdx) {
+  // Legacy card ✎ entry point — edits are inline next to each current-leg visit.
+  toast('Use the edit box next to a visit in the score log (current leg only).');
+  const hist = gid('x01-leg-history');
+  const input = hist?.querySelector('.x01-visit-edit-input');
+  if (input) {
+    try { input.focus({ preventScroll: true }); input.select(); } catch { input.focus(); }
+  }
+}
+
+function commitX01VisitEditFromInput(inputEl) {
+  if (!inputEl || inputEl.disabled) return;
+  const legIdx = parseInt(inputEl.dataset.leg, 10);
+  const visitIdx = parseInt(inputEl.dataset.visit, 10);
+  const total = parseInt(String(inputEl.value).trim(), 10);
+  editX01VisitAt(legIdx, visitIdx, total);
+}
+
+/** Edit one recorded visit in the current leg only. */
+function editX01VisitAt(legIdx, visitIdx, total) {
   if (!isX01Game(S.game)) return;
-  if (!S.isLocal && playerIdx !== myPlayerIdx()) {
-    toast('You can only edit your own visits.');
+  if (S.isSpectating) {
+    toast('Spectators cannot edit scores.');
     return;
   }
   if (x01EditAwaitingApproval) {
@@ -9128,42 +9171,40 @@ function editX01Score(playerIdx) {
     return;
   }
 
-  const editIdx = S.isLocal ? playerIdx : myPlayerIdx();
   const gs = S.gameState;
-  const allVisits = x01FlattenVisits(gs);
-  const ownVisits = allVisits
-    .map((visit, flatIdx) => ({ ...visit, flatIdx }))
-    .filter(visit => visit.entry.p === editIdx);
-
-  if (!ownVisits.length) {
-    toast('No visits to edit yet.');
+  const legs = gs?.legLog || [];
+  const currentLegIdx = legs.length - 1;
+  if (currentLegIdx < 0 || legIdx !== currentLegIdx) {
+    toast('You can only edit visits in the current leg.');
+    return;
+  }
+  const leg = legs[legIdx] || [];
+  const entry = leg[visitIdx];
+  if (!entry) {
+    toast('Visit not found.');
     return;
   }
 
-  const list = ownVisits.map((visit, idx) => {
-    const label = visit.entry.bust ? `BUST (${visit.entry.v})` : visit.entry.v;
-    return `${idx + 1}. Leg ${visit.legIdx + 1}, visit ${visit.visitIdx + 1}: ${label}`;
-  }).join('\n');
-  const pickRaw = window.prompt(`Edit which visit?\n\n${list}`, String(ownVisits.length));
-  if (pickRaw === null) return;
-  const pick = parseInt(pickRaw, 10);
-  if (Number.isNaN(pick) || pick < 1 || pick > ownVisits.length) {
-    toast('Choose a valid visit number.');
+  const editIdx = entry.p;
+  if (!S.isLocal && editIdx !== myPlayerIdx()) {
+    toast('You can only edit your own visits.');
     return;
   }
-
-  const selected = ownVisits[pick - 1];
-  const scoreRaw = window.prompt('Enter the corrected visit score (0-180):', String(selected.entry.v));
-  if (scoreRaw === null) return;
-  const total = parseInt(String(scoreRaw).trim(), 10);
   if (Number.isNaN(total) || total < 0 || total > 180) {
     toast('Enter a turn total between 0 and 180.');
     return;
   }
-  if (total === selected.entry.v) return;
+  if (total === entry.v) return;
+
+  const allVisits = x01FlattenVisits(gs);
+  const flatIdx = allVisits.findIndex(v => v.legIdx === legIdx && v.visitIdx === visitIdx);
+  if (flatIdx < 0) {
+    toast('Visit not found.');
+    return;
+  }
 
   const visitsForReplay = allVisits.map(visit => ({ p: visit.replay.p, v: visit.replay.v }));
-  visitsForReplay[selected.flatIdx] = { p: editIdx, v: total };
+  visitsForReplay[flatIdx] = { p: editIdx, v: total };
   const names = x01PlayerNames();
   const replay = x01ReplayVisits(visitsForReplay, gs, names);
   if (!replay) {
@@ -9183,11 +9224,11 @@ function editX01Score(playerIdx) {
       ...payload,
       summary: {
         editorName: S.user?.username || names[editIdx],
-        fromScore: selected.entry.v,
+        fromScore: entry.v,
         toScore: total,
-        legNumber: selected.legIdx + 1,
-        visitNumber: selected.visitIdx + 1,
-        bustWas: !!selected.entry.bust,
+        legNumber: legIdx + 1,
+        visitNumber: visitIdx + 1,
+        bustWas: !!entry.bust,
         matchOver: !!replay.matchOver
       }
     });
@@ -10945,7 +10986,6 @@ function buildX01Cards(names) {
           <div class="x01-card-name">${escapeX01(names[p] || ('Player ' + (p + 1)))}${lvl}</div>
           <div class="x01-legs-tools">
             <div class="x01-legs"></div>
-            <button type="button" class="x01-edit-score-btn" onclick="editX01Score(${p})" title="Edit visit scores">✎</button>
           </div>
         </div>
         <div class="x01-remaining"></div>
@@ -10964,7 +11004,7 @@ function buildX01Cards(names) {
     return {
       card,
       legs: card.querySelector('.x01-legs'),
-      edit: card.querySelector('.x01-edit-score-btn'),
+      edit: null,
       remaining: card.querySelector('.x01-remaining'),
       checkout: card.querySelector('.x01-checkout-guide'),
       pressure: card.querySelector('.x01-pressure-fill'),
@@ -10994,9 +11034,7 @@ function renderX01Cards(gs, names, active) {
     const last = gs.lastScore?.[p] ?? '–';
     const darts = gs.dartsThrown?.[p] || 0;
     const stats = x01LiveDramaStats(gs, p);
-    const canEdit = p === myPlayerIdx()
-      && !x01EditAwaitingApproval
-      && (gs.legLog || []).some(leg => (leg || []).some(entry => entry.p === p));
+    const canEdit = false; // Inline visit editors live in the score log (current leg only).
     if (r.legs.textContent != legs) r.legs.textContent = legs;
     if (r.edit) r.edit.disabled = !canEdit;
     if (r.remaining.textContent != rem) r.remaining.textContent = rem;
@@ -11023,11 +11061,30 @@ function renderX01Cards(gs, names, active) {
 let x01HistRendered = []; // entries already rendered, per leg index
 let x01HistSig = '';
 
-function x01TurnRowHtml(entry) {
+function x01CanEditVisit(entryP) {
+  if (S.isSpectating) return false;
+  if (x01EditAwaitingApproval || x01EditApprovalPromptOpen) return false;
+  if (S.isLocal) return true;
+  return entryP === myPlayerIdx();
+}
+
+function x01TurnRowHtml(entry, legIdx, visitIdx) {
   const side = entry.p === 0 ? 'left' : 'right';
   const cls = entry.bust ? ' bust' : '';
   const label = entry.bust ? 'BUST' : entry.v;
-  return `<div class="x01-turn-row ${side}${cls}">${label}</div>`;
+  const canEdit = x01CanEditVisit(entry.p);
+  const editBits = canEdit
+    ? `<input type="number" class="x01-visit-edit-input" min="0" max="180" step="1"
+         value="${entry.v}" inputmode="numeric" aria-label="Edit visit score"
+         data-leg="${legIdx}" data-visit="${visitIdx}"
+         onkeydown="if(event.key==='Enter'){event.preventDefault();commitX01VisitEditFromInput(this);}" />
+       <button type="button" class="x01-visit-edit-save" title="Save corrected score"
+         onclick="commitX01VisitEditFromInput(this.previousElementSibling)">✓</button>`
+    : '';
+  return `<div class="x01-visit-line ${side}" data-visit="${visitIdx}">
+    <div class="x01-turn-row ${side}${cls}">${label}</div>
+    ${editBits}
+  </div>`;
 }
 
 function renderX01History(gs) {
@@ -11044,18 +11101,25 @@ function renderX01History(gs) {
   // Only the current (latest) leg — prior legs stay out of the score box.
   const li = legs.length - 1;
   const leg = legs[li] || [];
-  const histSig = `${li}|` + leg.map(entry => `${entry.p}:${entry.v}:${entry.bust ? 1 : 0}`).join(',');
+  const editKey = `${x01EditAwaitingApproval ? 1 : 0}|${x01EditApprovalPromptOpen ? 1 : 0}|${S.isLocal ? 'L' : myPlayerIdx()}`;
+  const histSig = `${li}|${editKey}|` + leg.map(entry => `${entry.p}:${entry.v}:${entry.bust ? 1 : 0}`).join(',');
   const renderedLen = x01HistRendered[0] || 0;
   const sameLeg = histEl.querySelector(`.x01-leg-col[data-leg="${li}"]`);
   let needFull = !sameLeg
     || leg.length < renderedLen
     || (x01HistSig && leg.length === renderedLen && histSig !== x01HistSig);
   if (!needFull && x01HistSig && x01HistSig.split('|')[0] !== String(li)) needFull = true;
+  // Rebuild when editability flips (approval lock / seat) even if scores are unchanged.
+  if (!needFull && x01HistSig) {
+    const prevEdit = x01HistSig.split('|').slice(1, 4).join('|');
+    if (prevEdit !== editKey) needFull = true;
+  }
 
   if (needFull) {
-    const rows = leg.map(x01TurnRowHtml).join('');
+    const rows = leg.map((entry, vi) => x01TurnRowHtml(entry, li, vi)).join('');
     histEl.innerHTML = `<div class="x01-leg-col" data-leg="${li}">
         <div class="x01-leg-badge">#${li + 1}</div>
+        <div class="x01-leg-hint">Edit boxes = correct a visit (this leg only)</div>
         <div class="x01-leg-turns">${rows || '<div class="x01-turn-empty">—</div>'}</div>
       </div>`;
     x01HistRendered = [leg.length];
@@ -11074,7 +11138,7 @@ function renderX01History(gs) {
       if (ph) ph.remove();
     }
     let html = '';
-    for (let k = already; k < now; k++) html += x01TurnRowHtml(leg[k]);
+    for (let k = already; k < now; k++) html += x01TurnRowHtml(leg[k], li, k);
     turnsEl.insertAdjacentHTML('beforeend', html);
     x01HistRendered = [now];
   }
@@ -14709,14 +14773,15 @@ function announceMatchWin(winner, { forceLine = false } = {}) {
 }
 
 /**
- * Ralph "You require" + remaining after a visit that leaves a checkout,
- * or at match start for the player about to throw.
- * opts.seat / opts.remaining target the scorer (not necessarily S.turn after the visit).
+ * Ralph "You require" + remaining for the player about to throw.
+ * Called when the turn arrives (after the previous visit call), not right after
+ * the visit that first left a checkout on the board.
  */
 function maybeAnnounceX01Require(opts = {}) {
   if (!isX01Game(S.game)) return;
   const gs = S.gameState;
   if (!gs?.remaining) return;
+  // Always the active thrower — never the scorer who just finished a visit.
   const seat = typeof opts.seat === 'number'
     ? opts.seat
     : (typeof S.turn === 'number' ? S.turn : 0);
@@ -14724,14 +14789,14 @@ function maybeAnnounceX01Require(opts = {}) {
   if (!(rem > 0 && rem <= 170 && x01IsValidCheckout(rem, gs.finishRule || 'double-out'))) {
     return;
   }
-  // Dedup per visit so local + network echo does not double-call; still re-announce
-  // when the same checkout is left again later in the leg.
+  // Dedup per (leg, seat, rem, visitCount) so local+network echo does not double-call,
+  // but the same checkout is re-announced when that player returns to the oche.
   const visitCount = (gs.legLog || []).reduce((a, l) => a + ((l && l.length) || 0), 0);
-  const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${seat}|${rem}|${visitCount}|${opts.seat != null ? 'v' : 't'}`;
+  const key = `${S.isLocal ? 'local' : (S.roomId || '')}|${gs.currentLeg}|${seat}|${rem}|${visitCount}`;
   if (key === lastX01RequireKey) return;
   lastX01RequireKey = key;
   triggerArenaMoment({ type: 'CHECKOUT_CHANCE' }, {});
-  // After the visit score clip: "You require" then the remaining finish.
+  // Queued behind any in-flight visit call so "You require" comes before they throw.
   queueRefAnnounce(async () => {
     const cat = await ensureRefCallCatalog();
     const requireCall = cat.calls?.you_require || cat.calls?.still_remaining;
@@ -14753,13 +14818,11 @@ function announceFromScoreUpdate(msg) {
   const bust = /^bust$/i.test(String(display).trim()) || /bust/i.test(note);
   let visit = parseAnnounceVisitTotal(display);
   let remaining;
-  let scorerSeat = null;
 
   if (isX01Game(S.game) && S.gameState) {
     const last = x01LastVisitEntry(S.gameState);
     if (last?.entry) {
       visit = last.entry.v;
-      scorerSeat = last.entry.p;
       if (last.entry.bust) {
         remaining = S.gameState.remaining?.[last.entry.p];
       } else if (matchWon || legWon || (!last.isCurrentLeg && last.entry.v != null)) {
@@ -14779,12 +14842,8 @@ function announceFromScoreUpdate(msg) {
     matchWon,
     winner: matchWon ? (msg.history?.[0]?.player || null) : null
   });
-  // Announce require for the player who just scored (previous visit total plays first via queue).
-  if (!matchWon && !legWon && scorerSeat != null && remaining > 0) {
-    maybeAnnounceX01Require({ seat: scorerSeat, remaining });
-  } else if (!matchWon && !legWon) {
-    maybeAnnounceX01Require();
-  }
+  // After the visit call: if the next thrower is on a finish, announce before they throw.
+  if (!matchWon) maybeAnnounceX01Require();
 }
 
 function initAnnounceVoiceList() {
