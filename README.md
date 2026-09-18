@@ -1,8 +1,6 @@
 # Treble-Makers Arena
 
-A World Darts League (WDL) darts arena web app. Players authenticate, create or join live matches (human, bot, or tournament brackets) with optional webcam feeds, and play X01, Cricket, Tactics, Halve-It, Shanghai, Golf Darts, Golf Checkouts, Football, Snakes & Ladders, Around the Clock, Killer, and High Score.
-
-The landing page also shows live **WDL** division standings via a server-side proxy.
+A darts arena web app. Players authenticate, create or join live matches (human, bot, or tournament brackets) with optional webcam feeds, and play X01, Cricket, Tactics, Halve-It, Shanghai, Golf Darts, Golf Checkouts, Football, Snakes & Ladders, Around the Clock, Killer, and High Score.
 
 ## Architecture
 

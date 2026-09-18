@@ -1,7 +1,7 @@
 {
   "name": "treble-makers-funhouse",
   "version": "1.0.0",
-  "description": "World Darts League — Treble-Makers FunHouse online platform",
+  "description": "Treble-Makers Arena — online darts platform",
   "main": "server.js",
   "scripts": {
     "build": "node build.js",
