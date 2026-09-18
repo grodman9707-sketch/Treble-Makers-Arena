@@ -45,33 +45,6 @@ const TASKS = [
     // threshold must stay very low to seal the crest interior.
     tLow: 6,
   },
-  {
-    src: 'tsh-images/_originals/TSH_Main_Crest.png',
-    out: 'tsh-images/TSH_Main_Crest.png',
-    // Dark PCB field behind the circular crest — keep threshold low so neon-blue
-    // glow and brushed-metal rim stay intact.
-    tLow: 12,
-  },
-  {
-    src: 'tsh-images/_originals/TSH_American_Crest.png',
-    out: 'tsh-images/TSH_American_Crest.png',
-    tLow: 12,
-  },
-  {
-    src: 'tsh-images/_originals/TSH_European_Crest.png',
-    out: 'tsh-images/TSH_European_Crest.png',
-    tLow: 12,
-  },
-  {
-    src: 'lazy-images/_originals/LazyLeagues_Crest.png',
-    out: 'lazy-images/LazyLeagues_Crest.png',
-    // The Lazy Leagues emblem sits on a flat dark-charcoal field (~rgb 29,33,35),
-    // NOT near-black, so luminance keying fails here. Key on colour distance to the
-    // sampled border colour instead; tol is small enough that the emblem's own
-    // near-black outlines stay farther than tol from the field and survive intact.
-    mode: 'color',
-    tol: 44,
-  },
 ];
 
 const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;

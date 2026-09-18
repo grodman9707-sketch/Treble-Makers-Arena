@@ -26,12 +26,7 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const ASSETS = [
   'treble_arena_background.webp',
   'treblemak_crests/Treble-makers_Main_Crest.webp',
-  'tsh-images/TSH_Main_Crest.webp',
-  'lazy-images/LazyLeagues_Crest.webp',
-  'tsh-images/TSH_American_Crest.webp',
-  'tsh-images/TSH_European_Crest.webp',
   'Golf Darts/par-3-course.webp',
-  'lazy-images/LazyLeagues_Crest.png',
   'golf_imgs/hole-1.webp',
   'golf_imgs/hole-2.webp',
   'golf_imgs/hole-3.webp',
