@@ -6,8 +6,8 @@ Treble-Makers Arena is a **single Node.js process** (`server.js`): Express serve
 built `public/` bundle, exposes a few `/api/*` routes, and runs the WebSocket game
 server. Almost all app behavior (register, login, matches, gameplay) happens over
 **WebSocket**, not REST — REST endpoints include `/healthz`, `/api/personalities`,
-`/api/commentary`, `/api/ref-announce`, `/api/match-intro`, `/api/wdl-standings`, and
-`/api/lazy-standings`. Optional AI commentary (single or dual announcers) uses Groq +
+`/api/commentary`, `/api/ref-announce`, `/api/match-intro`, and `/api/wdl-standings`.
+Optional AI commentary (single or dual announcers) uses Groq +
 Deepgram TTS with switchable accent/language locales. Ref Russ calls scores via
 `/api/ref-announce` (default voice `aura-2-perseus-en`). Match intros use canned Bruce-style
 segments in `sfx/` (`match_intro_open_lead` → name/nickname calls from

@@ -2,7 +2,7 @@
 
 A World Darts League (WDL) darts arena web app. Players authenticate, create or join live matches (human, bot, or tournament brackets) with optional webcam feeds, and play X01, Cricket, Tactics, Halve-It, Shanghai, Golf Darts, Golf Checkouts, Football, Snakes & Ladders, Around the Clock, Killer, and High Score.
 
-The landing page also shows live **WDL** and **Lazy Leagues** division standings via server-side proxies.
+The landing page also shows live **WDL** division standings via a server-side proxy.
 
 ## Architecture
 
@@ -74,8 +74,6 @@ npm run build   # copy new WebP into public/
 
 - `treble_arena_background.png` → `treble_arena_background.webp`
 - `treblemak_crests/_originals/` → `remove-crest-bg.js` → `Treble-makers_Main_Crest.png` → WebP
-- `tsh-images/_originals/` → same pipeline for TSH main + regional crests
-- `lazy-images/_originals/` + `LazyLeagues_Crest_metal.png` → Lazy Leagues partner crest
 - `Golf Darts/par-3-course.png` → WebP
 - `golf_imgs/Hole N.png` → `trim-golf-courses.js` → `hole-N.webp`
 
@@ -111,11 +109,6 @@ Copy `.env.example` → `.env` and adjust. The server loads `.env` automatically
 | `EMAIL_FROM` | — | Verified Resend sender, e.g. `Treble-Makers <noreply@yourdomain.com>` |
 | `APP_URL` | — | Public base URL for reset links (no trailing slash) |
 | `PASSWORD_RESET_TTL_MS` | 1 hour | Password-reset token lifetime |
-| `LAZY_LEAGUES_EMAIL` | — | Lazy Leagues Firebase sign-in (optional) |
-| `LAZY_LEAGUES_PASSWORD` | — | Lazy Leagues Firebase sign-in (optional) |
-| `LAZY_LEAGUES_TOKEN` | — | Pre-made Firebase ID token (overrides above) |
-
-If Lazy Leagues credentials are missing, the server auto-provisions a Firebase proxy account and saves it to `/app/data/lazy-credentials.json` (or a local gitignored `lazy-credentials.json`). Env vars always win when set. After a season reset (empty points/history), the ticker falls back to ranking by rolling 3DA until new games are recorded.
 
 ## Backups
 
@@ -170,8 +163,6 @@ public/             Generated client bundle (gitignored)
 backups/            Timestamped data.json snapshots (gitignored)
 docs/               Game rules reference
 treblemak_crests/   Main crest source art + _originals/
-tsh-images/         TSH crest source art + _originals/
-lazy-images/        Lazy Leagues partner crest art + _originals/
 golf_imgs/          Golf Checkouts hole source PNGs + WebP output
 Golf Darts/         Golf Darts course illustration source
 ```

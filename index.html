@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Treble-Makers Arena — TSH</title>
+<title>Treble-Makers Arena — WDL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@400;600;700&family=Exo+2:wght@300;400;500;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
@@ -266,8 +266,7 @@ body.app-active .arena-bg { animation: none !important; }
 #screen-landing.doors-revealing .spotlight,
 #screen-landing.doors-revealing .crowd-layer,
 #screen-landing.doors-revealing .dust,
-#screen-landing.doors-revealing .wdl-ticker,
-#screen-landing.doors-revealing .lazy-ticker {
+#screen-landing.doors-revealing .wdl-ticker {
   opacity: 0;
   transition: opacity 0.7s ease;
 }
@@ -282,7 +281,7 @@ body.app-active .arena-bg { animation: none !important; }
 }
 #screen-landing.doors-revealing { pointer-events: none; }
 
-/* TSH Crest area */
+/* Unused hidden hero-crest fallback */
 .crest-hero {
   position: relative;
   margin-bottom: 1.5rem;
@@ -304,35 +303,6 @@ body.app-active .arena-bg { animation: none !important; }
   filter: drop-shadow(0 0 40px rgba(201,168,76,0.5)) drop-shadow(0 0 80px rgba(201,168,76,0.2));
   animation: crestGlow 4s ease-in-out infinite;
 }
-/* Arena-partner TSH crest: standalone centered block (moved out of .crest-hero,
-   now sits between the arena title and the welcome banner). Sized to ~70% of its
-   former 260px footprint. */
-.secondary-logo {
-  width: min(182px, 22vw);
-  max-width: 182px;
-  margin: 0.5rem auto;
-  text-align: center;
-}
-.secondary-logo img {
-  width: 100%;
-  height: auto;
-  filter: drop-shadow(0 0 28px rgba(201,168,76,0.35));
-}
-.secondary-logo-tagline {
-  margin-top: 0.85rem;
-  font-size: 0.82rem;
-  color: var(--silver-light);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 7px rgba(0,0,0,0.7);
-}
-.crew-logo-text { display:none; }
-/* Two arena-partner crests (TSH + Lazy Leagues) sit side by side */
-.partner-logos {
-  display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start;
-  gap: clamp(1.5rem, 6vw, 3.5rem); margin: 0.5rem auto 0.25rem;
-}
-.partner-logos .secondary-logo { margin: 0.5rem 0; }
 @keyframes crestGlow {
   0%,100% { filter: drop-shadow(0 0 40px rgba(201,168,76,0.5)) drop-shadow(0 0 80px rgba(201,168,76,0.2)); }
   50% { filter: drop-shadow(0 0 60px rgba(201,168,76,0.8)) drop-shadow(0 0 120px rgba(201,168,76,0.35)); }
@@ -403,26 +373,6 @@ body.app-active .arena-bg { animation: none !important; }
   text-shadow: 0 2px 4px rgba(0,0,0,0.95), 0 0 14px rgba(201,168,76,0.5), 0 0 28px rgba(201,168,76,0.25);
 }
 @keyframes bannerPulse { 0%,100%{opacity:0.78} 50%{opacity:1} }
-
-/* Sub-league crests */
-.league-crests {
-  display: flex; gap: 1.5rem; justify-content: center; align-items: center;
-  margin-bottom: 2rem; flex-wrap: wrap;
-}
-.league-crest-item {
-  display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
-  opacity: 0.7; transition: opacity 0.2s; cursor: default;
-}
-.league-crest-item:hover { opacity: 1; }
-.league-crest-item img {
-  width: 91px; height: 91px; object-fit: contain;
-  filter: drop-shadow(0 0 10px rgba(201,168,76,0.3));
-}
-.league-crest-item span {
-  font-family: 'Cinzel', serif; font-size: 0.6rem; letter-spacing: 0.15em;
-  color: var(--gold-light); text-transform: uppercase;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7);
-}
 
 /* Auth box */
 .auth-container {
@@ -2843,58 +2793,7 @@ body.app-active .arena-bg { animation: none !important; }
   to { transform: translateX(-50%); }
 }
 #screen-app .wdl-ticker { position: sticky; top: 0; z-index: 90; flex-shrink: 0; }
-
-/* Lazy-Leagues standings ticker — sits directly below the WDL ticker, gold/red
-   theme drawn from the Lazy Leagues crest to distinguish it from WDL's green/purple. */
-.lazy-ticker {
-  position: relative; z-index: 19; width: 100%; overflow: hidden;
-  background: linear-gradient(90deg, rgba(8,8,12,0.97), rgba(10,12,30,0.97), rgba(8,8,12,0.97));
-  border-bottom: 1px solid rgba(255,223,110,0.30);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.45);
-}
-.lazy-ticker.hidden { display: none; }
-.lazy-ticker-inner { display: flex; align-items: center; min-height: 38px; }
-.lazy-ticker-label {
-  flex-shrink: 0; display: flex; align-items: center; gap: 0.45rem;
-  padding: 0 0.85rem; height: 38px;
-  background: rgba(255,223,110,0.10); border-right: 1px solid rgba(255,223,110,0.22);
-  font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.14em;
-  text-transform: uppercase; color: #ffe49a; white-space: nowrap;
-}
-.lazy-ticker-viewport { flex: 1; overflow: hidden; position: relative; }
-.lazy-ticker-viewport::before,
-.lazy-ticker-viewport::after {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 2rem; z-index: 1; pointer-events: none;
-}
-.lazy-ticker-viewport::before { left: 0; background: linear-gradient(90deg, rgba(8,8,12,0.95), transparent); }
-.lazy-ticker-viewport::after { right: 0; background: linear-gradient(270deg, rgba(8,8,12,0.95), transparent); }
-.lazy-ticker-track {
-  display: flex; width: max-content; align-items: center;
-  animation: wdl-ticker-scroll 80s linear infinite;
-}
-.lazy-ticker-track:hover { animation-play-state: paused; }
-.lazy-ticker-item {
-  display: inline-flex; align-items: center; gap: 0.55rem;
-  padding: 0 1.75rem; white-space: nowrap;
-  font-family: 'Exo 2', sans-serif; font-size: 0.78rem; color: var(--silver);
-}
-.lazy-ticker-league {
-  font-family: 'Orbitron', monospace; font-size: 0.82rem; font-weight: 700;
-  letter-spacing: 0.11em; text-transform: uppercase;
-  background: linear-gradient(92deg, #ffdf6e 0%, #cc2b2b 40%, #ffdf6e 72%, #cc2b2b 100%);
-  background-size: 220% auto;
-  -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent; color: transparent;
-  filter: drop-shadow(0 0 5px rgba(255,223,110,0.55)) drop-shadow(0 0 9px rgba(204,43,43,0.45));
-  animation: wdl-league-electric 2.8s linear infinite;
-}
-.lazy-ticker-sep { color: rgba(255,223,110,0.45); }
-.lazy-ticker-player { color: var(--text); }
-.lazy-ticker-player .pts { color: #ffe49a; font-family: 'Orbitron', monospace; font-size: 0.68rem; }
-.lazy-ticker-dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,223,110,0.5); flex-shrink: 0; }
-.lazy-ticker-loading { padding: 0 1rem; font-size: 0.72rem; color: var(--muted); font-style: italic; }
-#screen-app .lazy-ticker { position: sticky; top: 38px; z-index: 89; flex-shrink: 0; }
-#screen-app.arena-tickers-on .main-nav { top: 76px; }
+#screen-app.arena-tickers-on .main-nav { top: 38px; }
 
 /* ════════════════════════════════════════════
    X01 MATCH (dartcounter style)
@@ -3570,16 +3469,6 @@ body.app-active .arena-bg { animation: none !important; }
       </div>
     </div>
   </div>
-  <div class="lazy-ticker" id="lazy-ticker-landing">
-    <div class="lazy-ticker-inner">
-      <div class="lazy-ticker-label">🏆 Lazy-Leagues Standings</div>
-      <div class="lazy-ticker-viewport">
-        <div class="lazy-ticker-track" id="lazy-ticker-track-landing">
-          <span class="lazy-ticker-loading">Loading division leaders from lazy-leagues.web.app…</span>
-        </div>
-      </div>
-    </div>
-  </div>
   <!-- Background layers -->
   <div class="arena-bg"></div>
   <div class="spotlight spotlight-1"></div>
@@ -3680,7 +3569,7 @@ body.app-active .arena-bg { animation: none !important; }
             <polygon points="0,-18 -5,5 5,5" fill="url(#goldGrad)"/>
             <rect x="-7" y="25" width="14" height="8" fill="#1a1a2e" stroke="url(#goldGrad)" stroke-width="0.5" rx="1"/>
             <polygon points="-7,33 7,33 5,42 -5,42" fill="#2a2a3a" stroke="url(#goldGrad)" stroke-width="0.5"/>
-            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">TSH</text>
+            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">WDL</text>
           </g>
           <!-- Left inner dart -->
           <g transform="translate(130,42) rotate(18)">
@@ -3688,7 +3577,7 @@ body.app-active .arena-bg { animation: none !important; }
             <polygon points="0,-18 -5,5 5,5" fill="url(#goldGrad)"/>
             <rect x="-7" y="25" width="14" height="8" fill="#1a1a2e" stroke="url(#goldGrad)" stroke-width="0.5" rx="1"/>
             <polygon points="-7,33 7,33 5,42 -5,42" fill="#2a2a3a" stroke="url(#goldGrad)" stroke-width="0.5"/>
-            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">TSH</text>
+            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">WDL</text>
           </g>
           <!-- Center dart -->
           <g transform="translate(190,35) rotate(0)">
@@ -3696,7 +3585,7 @@ body.app-active .arena-bg { animation: none !important; }
             <polygon points="0,-18 -5,5 5,5" fill="url(#goldGrad)"/>
             <rect x="-7" y="25" width="14" height="8" fill="#1a1a2e" stroke="url(#goldGrad)" stroke-width="0.5" rx="1"/>
             <polygon points="-7,33 7,33 5,42 -5,42" fill="#2a2a3a" stroke="url(#goldGrad)" stroke-width="0.5"/>
-            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">TSH</text>
+            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">WDL</text>
           </g>
           <!-- Right inner dart -->
           <g transform="translate(250,42) rotate(-18)">
@@ -3704,7 +3593,7 @@ body.app-active .arena-bg { animation: none !important; }
             <polygon points="0,-18 -5,5 5,5" fill="url(#goldGrad)"/>
             <rect x="-7" y="25" width="14" height="8" fill="#1a1a2e" stroke="url(#goldGrad)" stroke-width="0.5" rx="1"/>
             <polygon points="-7,33 7,33 5,42 -5,42" fill="#2a2a3a" stroke="url(#goldGrad)" stroke-width="0.5"/>
-            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">TSH</text>
+            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">WDL</text>
           </g>
           <!-- Right outer dart -->
           <g transform="translate(295,55) rotate(-35)">
@@ -3712,24 +3601,24 @@ body.app-active .arena-bg { animation: none !important; }
             <polygon points="0,-18 -5,5 5,5" fill="url(#goldGrad)"/>
             <rect x="-7" y="25" width="14" height="8" fill="#1a1a2e" stroke="url(#goldGrad)" stroke-width="0.5" rx="1"/>
             <polygon points="-7,33 7,33 5,42 -5,42" fill="#2a2a3a" stroke="url(#goldGrad)" stroke-width="0.5"/>
-            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">TSH</text>
+            <text x="0" y="30" text-anchor="middle" font-size="5" fill="url(#goldGrad)" font-family="Orbitron,monospace">WDL</text>
           </g>
         </g>
 
-        <!-- TSH lettering -->
+        <!-- WDL lettering -->
         <g font-family="Cinzel Decorative,cursive" font-weight="900" text-anchor="middle">
           <!-- Shadow -->
-          <text x="192" y="277" font-size="46" fill="#000" opacity="0.5">TSH</text>
+          <text x="192" y="277" font-size="46" fill="#000" opacity="0.5">WDL</text>
           <!-- Silver main -->
-          <text x="190" y="275" font-size="46" fill="url(#silverGrad)">TSH</text>
+          <text x="190" y="275" font-size="46" fill="url(#silverGrad)">WDL</text>
           <!-- Gold outline -->
-          <text x="190" y="275" font-size="46" fill="none" stroke="url(#goldGrad)" stroke-width="1">TSH</text>
+          <text x="190" y="275" font-size="46" fill="none" stroke="url(#goldGrad)" stroke-width="1">WDL</text>
         </g>
         <!-- Banner ribbon -->
         <path d="M70 290 Q190 280 310 290 L305 308 Q190 300 75 308 Z" fill="url(#goldGrad)" opacity="0.9"/>
         <path d="M70 290 L60 305 L75 308 Z" fill="#8b6820"/>
         <path d="M310 290 L320 305 L305 308 Z" fill="#8b6820"/>
-        <text x="190" y="303" font-family="Cinzel,serif" font-size="9" fill="#050508" text-anchor="middle" letter-spacing="2" font-weight="700">THE SOCIAL HUB</text>
+        <text x="190" y="303" font-family="Cinzel,serif" font-size="9" fill="#050508" text-anchor="middle" letter-spacing="2" font-weight="700">WORLD DARTS LEAGUE</text>
 
         <!-- Star at bottom point -->
         <polygon points="190,325 194,335 204,335 196,341 199,351 190,345 181,351 184,341 176,335 186,335" fill="url(#goldGrad)" opacity="0.8"/>
@@ -3738,7 +3627,7 @@ body.app-active .arena-bg { animation: none !important; }
       </div>
 
     <div class="title-scrim">
-      <div class="presents-text">The Social Hub Presents</div>
+      <div class="presents-text">World Darts League Presents</div>
 
       <div class="funhouse-title">
         <span class="treble">Treble-Makers</span> <span class="makers">Arena</span>
@@ -3746,31 +3635,8 @@ body.app-active .arena-bg { animation: none !important; }
       </div>
     </div>
 
-    <div class="partner-logos">
-      <div class="secondary-logo" aria-label="The Social Hub Arena Partner">
-        <img src="tsh-images/TSH_Main_Crest.webp" alt="The Social Hub" class="secondary-logo-img" loading="lazy" decoding="async" />
-        <div class="secondary-logo-tagline">Arena Partner · The Social Hub</div>
-      </div>
-      <div class="secondary-logo" aria-label="Lazy Leagues Arena Partner">
-        <img src="lazy-images/LazyLeagues_Crest.webp" alt="Lazy Leagues" class="secondary-logo-img" loading="lazy" decoding="async" />
-        <div class="secondary-logo-tagline">Arena Partner · Lazy Leagues</div>
-      </div>
-    </div>
-
     <div class="welcome-banner">
       <span class="welcome-line-1">★ Welcome to Treble-Makers Arena ★</span>
-    </div>
-
-    <!-- Sub-league crests (TSH regionals) -->
-    <div class="league-crests">
-      <div class="league-crest-item">
-        <img src="tsh-images/TSH_American_Crest.webp" alt="TSH America Regional" class="sub-crest-img" loading="lazy" decoding="async">
-        <span>America</span>
-      </div>
-      <div class="league-crest-item">
-        <img src="tsh-images/TSH_European_Crest.webp" alt="TSH Europe Regional" class="sub-crest-img" loading="lazy" decoding="async">
-        <span>Europe</span>
-      </div>
     </div>
 
     <!-- Auth -->
@@ -3863,16 +3729,6 @@ body.app-active .arena-bg { animation: none !important; }
       <div class="wdl-ticker-viewport">
         <div class="wdl-ticker-track" id="wdl-ticker-track-app">
           <span class="wdl-ticker-loading">Loading league leaders from worlddartsleague.com…</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="lazy-ticker" id="lazy-ticker-app">
-    <div class="lazy-ticker-inner">
-      <div class="lazy-ticker-label">🏆 Lazy-Leagues Standings</div>
-      <div class="lazy-ticker-viewport">
-        <div class="lazy-ticker-track" id="lazy-ticker-track-app">
-          <span class="lazy-ticker-loading">Loading division leaders from lazy-leagues.web.app…</span>
         </div>
       </div>
     </div>
@@ -6212,7 +6068,6 @@ function syncAppTickersForPage(pageName) {
   const show = ARENA_TICKER_PAGES.has(pageName);
   app?.classList.toggle('arena-tickers-on', show);
   document.getElementById('wdl-ticker-app')?.classList.toggle('hidden', !show);
-  document.getElementById('lazy-ticker-app')?.classList.toggle('hidden', !show);
   if (show) {
     app?.scrollTo({ top: 0, behavior: 'auto' });
     showAppTickers();
@@ -15698,7 +15553,6 @@ function showAppTickers() {
   const activePage = document.querySelector('.page.active')?.id?.replace('page-', '') || '';
   if (!ARENA_TICKER_PAGES.has(activePage)) return;
   document.getElementById('wdl-ticker-app')?.classList.remove('hidden');
-  document.getElementById('lazy-ticker-app')?.classList.remove('hidden');
 }
 
 async function loadWdlTicker() {
@@ -15722,64 +15576,6 @@ async function loadWdlTicker() {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  LAZY-LEAGUES STANDINGS TICKER
-// ═══════════════════════════════════════════════════════════
-const LAZY_TICKER_MEDALS = ['🥇', '🥈'];
-
-function buildLazyTickerHtml(divisions) {
-  if (!divisions?.length) {
-    return '<span class="lazy-ticker-loading">No Lazy-Leagues division standings available yet.</span>';
-  }
-  const items = divisions.map(d => {
-    const players = d.top2.map((p, i) => {
-      const avg = (typeof p.avg === 'number' && p.avg > 0) ? p.avg : null;
-      const pts = (typeof p.points === 'number' && p.points > 0) ? p.points : null;
-      const use3da = p.metric === '3da' || d.seasonActive === false;
-      let score;
-      if (use3da && avg != null) {
-        score = `<span class="pts">${avg} 3DA</span>`;
-      } else if (avg != null) {
-        score = `<span class="pts">${avg} avg${pts != null ? ` · ${pts}pts` : ''}</span>`;
-      } else {
-        score = `<span class="pts">${pts != null ? `${pts}pts` : '—'}</span>`;
-      }
-      return `<span class="lazy-ticker-player">${LAZY_TICKER_MEDALS[i]} ${escapeHtml(p.name)} ${score}</span>`;
-    }).join('<span class="lazy-ticker-sep">·</span>');
-    return `<span class="lazy-ticker-item"><span class="lazy-ticker-league">${escapeHtml(d.division)}</span><span class="lazy-ticker-sep">—</span>${players}</span><span class="lazy-ticker-dot"></span>`;
-  });
-  return items.join('') + items.join('');
-}
-
-function renderLazyTicker(divisions) {
-  const html = buildLazyTickerHtml(divisions);
-  ['lazy-ticker-track-landing', 'lazy-ticker-track-app'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = html;
-  });
-  showAppTickers();
-}
-
-async function loadLazyTicker() {
-  if (location.protocol === 'file:') return;
-  try {
-    const res = await fetch('/api/lazy-standings');
-    const data = await res.json();
-    if (data.ok && Array.isArray(data.divisions)) {
-      renderLazyTicker(data.divisions);
-      return;
-    }
-    throw new Error(data.error || 'lazy standings unavailable');
-  } catch {
-    const msg = '<span class="lazy-ticker-loading">Lazy-Leagues standings temporarily offline — check back later.</span>';
-    ['lazy-ticker-track-landing', 'lazy-ticker-track-app'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = msg;
-    });
-    showAppTickers();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════
 if (location.protocol === 'file:') {
@@ -15790,8 +15586,6 @@ applyCamView();
 connectWS();
 loadWdlTicker();
 setInterval(loadWdlTicker, 5 * 60 * 1000);
-loadLazyTicker();
-setInterval(loadLazyTicker, 5 * 60 * 1000);
 </script>
 </body>
 </html>
