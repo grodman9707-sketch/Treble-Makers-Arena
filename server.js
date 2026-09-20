@@ -1,5 +1,5 @@
 /**
- * TREBLE-MAKERS FUNHOUSE — WDL Platform Server
+ * TREBLE-MAKERS FUNHOUSE — Arena Server
  * Run: node server.js
  * Then open: http://localhost:3000
  */
@@ -4371,96 +4371,6 @@ function sanitizeTournament(t) {
 }
 
 // ─────────────────────────────────────────────
-//  WDL STANDINGS PROXY (worlddartsleague.com)
-// ─────────────────────────────────────────────
-const WDL_BASE = 'https://worlddartsleague.com';
-const WDL_CACHE_MS = 5 * 60 * 1000;
-let wdlStandingsCache = { data: null, fetchedAt: 0 };
-let wdlInFlight = null; // shared promise so concurrent cold-cache callers refresh ONCE
-
-function formatWdlPlayerName(name) {
-  if (!name) return 'Unknown';
-  return name.includes('@') ? name.split('@')[0] : name;
-}
-
-async function fetchWdlJson(urlPath) {
-  const res = await fetch(WDL_BASE + urlPath, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`WDL ${urlPath} returned ${res.status}`);
-  return res.json();
-}
-
-// Run async tasks with a small concurrency cap so we don't open hundreds of
-// sockets to the upstream API at once while still parallelizing the work.
-async function mapWithConcurrency(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
-    while (true) {
-      const i = next++;
-      if (i >= items.length) break;
-      results[i] = await fn(items[i], i);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-async function buildWdlStandings() {
-  const regionalsRes = await fetchWdlJson('/api/regionals');
-  const regionals = regionalsRes.regionals || [];
-
-  // 1) Fetch every regional's league list in parallel.
-  const perRegional = await mapWithConcurrency(regionals, 5, async (reg) => {
-    const leaguesRes = await fetchWdlJson(`/api/regionals/${reg.id}/leagues`);
-    return (leaguesRes.leagues || []).map(league => ({ reg, league }));
-  });
-  const flatLeagues = perRegional.flat();
-
-  // 2) Fetch every league's standings in parallel.
-  const built = await mapWithConcurrency(flatLeagues, 6, async ({ reg, league }) => {
-    const standingsRes = await fetchWdlJson(`/api/leagues/${league.id}/standings`);
-    const top3 = (standingsRes.standings || []).slice(0, 3);
-    if (!top3.length) return null;
-    return {
-      regional: reg.name,
-      regionalFlag: reg.flag || '',
-      league: league.name,
-      tier: league.tier,
-      top3: top3.map(p => ({
-        pos: p.pos,
-        name: formatWdlPlayerName(p.playerName),
-        points: p.points,
-        played: p.played,
-        won: p.won,
-      })),
-    };
-  });
-
-  const leagues = built.filter(Boolean);
-  leagues.sort((a, b) => (a.tier - b.tier) || a.league.localeCompare(b.league));
-
-  const payload = { ok: true, leagues, updatedAt: Date.now() };
-  wdlStandingsCache = { data: payload, fetchedAt: Date.now() };
-  return payload;
-}
-
-async function fetchWdlStandings() {
-  if (wdlStandingsCache.data && Date.now() - wdlStandingsCache.fetchedAt < WDL_CACHE_MS) {
-    return wdlStandingsCache.data;
-  }
-  // Single-flight: concurrent cold-cache callers share one in-flight refresh.
-  if (wdlInFlight) return wdlInFlight;
-  wdlInFlight = buildWdlStandings().finally(() => { wdlInFlight = null; });
-  return wdlInFlight;
-}
-
-// Pre-warm slightly under the cache TTL so the ticker stays warm and visitors
-// rarely pay the cold-fetch latency. Best-effort; failures are swallowed.
-setInterval(() => {
-  fetchWdlStandings().catch(() => {});
-}, WDL_CACHE_MS - 30 * 1000);
-
-// ─────────────────────────────────────────────
 //  EXPRESS
 // ─────────────────────────────────────────────
 // Security headers. CSP is tuned for the externalized build: app.js/app.css are
@@ -5082,15 +4992,6 @@ app.post('/api/commentary', async (req, res) => {
   }
 });
 
-app.get('/api/wdl-standings', async (req, res) => {
-  try {
-    res.json(await fetchWdlStandings());
-  } catch (err) {
-    log('error', 'WDL standings fetch failed:', err.message);
-    res.status(502).json({ ok: false, error: 'Could not load WDL standings right now.' });
-  }
-});
-
 // Cache index.html in memory so the SPA fallback never touches disk per request.
 let indexHtmlCache = '';
 function loadIndexHtml() {
@@ -5129,7 +5030,7 @@ server.listen(PORT, HOST, () => {
   backupData();
   backupTimer = setInterval(backupData, BACKUP_INTERVAL_MS);
   console.log('\n╔════════════════════════════════════════╗');
-  console.log('║   TREBLE-MAKERS FUNHOUSE — WDL         ║');
+  console.log('║   TREBLE-MAKERS ARENA                  ║');
   console.log(`║   Running at http://localhost:${PORT}      ║`);
   console.log('║                                        ║');
   if (SOFT_LAUNCH) {
