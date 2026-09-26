@@ -9538,7 +9538,8 @@ function cktSubmitVisit() {
     announceVisitScore(display, {
       player: thrower || names[p] || S.username || 'Player',
       visit: Number(res.points) || 0,
-      remaining: 0,
+      // Cricket has no checkout remaining. Passing 0 makes every visit look like a leg win.
+      remaining: (res.legWon || res.matchOver) ? 0 : null,
       legWon: !!res.legWon,
       matchWon: !!res.matchOver,
       winner
