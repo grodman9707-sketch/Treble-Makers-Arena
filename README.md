@@ -1,6 +1,6 @@
 # Treble-Makers Arena
 
-A darts arena web app. Players authenticate, create or join live matches (human, bot, or tournament brackets) with optional webcam feeds, and play X01, Cricket, Tactics, Halve-It, Shanghai, Golf Darts, Golf Checkouts, Football, Snakes & Ladders, Around the Clock, Killer, and High Score.
+A darts arena web app. Players authenticate, create or join live matches (human, bot, or tournament brackets) with optional webcam feeds, and play X01, Cricket, Tactics, Halve-It, Golf Darts, Golf Checkouts, and Football.
 
 ## Architecture
 
