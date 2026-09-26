@@ -604,13 +604,11 @@ const UNDER_CONSTRUCTION_GAMES = new Set([
 ]);
 
 function canPlayGame(game, username) {
-  if (!UNDER_CONSTRUCTION_GAMES.has(game)) return true;
-  const user = db.users[username];
-  return !!user?.admin;
+  return !UNDER_CONSTRUCTION_GAMES.has(game);
 }
 
 function underConstructionMessage() {
-  return 'This game is under construction. Admin access only.';
+  return 'This game is not available.';
 }
 
 function defaultUserStats() {
@@ -2255,10 +2253,9 @@ async function handleMessage(wsId, msg) {
 
     // ── LOBBY ─────────────────────────────────
     case 'get_lobby': {
-      const isAdmin = !!db.users[client.username]?.admin;
       const openRooms = [...rooms.values()]
         .filter(r => (r.status === 'waiting' || r.status === 'active') && !r.config.bot)
-        .filter(r => isAdmin || !UNDER_CONSTRUCTION_GAMES.has(r.config.game))
+        .filter(r => !UNDER_CONSTRUCTION_GAMES.has(r.config.game))
         .map(lobbyRoomPayload);
       send(wsId, { type: 'lobby', rooms: openRooms });
       break;
@@ -3004,6 +3001,9 @@ async function handleMessage(wsId, msg) {
       }
       if (typeof msg.game !== 'string' || msg.game.length > 40) {
         return send(wsId, { type: 'error', message: 'Invalid game selection.' });
+      }
+      if (!canPlayGame(msg.game, client.username)) {
+        return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
       const maxPlayers = Math.min(64, Math.max(2, parseInt(msg.maxPlayers, 10) || 16));
       const startAt = normalizeTournamentStartAt(msg.startAt || msg.startDate);

@@ -2661,6 +2661,17 @@ body.app-active .arena-bg { animation: none !important; }
   background: rgba(201,168,76,0.06); border: 1px solid var(--border-bright);
   border-radius: 6px; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
 }
+.admin-bar .btn:not(.btn-gold) {
+  background: #1a1a28;
+  border-color: rgba(201,168,76,0.65);
+  color: var(--gold-light);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+.admin-bar .btn:not(.btn-gold):hover {
+  background: #24243a;
+  border-color: var(--gold);
+  color: var(--gold-light);
+}
 .admin-bar-title { font-family: 'Cinzel', serif; font-size: 0.75rem; letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase; }
 .arena-mode-pill {
   font-family: 'Orbitron', monospace; font-size: 0.58rem; letter-spacing: 0.08em;
@@ -3688,11 +3699,6 @@ body.app-active .arena-bg { animation: none !important; }
         <button class="filter-chip" data-filter="Halve-It">Halve-It</button>
         <button class="filter-chip" data-filter="Golf Darts">Golf</button>
         <button class="filter-chip" data-filter="Football Darts">Football</button>
-        <button class="filter-chip" data-filter="Snakes & Ladders">Snakes & Ladders</button>
-        <button class="filter-chip" data-filter="Around the Clock">Around the Clock</button>
-        <button class="filter-chip" data-filter="Killer">Killer</button>
-        <button class="filter-chip" data-filter="Shanghai">Shanghai</button>
-        <button class="filter-chip" data-filter="High Score">High Score</button>
         <div class="spacer"></div>
       </div>
       <div class="matches-container">
@@ -4316,11 +4322,6 @@ body.app-active .arena-bg { animation: none !important; }
           <div class="game-pick" data-game="Golf Darts" onclick="pickGame(this)"><div class="game-pick-name">⛳ Golf Darts</div><div class="game-pick-desc">Play 9 holes on a virtual golf course.</div></div>
           <div class="game-pick" data-game="Golf Checkouts" onclick="pickGame(this)"><div class="game-pick-name">⛳ Golf Checkouts</div><div class="game-pick-desc">Holes use dart checkouts and par values for each target.</div></div>
           <div class="game-pick" data-game="Football Darts" onclick="pickGame(this)"><div class="game-pick-name">⚽ Football</div><div class="game-pick-desc">Score goals, defend your half.</div></div>
-          <div class="game-pick" data-game="Snakes & Ladders" onclick="pickGame(this)"><div class="game-pick-name">🎲 Snakes & Ladders</div><div class="game-pick-desc">Move around the board. Reach 100 to win.</div></div>
-          <div class="game-pick" data-game="Around the Clock" onclick="pickGame(this)"><div class="game-pick-name">🕐 Around the Clock</div><div class="game-pick-desc">Hit 1–20 in order. First done wins.</div></div>
-          <div class="game-pick" data-game="Killer" onclick="pickGame(this)"><div class="game-pick-name">💀 Killer</div><div class="game-pick-desc">Become a killer. Take opponent's lives.</div></div>
-          <div class="game-pick" data-game="Shanghai" onclick="pickGame(this)"><div class="game-pick-name">🏮 Shanghai</div><div class="game-pick-desc">Score on numbers 1–7. Shanghai = instant win.</div></div>
-          <div class="game-pick" data-game="High Score" onclick="pickGame(this)"><div class="game-pick-name">🔥 High Score</div><div class="game-pick-desc">10 rounds, 3 darts. Pure power scoring.</div></div>
         </div>
         <div class="form-group hidden" id="m-x01-options">
           <label>X01 Base</label>
@@ -4550,7 +4551,7 @@ body.app-active .arena-bg { animation: none !important; }
         <select id="t-game" onchange="onTGameChange()">
           <option>X01</option><option>Cricket</option><option>Tactics</option>
           <option>501</option><option>301</option>
-          <option>Halve-It</option><option>Shanghai</option><option>Golf Darts</option>
+          <option>Halve-It</option><option>Golf Darts</option>
         </select>
       </div>
       <div class="form-group hidden" id="t-x01-options">
@@ -6287,7 +6288,7 @@ document.querySelectorAll('.filter-chip').forEach(c => {
   c.addEventListener('click', function() {
     const filter = this.dataset.filter;
     if (filter !== 'all' && !canPlayGame(filter, S.user)) {
-      toast('This game is under construction. Admin access only.');
+      toast('This game is not available.');
       return;
     }
     document.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
@@ -6395,7 +6396,7 @@ function openCreateMatch() {
 function pickGame(el) {
   const game = el.dataset.game;
   if (!canPlayGame(game, S.user)) {
-    toast('This game is under construction. Admin access only.');
+    toast('This game is not available.');
     return;
   }
   document.querySelectorAll('.game-pick').forEach(g => g.classList.remove('selected'));
@@ -6498,8 +6499,7 @@ function isGameUnderConstruction(game) {
 }
 
 function canPlayGame(game, user) {
-  if (!isGameUnderConstruction(game)) return true;
-  return !!user?.admin;
+  return !isGameUnderConstruction(game);
 }
 
 function updateGameAccessUI() {
@@ -6789,7 +6789,7 @@ function disconnectCamera() {
 
 function startMatchFromModal() {
   if (!canPlayGame(selectedGame, S.user)) {
-    toast('This game is under construction. Admin access only.');
+    toast('This game is not available.');
     return;
   }
   S.game = selectedGame;
@@ -6821,7 +6821,7 @@ function supportsLocalPlay(game) {
 /** Same-device pass-and-play — registers a live room so the Stands can watch. */
 function startLocalMatch() {
   if (!supportsLocalPlay(S.game)) {
-    toast('This game is under construction. Admin access only.');
+    toast('This game is not available.');
     return;
   }
   closeModal('create-match-modal');
@@ -6860,7 +6860,7 @@ function createBotMatch() {
 
 function joinRoom(roomId, game, hostName) {
   if (!canPlayGame(game, S.user)) {
-    toast('This game is under construction. Admin access only.');
+    toast('This game is not available.');
     return;
   }
   pendingJoin = { roomId, game, hostName };
@@ -6876,7 +6876,7 @@ function cancelRoom(roomId) {
 
 function spectateRoom(roomId, game, hostName) {
   if (!canPlayGame(game, S.user)) {
-    toast('This game is under construction. Admin access only.');
+    toast('This game is not available.');
     return;
   }
   wsSend({ type: 'spectate', roomId });
