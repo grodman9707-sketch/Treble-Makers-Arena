@@ -2999,7 +2999,9 @@ async function handleMessage(wsId, msg) {
         if (room.turn !== playerIdx) return send(wsId, { type: 'error', message: 'Not your turn.' });
         if (!doublesShooterAllowed(room, wsId, playerIdx)) {
           const next = room.gameState?.nextShooter?.[playerIdx] === 1 ? 1 : 0;
-          const waiting = next === 1 && shooterIndexOfWs(room, wsId) === 0;
+          const role = playerIdx === roomHostSeat(room) ? 'host' : 'guest';
+          const partnerHere = role === 'host' ? !!room.hostPartnerWsId : !!room.guestPartnerWsId;
+          const waiting = next === 1 && shooterIndexOfWs(room, wsId) === 0 && !partnerHere;
           return send(wsId, {
             type: 'error',
             message: waiting ? 'Waiting for your partner.' : 'Not your visit.',
