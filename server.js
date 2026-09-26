@@ -1058,6 +1058,8 @@ function createRoom(hostWsId, config) {
     id: uuidv4(),
     hostWsId,
     guestWsId: null,
+    hostPartnerWsId: null,
+    guestPartnerWsId: null,
     config,         // { game, hostName, guestName, tournamentId?, bot?, botSkill? }
     status: config.bot ? 'active' : 'waiting', // waiting | active | finished
     gameState: {},
@@ -1089,9 +1091,33 @@ function roomGuestSeat(room) {
 
 /** Resolve a websocket client's player seat (0 = Player One / starter). */
 function seatOfWs(room, wsId) {
-  if (wsId === room.hostWsId) return roomHostSeat(room);
-  if (wsId === room.guestWsId) return roomGuestSeat(room);
+  if (wsId === room.hostWsId || wsId === room.hostPartnerWsId) return roomHostSeat(room);
+  if (wsId === room.guestWsId || wsId === room.guestPartnerWsId) return roomGuestSeat(room);
   return -1;
+}
+
+/** 0 = team lead device, 1 = online partner device. */
+function shooterIndexOfWs(room, wsId) {
+  if (wsId === room.hostWsId || wsId === room.guestWsId) return 0;
+  if (wsId === room.hostPartnerWsId || wsId === room.guestPartnerWsId) return 1;
+  return -1;
+}
+
+function partnerRoleOf(room, wsId) {
+  if (!room || !wsId) return null;
+  if (wsId === room.hostPartnerWsId) return 'host';
+  if (wsId === room.guestPartnerWsId) return 'guest';
+  return null;
+}
+
+function eachPlayerWs(room, fn) {
+  if (!room || typeof fn !== 'function') return;
+  const seen = new Set();
+  for (const id of [room.hostWsId, room.hostPartnerWsId, room.guestWsId, room.guestPartnerWsId]) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    fn(id);
+  }
 }
 
 function nameAtSeat(room, seat) {
@@ -1157,10 +1183,30 @@ function applyDoublesToConfig(config, msg) {
     return config;
   }
   config.doubles = true;
-  config.hostPartner = sanitizeShooterName(msg.partnerName || msg.hostPartner, 'Partner');
-  if (config.bot) config.guestPartner = 'Bot 2';
-  else if (config.local) config.guestPartner = sanitizeShooterName(msg.guestPartner, 'Partner 2');
-  else config.guestPartner = null;
+  const local = !!config.local;
+  const wantOnline = !local && msg.partnerMode === 'online' && msg.partnerUser;
+  if (wantOnline) {
+    config.hostPartnerMode = 'online';
+    config.hostPartnerUser = sanitizeShooterName(msg.partnerUser, '');
+    config.hostPartner = config.hostPartnerUser || 'Partner';
+  } else {
+    config.hostPartnerMode = 'home';
+    config.hostPartnerUser = null;
+    config.hostPartner = sanitizeShooterName(msg.partnerName || msg.hostPartner, 'Partner');
+  }
+  if (config.bot) {
+    config.guestPartner = 'Bot 2';
+    config.guestPartnerMode = 'home';
+    config.guestPartnerUser = null;
+  } else if (local) {
+    config.guestPartnerMode = 'home';
+    config.guestPartnerUser = null;
+    config.guestPartner = sanitizeShooterName(msg.guestPartner, 'Partner 2');
+  } else {
+    config.guestPartner = null;
+    config.guestPartnerMode = 'home';
+    config.guestPartnerUser = null;
+  }
   return config;
 }
 
@@ -1171,8 +1217,140 @@ function stampDoublesState(gs, cfg) {
     host: cfg.hostPartner || 'Partner',
     guest: cfg.guestPartner || 'Partner',
   };
+  gs.partnerMode = {
+    host: cfg.hostPartnerMode === 'online' ? 'online' : 'home',
+    guest: cfg.guestPartnerMode === 'online' ? 'online' : 'home',
+  };
+  if (!gs.partnerHere) {
+    gs.partnerHere = {
+      host: gs.partnerMode.host !== 'online',
+      guest: gs.partnerMode.guest !== 'online',
+    };
+  }
   if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
   return gs;
+}
+
+/** Presence lives on the room, so a client gameState replace cannot clear it. */
+function syncDoublesPresence(room) {
+  const gs = room?.gameState;
+  const cfg = room?.config;
+  if (!gs || !cfg?.doubles) return gs;
+  gs.doubles = true;
+  gs.partnerMode = {
+    host: cfg.hostPartnerMode === 'online' ? 'online' : 'home',
+    guest: cfg.guestPartnerMode === 'online' ? 'online' : 'home',
+  };
+  gs.partnerHere = {
+    host: gs.partnerMode.host !== 'online' || !!room.hostPartnerWsId,
+    guest: gs.partnerMode.guest !== 'online' || !!room.guestPartnerWsId,
+  };
+  gs.partners = {
+    host: cfg.hostPartner || 'Partner',
+    guest: cfg.guestPartner || 'Partner',
+  };
+  if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
+  return gs;
+}
+
+function usersAreFriends(a, b) {
+  const me = ensureFriendsFields(db.users[a]);
+  return !!(me && me.friends.includes(b));
+}
+
+function usernameOnline(username) {
+  if (!username) return false;
+  for (const c of clients.values()) {
+    if (c.username === username) return true;
+  }
+  return false;
+}
+
+function partnerPresencePayload(room, extra = {}) {
+  const gs = room?.gameState || {};
+  return {
+    type: 'partner_connected',
+    roomId: room?.id,
+    partners: gs.partners || null,
+    partnerMode: gs.partnerMode || null,
+    partnerHere: gs.partnerHere || null,
+    gameState: gs,
+    ...extra,
+  };
+}
+
+function clearDoublesPartnerSocket(room, role, info = {}) {
+  if (!room || (role !== 'host' && role !== 'guest')) return;
+  if (role === 'host') room.hostPartnerWsId = null;
+  else room.guestPartnerWsId = null;
+  syncDoublesPresence(room);
+  broadcastToRoom(room, partnerPresencePayload(room, {
+    teamRole: role,
+    here: false,
+    left: true,
+    username: info.username || room.config?.[`${role}Partner`] || 'Partner',
+  }));
+}
+
+/**
+ * Invite a friend onto a doubles team. teamRole is the lead's side ('host'|'guest').
+ * Returns { ok, error?, username? }.
+ */
+function inviteDoublesPartner(room, fromUsername, targetName, teamRole) {
+  const role = teamRole === 'guest' ? 'guest' : 'host';
+  const name = sanitizeShooterName(targetName, '');
+  if (!room?.config?.doubles) return { ok: false, error: 'Doubles matches can invite a partner.' };
+  if (!name) return { ok: false, error: 'Pick an online friend as your partner.' };
+  if (name === fromUsername) return { ok: false, error: 'You cannot be your own partner.' };
+  if (name === room.config.hostName || name === room.config.guestName) {
+    return { ok: false, error: 'That player is already in this match.' };
+  }
+  const otherUser = role === 'host' ? room.config.guestPartnerUser : room.config.hostPartnerUser;
+  if (otherUser && otherUser === name) {
+    return { ok: false, error: 'That player is already the other team’s partner.' };
+  }
+  if (!usersAreFriends(fromUsername, name)) {
+    return { ok: false, error: 'You can only invite friends.' };
+  }
+  if (!usernameOnline(name)) {
+    return { ok: false, error: `${name} is not online.` };
+  }
+  room.config[`${role}PartnerMode`] = 'online';
+  room.config[`${role}PartnerUser`] = name;
+  room.config[`${role}Partner`] = name;
+  if (room.gameState && room.gameState.doubles) syncDoublesPresence(room);
+  const delivered = sendToUsername(name, {
+    type: 'match_invite',
+    roomId: room.id,
+    game: room.config.game,
+    from: fromUsername,
+    hostName: room.config.hostName,
+    doubles: true,
+    role: 'partner',
+    teamRole: role,
+  });
+  if (!delivered) return { ok: false, error: `${name} is not online.` };
+  return { ok: true, username: name };
+}
+
+function revertPartnerHome(room, role, fallbackName) {
+  if (!room?.config || (role !== 'host' && role !== 'guest')) return;
+  room.config[`${role}PartnerMode`] = 'home';
+  room.config[`${role}PartnerUser`] = null;
+  room.config[`${role}Partner`] = sanitizeShooterName(fallbackName, 'Partner');
+}
+
+/** Lead device may enter both visits at home. Online, only the current shooter may submit. */
+function doublesShooterAllowed(room, wsId, seat) {
+  if (!room?.config?.doubles || room.config.local) return true;
+  const role = seat === roomHostSeat(room) ? 'host' : 'guest';
+  const online = room.config[`${role}PartnerMode`] === 'online';
+  if (!online) {
+    const leadId = role === 'host' ? room.hostWsId : room.guestWsId;
+    return wsId === leadId;
+  }
+  const next = room.gameState?.nextShooter?.[seat] === 1 ? 1 : 0;
+  return shooterIndexOfWs(room, wsId) === next;
 }
 
 /** After a team visit, the partner throws that team's next visit. */
@@ -1508,6 +1686,7 @@ function x01ApplyTurn(gs, p, total) {
 
 function applyX01EditToRoom(room, msg, { fromEdit = false } = {}) {
   if (msg.gameState) room.gameState = structuredClone(msg.gameState);
+  syncDoublesPresence(room);
   if (Array.isArray(msg.scores)) room.scores = msg.scores.slice(0, 2);
   if (typeof msg.turn === 'number') room.turn = msg.turn;
   room.pendingX01Edit = null;
@@ -2342,7 +2521,20 @@ async function handleMessage(wsId, msg) {
       });
       applyDoublesToConfig(room.config, msg);
       client.roomId = room.id;
-      send(wsId, { type: 'room_created', roomId: room.id, game: msg.game });
+      let partnerInvited = null;
+      let partnerInviteError = null;
+      if (room.config.doubles && room.config.hostPartnerMode === 'online') {
+        const invited = inviteDoublesPartner(room, client.username, room.config.hostPartnerUser, 'host');
+        if (invited.ok) partnerInvited = invited.username;
+        else {
+          partnerInviteError = invited.error;
+          revertPartnerHome(room, 'host', msg.partnerName);
+        }
+      }
+      send(wsId, {
+        type: 'room_created', roomId: room.id, game: msg.game,
+        partnerInvited, partnerInviteError,
+      });
       broadcastLobbyUpdate();
       break;
     }
@@ -2399,11 +2591,24 @@ async function handleMessage(wsId, msg) {
       });
       applyDoublesToConfig(room.config, msg);
       room.gameState = initGameState(msg.game, room.config);
+      syncDoublesPresence(room);
       client.roomId = room.id;
+      let partnerInvited = null;
+      let partnerInviteError = null;
+      if (room.config.doubles && room.config.hostPartnerMode === 'online') {
+        const invited = inviteDoublesPartner(room, client.username, room.config.hostPartnerUser, 'host');
+        if (invited.ok) partnerInvited = invited.username;
+        else {
+          partnerInviteError = invited.error;
+          revertPartnerHome(room, 'host', msg.partnerName);
+        }
+        syncDoublesPresence(room);
+      }
       send(wsId, {
         type: 'bot_room_started', roomId: room.id, game: msg.game,
         opponentName: room.config.guestName, gameState: room.gameState,
         botSkill: botLevel,
+        partnerInvited, partnerInviteError,
         matchPreview: buildMatchPreview(msg.game, room.config.hostName, room.config.guestName, room),
       });
       break;
@@ -2448,6 +2653,7 @@ async function handleMessage(wsId, msg) {
       // Local rooms start active immediately (pass-and-play on one device).
       room.status = 'active';
       room.gameState = initGameState(msg.game, room.config);
+      syncDoublesPresence(room);
       client.roomId = room.id;
       send(wsId, {
         type: 'local_room_started', roomId: room.id, game: msg.game,
@@ -2479,10 +2685,30 @@ async function handleMessage(wsId, msg) {
       room.config.guestIntroNicknameId = sanitizeIntroCallId(
         msg.introNicknameId != null ? msg.introNicknameId : guestProfile.introNicknameId, 'nickname'
       );
+      let partnerInvited = null;
+      let partnerInviteError = null;
       if (room.config.doubles) {
-        room.config.guestPartner = sanitizeShooterName(msg.partnerName, 'Partner');
+        if (msg.partnerMode === 'online' && msg.partnerUser) {
+          room.config.guestPartnerMode = 'online';
+          room.config.guestPartnerUser = sanitizeShooterName(msg.partnerUser, '');
+          room.config.guestPartner = room.config.guestPartnerUser || 'Partner';
+        } else {
+          room.config.guestPartnerMode = 'home';
+          room.config.guestPartnerUser = null;
+          room.config.guestPartner = sanitizeShooterName(msg.partnerName, 'Partner');
+        }
       }
       room.gameState = initGameState(room.config.game, room.config);
+      syncDoublesPresence(room);
+      if (room.config.doubles && room.config.guestPartnerMode === 'online') {
+        const invited = inviteDoublesPartner(room, client.username, room.config.guestPartnerUser, 'guest');
+        if (invited.ok) partnerInvited = invited.username;
+        else {
+          partnerInviteError = invited.error;
+          revertPartnerHome(room, 'guest', msg.partnerName);
+        }
+        syncDoublesPresence(room);
+      }
       room.lastActivity = Date.now();
       client.roomId = room.id;
       const matchPreview = buildMatchPreview(room.config.game, room.config.hostName, room.config.guestName, room);
@@ -2494,8 +2720,20 @@ async function handleMessage(wsId, msg) {
       send(wsId, {
         type: 'joined_room', roomId: room.id, game: room.config.game,
         opponentName: room.config.hostName, youAre: 'guest', gameState: room.gameState,
-        matchPreview,
+        matchPreview, partnerInvited, partnerInviteError,
       });
+      if (room.hostPartnerWsId) {
+        send(room.hostPartnerWsId, {
+          type: 'team_match_ready',
+          roomId: room.id,
+          game: room.config.game,
+          opponentName: client.username,
+          gameState: room.gameState,
+          matchPreview,
+          hostSeat: roomHostSeat(room),
+          guestSeat: roomGuestSeat(room),
+        });
+      }
       broadcastLobbyUpdate();
       break;
     }
@@ -2759,11 +2997,20 @@ async function handleMessage(wsId, msg) {
         playerIdx = seatOfWs(room, wsId);
         if (playerIdx < 0) return;
         if (room.turn !== playerIdx) return send(wsId, { type: 'error', message: 'Not your turn.' });
+        if (!doublesShooterAllowed(room, wsId, playerIdx)) {
+          const next = room.gameState?.nextShooter?.[playerIdx] === 1 ? 1 : 0;
+          const waiting = next === 1 && shooterIndexOfWs(room, wsId) === 0;
+          return send(wsId, {
+            type: 'error',
+            message: waiting ? 'Waiting for your partner.' : 'Not your visit.',
+          });
+        }
       }
 
       room.gameState = msg.gameState
         ? structuredClone(msg.gameState)
         : room.gameState;
+      syncDoublesPresence(room);
       room.lastActivity = Date.now();
       room.scores[playerIdx] += msg.delta || 0;
       if (msg.absoluteScore !== undefined) room.scores[playerIdx] = msg.absoluteScore;
@@ -2852,6 +3099,7 @@ async function handleMessage(wsId, msg) {
       const isHost = room.hostWsId === wsId;
       if (!isHost && room.guestWsId !== wsId) return;
       if (msg.gameState) room.gameState = structuredClone(msg.gameState);
+      syncDoublesPresence(room);
       if (Array.isArray(msg.scores)) room.scores = msg.scores.slice(0, 2);
       if (typeof msg.turn === 'number') room.turn = msg.turn;
       room.lastActivity = Date.now();
@@ -2956,6 +3204,7 @@ async function handleMessage(wsId, msg) {
       if (Array.isArray(msg.scores)) room.scores = msg.scores.slice(0, 2);
       if (typeof msg.turn === 'number') room.turn = msg.turn;
       room.gameState = ensureCricketState(room.gameState, room.config, room.config.game);
+      syncDoublesPresence(room);
       room.lastActivity = Date.now();
       const update = {
         type: 'score_update', scores: room.scores, turn: room.turn,
@@ -3018,10 +3267,18 @@ async function handleMessage(wsId, msg) {
         const wasSpectator = spectators.get(room.id)?.has(wsId);
         spectators.get(room.id)?.delete(wsId);
         const isParticipant = room.hostWsId === wsId || room.guestWsId === wsId;
-        if (wasSpectator && !isParticipant) {
+        const partnerRole = partnerRoleOf(room, wsId);
+        if (partnerRole && !isParticipant) {
+          clearDoublesPartnerSocket(room, partnerRole, { username: client.username });
+        } else if (wasSpectator && !isParticipant) {
           notifySpectatorLeft(room, wsId);
           broadcastLobbyUpdate();
         } else if (room.hostWsId === wsId && room.status === 'waiting') {
+          if (room.hostPartnerWsId) {
+            const partner = clients.get(room.hostPartnerWsId);
+            if (partner) partner.roomId = null;
+            send(room.hostPartnerWsId, { type: 'room_cancelled', roomId: room.id, reason: 'host_left' });
+          }
           rooms.delete(room.id);
           spectators.delete(room.id);
           broadcastLobbyUpdate();
@@ -3422,17 +3679,40 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'error', message: 'You can only invite friends.' });
       }
       const room = rooms.get(roomId);
+      if (!room) return send(wsId, { type: 'error', message: 'Match not found.' });
+      const asPartner = msg.role === 'partner';
+      if (asPartner) {
+        const isHost = room.hostWsId === wsId;
+        const isGuest = room.guestWsId === wsId;
+        if (!isHost && !isGuest) {
+          return send(wsId, { type: 'error', message: 'Only a team lead can invite a partner.' });
+        }
+        const waitingOk = room.status === 'waiting' && !room.config.bot && isHost;
+        const botOk = room.status === 'active' && !!room.config.bot && isHost;
+        const liveOk = room.status === 'active' && !room.config.bot;
+        if (!(waitingOk || botOk || liveOk)) {
+          return send(wsId, { type: 'error', message: 'This match is not open for a partner.' });
+        }
+        const invited = inviteDoublesPartner(room, client.username, targetName, isHost ? 'host' : 'guest');
+        if (!invited.ok) return send(wsId, { type: 'error', message: invited.error });
+        if (room.gameState) {
+          syncDoublesPresence(room);
+          broadcastToRoom(room, partnerPresencePayload(room, {
+            teamRole: isHost ? 'host' : 'guest',
+            here: false,
+            username: invited.username,
+          }));
+        }
+        send(wsId, { type: 'invite_friend_ok', username: targetName, roomId: room.id, role: 'partner' });
+        break;
+      }
       if (!room || room.status !== 'waiting' || room.config.bot) {
         return send(wsId, { type: 'error', message: 'Match is not waiting for an opponent.' });
       }
       if (room.hostWsId !== wsId) {
         return send(wsId, { type: 'error', message: 'Only the host can invite a friend.' });
       }
-      let online = false;
-      for (const c of clients.values()) {
-        if (c.username === targetName) { online = true; break; }
-      }
-      if (!online) {
+      if (!usernameOnline(targetName)) {
         return send(wsId, { type: 'error', message: `${targetName} is not online.` });
       }
       room.config.invitedUser = targetName;
@@ -3443,21 +3723,102 @@ async function handleMessage(wsId, msg) {
         from: client.username,
         hostName: room.config.hostName,
         doubles: !!room.config.doubles,
+        role: 'opponent',
       });
       if (!delivered) {
         return send(wsId, { type: 'error', message: `${targetName} is not online.` });
       }
-      send(wsId, { type: 'invite_friend_ok', username: targetName, roomId: room.id });
+      send(wsId, { type: 'invite_friend_ok', username: targetName, roomId: room.id, role: 'opponent' });
+      break;
+    }
+
+    case 'join_partner': {
+      if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
+      const room = rooms.get(msg.roomId);
+      if (!room || !room.config?.doubles || room.status === 'finished') {
+        return send(wsId, { type: 'error', message: 'That doubles match is not available.' });
+      }
+      if (!canPlayGame(room.config.game, client.username)) {
+        return send(wsId, { type: 'error', message: underConstructionMessage() });
+      }
+      let teamRole = null;
+      if (room.config.hostPartnerMode === 'online' && room.config.hostPartnerUser === client.username) teamRole = 'host';
+      else if (room.config.guestPartnerMode === 'online' && room.config.guestPartnerUser === client.username) teamRole = 'guest';
+      if (!teamRole) {
+        return send(wsId, { type: 'error', message: 'You are not invited as a partner on this match.' });
+      }
+      if (wsId === room.hostWsId || wsId === room.guestWsId) {
+        return send(wsId, { type: 'error', message: 'You are already playing in this match.' });
+      }
+      if (client.roomId && client.roomId !== room.id) {
+        return send(wsId, { type: 'error', message: 'Leave your current match before joining a team.' });
+      }
+      const slotKey = teamRole === 'host' ? 'hostPartnerWsId' : 'guestPartnerWsId';
+      const previous = room[slotKey];
+      if (previous && previous !== wsId) {
+        const old = clients.get(previous);
+        if (old) old.roomId = null;
+        send(previous, { type: 'error', message: 'You joined this team from another session.' });
+      }
+      room[slotKey] = wsId;
+      client.roomId = room.id;
+      syncDoublesPresence(room);
+      room.lastActivity = Date.now();
+      const leadName = teamRole === 'host' ? room.config.hostName : room.config.guestName;
+      const opponentName = teamRole === 'host'
+        ? (room.config.guestName || null)
+        : room.config.hostName;
+      const starterLocked = !!room.starterLocked || !!room.config.bot;
+      const matchPreview = (room.status === 'active' && !starterLocked)
+        ? buildMatchPreview(room.config.game, room.config.hostName, room.config.guestName, room)
+        : null;
+      send(wsId, {
+        type: 'partner_joined',
+        roomId: room.id,
+        game: room.config.game,
+        status: room.status,
+        teamRole,
+        leadName,
+        opponentName,
+        youAre: 'partner',
+        starterLocked,
+        gameState: room.gameState,
+        turn: room.turn,
+        scores: room.scores,
+        history: Array.isArray(room.history) ? room.history.slice(0, 20) : [],
+        hostSeat: roomHostSeat(room),
+        guestSeat: roomGuestSeat(room),
+        matchPreview,
+        bot: !!room.config.bot,
+      });
+      broadcastToRoom(room, partnerPresencePayload(room, {
+        teamRole,
+        here: true,
+        username: client.username,
+      }));
+      broadcastLobbyUpdate();
       break;
     }
 
     case 'decline_invite': {
       if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
       const room = rooms.get(msg.roomId);
-      if (!room || room.status !== 'waiting') break;
-      if (room.config.invitedUser && room.config.invitedUser !== client.username) {
-        // Allow decline even if not the invited user tracking field (stale invites).
+      if (!room) break;
+      if (msg.role === 'partner') {
+        const teamRole = msg.teamRole === 'guest' ? 'guest' : 'host';
+        const leadId = teamRole === 'guest' ? room.guestWsId : room.hostWsId;
+        if (leadId) {
+          send(leadId, {
+            type: 'invite_declined',
+            roomId: room.id,
+            username: client.username,
+            role: 'partner',
+          });
+        }
+        send(wsId, { type: 'decline_invite_ok', roomId: room.id });
+        break;
       }
+      if (room.status !== 'waiting') break;
       send(room.hostWsId, {
         type: 'invite_declined',
         roomId: room.id,
@@ -3477,25 +3838,37 @@ function handleDisconnect(wsId) {
       const spectSet = spectators.get(client.roomId);
       const wasSpectator = !!spectSet?.has(wsId);
       const isParticipant = room.hostWsId === wsId || room.guestWsId === wsId;
+      const partnerRole = partnerRoleOf(room, wsId);
       spectSet?.delete(wsId);
 
-      if (wasSpectator && !isParticipant) {
+      if (partnerRole && !isParticipant) {
+        clearDoublesPartnerSocket(room, partnerRole, { username: client.username });
+      } else if (wasSpectator && !isParticipant) {
         notifySpectatorLeft(room, wsId);
         broadcastLobbyUpdate();
       } else if (room.status === 'waiting' && !room.config.bot) {
+        if (room.hostPartnerWsId && room.hostPartnerWsId !== wsId) {
+          const partner = clients.get(room.hostPartnerWsId);
+          if (partner) partner.roomId = null;
+          send(room.hostPartnerWsId, { type: 'room_cancelled', roomId: room.id, reason: 'host_left' });
+        }
         rooms.delete(client.roomId);
         spectators.delete(client.roomId);
         broadcastLobbyUpdate();
       } else if (room.status === 'active' && isParticipant) {
         if (room.config.bot) {
+          if (room.hostPartnerWsId && room.hostPartnerWsId !== wsId) {
+            const partner = clients.get(room.hostPartnerWsId);
+            if (partner) partner.roomId = null;
+            send(room.hostPartnerWsId, { type: 'opponent_disconnected', roomId: room.id });
+          }
           rooms.delete(client.roomId);
           spectators.delete(client.roomId);
           broadcastLobbyUpdate();
         } else {
-          const otherId = room.hostWsId === wsId ? room.guestWsId : room.hostWsId;
-          if (otherId) send(otherId, { type: 'opponent_disconnected', roomId: room.id });
-          // Also tell remaining spectators the match ended.
-          spectSet?.forEach(sid => send(sid, { type: 'opponent_disconnected', roomId: room.id }));
+          const gone = { type: 'opponent_disconnected', roomId: room.id };
+          eachPlayerWs(room, id => { if (id !== wsId) send(id, gone); });
+          spectSet?.forEach(sid => send(sid, gone));
           room.status = 'finished';
           room.lastActivity = Date.now();
           broadcastLobbyUpdate();
@@ -3569,10 +3942,10 @@ function botTakeTurn(room) {
     round: room.round, history: room.history.slice(0, 1),
     gameState: room.gameState
   };
-  send(room.hostWsId, update);
+  eachPlayerWs(room, id => send(id, update));
   if (move.gameOver) {
     const endMsg = buildGameOverMessage(room, move.winner, move.matchStats);
-    send(room.hostWsId, endMsg);
+    eachPlayerWs(room, id => send(id, endMsg));
     if (room.config.tournamentId && room.config.bracketMatchId && move.winner) {
       recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, move.winner);
     }
@@ -4123,21 +4496,19 @@ function broadcastAll(msg) {
   clients.forEach((_, wsId) => sendRaw(wsId, str));
 }
 
-// Broadcast one payload to host + guest + spectators, stringifying ONCE.
+// Broadcast one payload to every player (leads and online partners) + spectators, stringifying ONCE.
 function broadcastToRoom(room, msg) {
   if (!room) return;
   const str = JSON.stringify(msg);
-  sendRaw(room.hostWsId, str);
-  if (room.guestWsId) sendRaw(room.guestWsId, str);
+  eachPlayerWs(room, id => sendRaw(id, str));
   spectators.get(room.id)?.forEach(sid => sendRaw(sid, str));
 }
 
-/** Host + guest only (Players chat / private match events). */
+/** Leads and online partners only (Players chat / private match events). */
 function broadcastToPlayers(room, msg) {
   if (!room) return;
   const str = JSON.stringify(msg);
-  sendRaw(room.hostWsId, str);
-  if (room.guestWsId) sendRaw(room.guestWsId, str);
+  eachPlayerWs(room, id => sendRaw(id, str));
 }
 
 /** Spectators only — used for local-match state sync without echoing to the host. */
@@ -4159,6 +4530,8 @@ function lobbyRoomPayload(r) {
     local: !!r.config.local,
     bot: !!r.config.bot,
     doubles: !!r.config.doubles,
+    hostPartner: r.config.doubles ? (r.config.hostPartner || null) : null,
+    guestPartner: r.config.doubles ? (r.config.guestPartner || null) : null,
   };
 }
 
