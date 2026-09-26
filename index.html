@@ -2782,6 +2782,20 @@ body.app-active .arena-bg { animation: none !important; }
 .x01-card.active .x01-avatar { background: rgba(0,0,0,0.25); color: #fff; }
 .x01-card-name { flex: 1; min-width: 0; font-weight: 700; font-size: 0.85rem; color: var(--silver-light); display: flex; align-items: center; gap: 0.4rem; }
 .x01-card.active .x01-card-name { color: #fff; }
+.x01-team-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.x01-shooters, .ckt-shooters { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+.x01-shooter, .ckt-shooter {
+  font-size: 0.68rem; line-height: 1.2; padding: 0.12rem 0.45rem; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16); color: var(--silver-light); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.x01-card.active .x01-shooter, .ckt-card.active .ckt-shooter { color: #fff; }
+.x01-shooter.on, .ckt-shooter.on { background: rgba(0,0,0,0.45); border-color: #fff; font-weight: 700; }
+.x01-shooter.next, .ckt-shooter.next { border-style: dashed; }
+.x01-turn-who {
+  display: block; font-family: 'Exo 2', sans-serif; font-size: 0.58rem; font-weight: 700;
+  letter-spacing: 0.03em; text-decoration: none; opacity: 0.9;
+}
 .x01-lvl { font-size: 0.55rem; background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1px 5px; letter-spacing: 0.05em; }
 .x01-legs-tools { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; flex-shrink: 0; width: 3.6rem; }
 .x01-legs {
@@ -3061,7 +3075,8 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .x01-turn-row.right { align-self: flex-end; background: rgba(232,144,42,0.72); color: #1a0e00; border-color: rgba(255,176,77,0.35); }
 .x01-turn-row.left { background: rgba(214,69,42,0.72); color: #fff; border-color: rgba(255,122,77,0.35); }
-.x01-turn-row.bust { color: var(--crimson-bright); text-decoration: line-through; }
+.x01-turn-row.bust { color: var(--crimson-bright); text-decoration: none; }
+.x01-turn-row.bust .x01-turn-score { text-decoration: line-through; }
 .x01-turn-empty { color: var(--muted); font-size: 0.75rem; }
 
 /* Camera + chat column */
@@ -3191,6 +3206,7 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .ckt-card.active .ckt-avatar { background: rgba(0,0,0,0.25); color: #fff; }
 .ckt-card-name { flex: 1; font-weight: 700; font-size: 0.88rem; color: var(--silver-light); display: flex; align-items: center; gap: 0.35rem; text-shadow: 0 1px 2px rgba(0,0,0,.9); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ckt-card-name.duo { white-space: normal; flex-wrap: wrap; }
 .ckt-card.active .ckt-card-name { color: #fff; }
 .ckt-lvl { font-size: 0.55rem; background: rgba(0,0,0,0.3); border-radius: 4px; padding: 1px 5px; letter-spacing: 0.05em; }
 .ckt-remaining { font-family: 'Orbitron', monospace; font-size: 2.1rem; font-weight: 800; line-height: 1.05; margin: 0.25rem 0 0.35rem; color: var(--silver-light); text-shadow: 0 1px 3px rgba(0,0,0,.9); }
@@ -3249,6 +3265,7 @@ body.app-active .arena-bg { animation: none !important; }
 .ckt-row { display: grid; grid-template-columns: 1fr 96px 1fr; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.07); }
 .ckt-row:last-child { border-bottom: none; }
 .ckt-row-head .ckt-mkcell { font-size: 0.82rem; color: var(--silver-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.9); }
+.ckt-row-head .ckt-mkcell.duo { font-size: 0.62rem; letter-spacing: 0.02em; line-height: 1.2; }
 .ckt-row-head .ckt-num, .ckt-row-score .ckt-num { font-size: 0.7rem; color: var(--gold-light); letter-spacing: 0.1em; text-shadow: 0 1px 2px rgba(0,0,0,.9); }
 .ckt-row-score { border-bottom: 2px solid rgba(201,168,76,0.3); padding-bottom: 0.25rem; margin-bottom: 0.15rem; }
 .ckt-row-score .ckt-mkcell b { font-family: 'Orbitron', monospace; font-size: 1.35rem; color: var(--gold-light); text-shadow: 0 1px 2px rgba(0,0,0,.9); }
@@ -4389,6 +4406,32 @@ body.app-active .arena-bg { animation: none !important; }
             If the cap is turned off, players will proceed independently instead of together.
           </div>
         </div>
+        <div class="form-group hidden" id="m-format-options">
+          <label>Format</label>
+          <select id="m-format" onchange="updateDoublesFields()">
+            <option value="singles">Singles</option>
+            <option value="doubles">Doubles — two teams, shared scores</option>
+          </select>
+          <p id="m-doubles-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
+            Each side shares one score. Shooters alternate visits: your lead, their lead, your partner, their partner.
+          </p>
+          <div id="m-doubles-names" class="hidden">
+            <label style="margin-top:0.6rem">Your partner</label>
+            <input id="m-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off" />
+            <div id="m-doubles-local-names" class="hidden">
+              <label style="margin-top:0.6rem">Other team — first shooter</label>
+              <input id="m-opp-name" type="text" maxlength="24" placeholder="Player 2" autocomplete="off" />
+              <label style="margin-top:0.6rem">Other team — partner</label>
+              <input id="m-opp-partner" type="text" maxlength="24" placeholder="Partner 2" autocomplete="off" />
+            </div>
+            <p id="m-doubles-bot-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
+              The bot team shares the other score and alternates Bot and Bot 2.
+            </p>
+            <p id="m-doubles-human-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
+              Your opponent names their partner when they join. Each device enters the score for its team.
+            </p>
+          </div>
+        </div>
         <div class="form-group">
           <label>Opponent</label>
           <select id="match-mode" onchange="setMatchType(this.value)">
@@ -4481,6 +4524,28 @@ body.app-active .arena-bg { animation: none !important; }
   </div>
 </div>
 
+<!-- Doubles partner name when joining a team match -->
+<div class="modal-overlay" id="doubles-partner-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2>Your Partner</h2>
+      <button class="modal-close" onclick="cancelDoublesPartner()">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="presence-row-meta" style="margin-bottom:0.75rem">Doubles — you and your partner share one score. You alternate visits with the other team.</p>
+      <div class="form-group" style="margin:0">
+        <label>Partner name</label>
+        <input id="join-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();confirmDoublesPartner();}" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="cancelDoublesPartner()">Cancel</button>
+      <button class="btn btn-gold" onclick="confirmDoublesPartner()">Continue →</button>
+    </div>
+  </div>
+</div>
+
 <!-- Incoming Match Invite -->
 <div class="modal-overlay" id="match-invite-modal">
   <div class="modal" style="max-width:420px">
@@ -4490,6 +4555,10 @@ body.app-active .arena-bg { animation: none !important; }
     </div>
     <div class="modal-body">
       <p id="match-invite-text" style="color:var(--silver-light);line-height:1.5"></p>
+      <div class="form-group hidden" id="invite-partner-row" style="margin-top:0.85rem">
+        <label>Your partner</label>
+        <input id="invite-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off" />
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="declineMatchInvite()">Decline</button>
@@ -5193,6 +5262,8 @@ function handleWS(msg) {
       break;
     case 'bot_room_started':
       S.roomId = msg.roomId; S.isHost = true; S.game = msg.game;
+      S.isLocal = false;
+      S.localNames = null;
       resetMatchSeats();
       {
         const skillMatch = (msg.opponentName || '').match(/\((?:level\s*)?(\d{1,2}|easy|medium|hard|adaptive)\)/i);
@@ -5227,6 +5298,8 @@ function handleWS(msg) {
       break;
     case 'joined_room':
       S.roomId = msg.roomId; S.isHost = false; S.game = msg.game;
+      S.isLocal = false;
+      S.localNames = null;
       resetMatchSeats();
       startMatchUI(msg.game, msg.opponentName, false, msg.gameState, msg.matchPreview);
       break;
@@ -6258,20 +6331,33 @@ function showMatchInvite(msg) {
     roomId: msg.roomId,
     game: msg.game,
     from: msg.from || msg.hostName,
+    doubles: !!msg.doubles,
   };
   const text = document.getElementById('match-invite-text');
   if (text) {
-    text.textContent = `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} match.`;
+    text.textContent = pendingMatchInvite.doubles
+      ? `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} doubles match. You and a partner share one score.`
+      : `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} match.`;
   }
+  document.getElementById('invite-partner-row')?.classList.toggle('hidden', !pendingMatchInvite.doubles);
+  const partnerInp = document.getElementById('invite-partner-name');
+  if (partnerInp) partnerInp.value = '';
   openModal('match-invite-modal');
 }
 
 function acceptMatchInvite() {
   if (!pendingMatchInvite) return;
   const invite = pendingMatchInvite;
+  const partnerName = invite.doubles
+    ? (document.getElementById('invite-partner-name')?.value || '').trim()
+    : '';
   pendingMatchInvite = null;
   closeModal('match-invite-modal');
-  joinRoom(invite.roomId, invite.game, invite.from);
+  joinRoom(invite.roomId, invite.game, invite.from, {
+    doubles: invite.doubles,
+    partnerName,
+    partnerReady: true,
+  });
 }
 
 function declineMatchInvite() {
@@ -6317,6 +6403,7 @@ function matchCard(r, isActive) {
     <div class="mc-tags">
       <span class="mc-tag ${isActive ? 'live' : 'waiting'}">${isActive ? '● LIVE' : '⌛ WAITING'}</span>
       ${isLocal ? '<span class="mc-tag">🖥 LOCAL</span>' : '<span class="mc-tag">📹 CAM REQ</span>'}
+      ${r.doubles ? '<span class="mc-tag">👥 DOUBLES</span>' : ''}
       ${constructionBadge}
       <span class="mc-tag">${age}</span>
       ${!isActive ? `<span class="mc-tag">⏱ ${expLabel}</span>` : ''}
@@ -6405,17 +6492,33 @@ function pickGame(el) {
   updateMatchVariationVisibility();
 }
 
+function supportsDoublesFormat(game) {
+  return X01_GAMES.includes(game) || CRICKET_FAMILY_GAMES.includes(game);
+}
+
 function updateMatchVariationVisibility() {
   const x01Row = document.getElementById('m-x01-options');
   const varRow = document.getElementById('m-variation-options');
   const gcRow = document.getElementById('m-golf-checkouts-options');
+  const formatRow = document.getElementById('m-format-options');
   if (x01Row) x01Row.classList.toggle('hidden', !X01_GAMES.includes(selectedGame));
   if (varRow) varRow.classList.toggle('hidden', !CRICKET_FAMILY_GAMES.includes(selectedGame));
+  if (formatRow) formatRow.classList.toggle('hidden', !supportsDoublesFormat(selectedGame));
   if (gcRow) {
     const show = selectedGame === 'Golf Checkouts';
     gcRow.classList.toggle('hidden', !show);
     if (show) updateGcCapWarning();
   }
+  updateDoublesFields();
+}
+
+function updateDoublesFields() {
+  const doubles = supportsDoublesFormat(selectedGame) && document.getElementById('m-format')?.value === 'doubles';
+  document.getElementById('m-doubles-hint')?.classList.toggle('hidden', !doubles);
+  document.getElementById('m-doubles-names')?.classList.toggle('hidden', !doubles);
+  document.getElementById('m-doubles-local-names')?.classList.toggle('hidden', !doubles || selectedMatchType !== 'local');
+  document.getElementById('m-doubles-bot-hint')?.classList.toggle('hidden', !doubles || selectedMatchType !== 'bot');
+  document.getElementById('m-doubles-human-hint')?.classList.toggle('hidden', !doubles || selectedMatchType !== 'human');
 }
 
 function updateX01TimerOption() {
@@ -6455,6 +6558,14 @@ function collectMatchVariation() {
     payload.golfCourse = document.getElementById('m-gc-course')?.value || 'B';
     payload.capEnabled = document.getElementById('m-gc-cap')?.checked !== false;
   }
+  if (supportsDoublesFormat(selectedGame) && document.getElementById('m-format')?.value === 'doubles') {
+    payload.format = 'doubles';
+    payload.partnerName = (document.getElementById('m-partner-name')?.value || '').trim();
+    if (selectedMatchType === 'local') {
+      payload.guestName = (document.getElementById('m-opp-name')?.value || '').trim() || 'Player 2';
+      payload.guestPartner = (document.getElementById('m-opp-partner')?.value || '').trim();
+    }
+  }
   return payload;
 }
 
@@ -6463,6 +6574,7 @@ function setMatchType(type) {
   document.getElementById('bot-skill-row').classList.toggle('hidden', type !== 'bot');
   document.getElementById('invite-friend-row')?.classList.toggle('hidden', type !== 'human');
   document.getElementById('local-match-hint')?.classList.toggle('hidden', type !== 'local');
+  updateDoublesFields();
   if (type === 'bot') readSelectedBotSkill();
   if (type !== 'human') {
     pendingInviteFriend = null;
@@ -6700,6 +6812,7 @@ function enterMatch() {
     wsSend({
       type: 'join_room',
       roomId: pendingJoin.roomId,
+      ...(pendingJoin.doubles ? { partnerName: pendingJoin.partnerName || 'Partner' } : {}),
       ...arenaPresencePrefsPayload(),
     });
     pendingJoin = null;
@@ -6825,7 +6938,7 @@ function startLocalMatch() {
     return;
   }
   closeModal('create-match-modal');
-  const p2 = 'Player 2';
+  const p2 = (S.matchVariation && S.matchVariation.guestName) || 'Player 2';
   wsSend({
     type: 'create_local_room',
     game: S.game,
@@ -6858,16 +6971,42 @@ function createBotMatch() {
   });
 }
 
-function joinRoom(roomId, game, hostName) {
+function joinRoom(roomId, game, hostName, opts = {}) {
   if (!canPlayGame(game, S.user)) {
     toast('This game is not available.');
     return;
   }
-  pendingJoin = { roomId, game, hostName };
+  const lobbyRoom = (S.lobbies || []).find(r => r.id === roomId);
+  const doubles = !!(opts.doubles || lobbyRoom?.doubles);
+  pendingJoin = {
+    roomId,
+    game,
+    hostName,
+    doubles,
+    partnerName: opts.partnerName || null,
+  };
   pendingBracketMatch = null;
   S.game = game;
   updateCamSettingsLock(S.game);
+  if (doubles && !opts.partnerReady) {
+    const inp = document.getElementById('join-partner-name');
+    if (inp) inp.value = '';
+    openModal('doubles-partner-modal');
+    return;
+  }
   requestCameraThen();
+}
+
+function confirmDoublesPartner() {
+  if (!pendingJoin?.doubles) return;
+  pendingJoin.partnerName = (document.getElementById('join-partner-name')?.value || '').trim() || 'Partner';
+  closeModal('doubles-partner-modal');
+  requestCameraThen();
+}
+
+function cancelDoublesPartner() {
+  pendingJoin = null;
+  closeModal('doubles-partner-modal');
 }
 
 function cancelRoom(roomId) {
@@ -7323,9 +7462,9 @@ function startMatchUI(game, opponentName, spectating = false, gameState = null, 
   applySpectatingMode(spectating);
   resetMatchDrama();
   resetCommentaryMemory();
-  // Online / bot matches clear any leftover local-play flags.
-  if (S.roomId) {
-    S.isLocal = false;
+  // Online / bot matches clear leftover local names. Local rooms also have a
+  // roomId — keep pass-and-play when the handler already marked this match local.
+  if (S.roomId && !S.isLocal) {
     S.localNames = null;
   }
   S.game = game;
@@ -7712,6 +7851,60 @@ function seatPlayerNames() {
   const host = S.isHost ? (S.user.username || 'You') : (S.opponentName || 'Opponent');
   const guest = S.isHost ? (S.opponentName || 'Opponent') : (S.user.username || 'You');
   return (S.hostSeat ?? 0) === 0 ? [host, guest] : [guest, host];
+}
+
+/** [lead, partner] for a match seat, or null when this is a singles match. */
+function shooterPair(gs, seat) {
+  if (!gs?.doubles || (seat !== 0 && seat !== 1)) return null;
+  const names = seatPlayerNames();
+  const hostSeat = S.hostSeat ?? 0;
+  const partner = seat === hostSeat
+    ? (gs.partners?.host || 'Partner')
+    : (gs.partners?.guest || 'Partner');
+  let lead = names[seat] || (seat === 0 ? 'Player 1' : 'Player 2');
+  if (S.isBot && seat === (S.guestSeat ?? 1)) lead = 'Bot';
+  return [lead, partner];
+}
+
+function teamScoreLabel(gs, seat) {
+  const pair = shooterPair(gs, seat);
+  if (!pair) return seatPlayerNames()[seat] || '';
+  return `${pair[0]} & ${pair[1]}`;
+}
+
+function activeThrowerName(gs, seat) {
+  const pair = shooterPair(gs, seat);
+  if (!pair) return null;
+  const idx = gs?.nextShooter?.[seat] === 1 ? 1 : 0;
+  return pair[idx] || pair[0];
+}
+
+function advanceDoublesShooter(gs, p) {
+  if (!gs?.doubles || (p !== 0 && p !== 1)) return;
+  if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
+  gs.nextShooter[p] = gs.nextShooter[p] === 1 ? 0 : 1;
+}
+
+function shooterChipsHtml(gs, seat, active) {
+  const pair = shooterPair(gs, seat);
+  if (!pair) return '';
+  const idx = gs?.nextShooter?.[seat] === 1 ? 1 : 0;
+  return pair.map((name, i) => {
+    const on = seat === active && i === idx;
+    const next = seat !== active && i === idx;
+    const cls = `x01-shooter${on ? ' on' : ''}${next ? ' next' : ''}`;
+    return `<span class="${cls}">${escapeX01(name)}</span>`;
+  }).join('');
+}
+
+/** Shooter who threw visitIdx, from the alternating order (lead, then partner). */
+function x01ShooterAt(gs, leg, visitIdx) {
+  if (!gs?.doubles || !leg?.[visitIdx]) return '';
+  const seat = leg[visitIdx].p;
+  let n = 0;
+  for (let i = 0; i < visitIdx; i++) if (leg[i]?.p === seat) n++;
+  const pair = shooterPair(gs, seat);
+  return pair ? (pair[n % 2] || '') : '';
 }
 
 function applyLocalStarter(roleStarterIdx, detail = {}) {
@@ -8405,7 +8598,7 @@ function initX01State(cfg, game) {
   }
   const bestOf = parseInt(cfg.legs, 10) || 5;
   const visitTimerSeconds = parseInt(cfg.visitTimerSeconds, 10) || 0;
-  return {
+  const state = {
     kind: 'x01',
     base,
     startRule: cfg.startRule || 'straight-in',
@@ -8426,6 +8619,15 @@ function initX01State(cfg, game) {
     turnEnded: false,
     nextTurn: null
   };
+  if (cfg.doubles) {
+    state.doubles = true;
+    state.partners = cfg.partners || {
+      host: cfg.hostPartner || 'Partner',
+      guest: cfg.guestPartner || 'Partner',
+    };
+    state.nextShooter = [0, 0];
+  }
+  return state;
 }
 
 
@@ -8628,6 +8830,7 @@ function x01ApplyTurn(gs, p, total, names) {
       pushX01Log(gs, p, 0, false, names);
       gs.turnEnded = true;
       gs.nextTurn = 1 - p;
+      advanceDoublesShooter(gs, p);
       return { bust: false, legWon: false, matchOver: false, opened: false };
     }
     gs.opened[p] = true;
@@ -8673,6 +8876,7 @@ function x01ApplyTurn(gs, p, total, names) {
 
   gs.turnEnded = true;
   gs.nextTurn = matchOver ? null : (legWon ? gs.legStarter : 1 - p);
+  advanceDoublesShooter(gs, p);
   return { bust, legWon, matchOver, opened: opener };
 }
 
@@ -8721,11 +8925,12 @@ function submitX01() {
   if (x01UndoStack.length > 20) x01UndoStack.shift();
 
   const startRem = gs.remaining[p];
+  const thrower = activeThrowerName(gs, p) || names[p];
   const res = x01ApplyTurn(gs, p, total, names);
   const display = res.bust ? 'BUST' : String(total);
   let note;
-  if (res.matchOver) note = `${names[p]} wins the match!`;
-  else if (res.legWon) note = `${names[p]} wins leg ${gs.currentLeg - 1}!`;
+  if (res.matchOver) note = `${thrower} wins the match!`;
+  else if (res.legWon) note = `${thrower} wins leg ${gs.currentLeg - 1}!`;
   else if (res.bust) note = `BUST · ${gs.remaining[p]} left`;
   else if (!res.opened && !gs.opened[p]) note = `Not open yet (${gs.startRule})`;
   else note = `${total} · ${gs.remaining[p]} left`;
@@ -8745,7 +8950,7 @@ function submitX01() {
       highScore: Math.max(...gs.points),
       x01Checkout: res.legWon ? startRem : undefined,
       matchStats: { scores: [gs.legs[0], gs.legs[1]], time: Math.floor((Date.now() - S.stats.startTime) / 1000), bestRound: Math.max(...gs.points) },
-      ...(S.isLocal ? { playerIdx: p, scorerName: names[p] } : {}),
+      ...(S.isLocal ? { playerIdx: p, scorerName: thrower } : {}),
     });
   }
 
@@ -8757,7 +8962,7 @@ function submitX01() {
   }
   if (S.isLocal) {
     announceVisitScore(display, {
-      player: names[p],
+      player: thrower,
       visit: total,
       remaining: (res.legWon || res.matchOver) ? 0 : gs.remaining[p],
       bust: !!res.bust,
@@ -8816,7 +9021,9 @@ function x01ReplayVisits(visits, sourceGs, names) {
     startRule: sourceGs.startRule,
     finishRule: sourceGs.finishRule,
     legs: sourceGs.bestOf,
-    visitTimerSeconds: sourceGs.visitTimerSeconds
+    visitTimerSeconds: sourceGs.visitTimerSeconds,
+    doubles: !!sourceGs.doubles,
+    partners: sourceGs.partners
   }, S.game);
   let turn = 0;
   let matchOver = false;
@@ -9028,7 +9235,7 @@ function initCricketState(cfg, game) {
   const targets = cricketTargetsFor(game);
   const blank = () => { const m = {}; targets.forEach(t => { m[t] = 0; }); return m; };
   const bestOf = Math.max(1, parseInt(cfg.legs, 10) || 1);
-  return {
+  const state = {
     kind: 'cricket',
     game,
     variation: cricketNormalizeVariation(cfg.variation),
@@ -9048,6 +9255,15 @@ function initCricketState(cfg, game) {
     currentLeg: 1,
     legStarter: 0
   };
+  if (cfg.doubles) {
+    state.doubles = true;
+    state.partners = cfg.partners || {
+      host: cfg.hostPartner || 'Partner',
+      guest: cfg.guestPartner || 'Partner',
+    };
+    state.nextShooter = [0, 0];
+  }
+  return state;
 }
 
 function cricketMpr(gs, p) {
@@ -9184,6 +9400,7 @@ function applyCricketVisit(gs, p, darts) {
     gs.nextTurn = opp;
   }
   gs.turnEnded = true;
+  advanceDoublesShooter(gs, p);
   return {
     winnerIdx: matchOver ? w : null,
     legWinnerIdx,
@@ -9262,6 +9479,8 @@ function cktSubmitVisit() {
   const gs = S.gameState;
   const p = myPlayerIdx();
   const darts = cktVisit.slice(0, 3);
+  const namesBefore = cktPlayerNames();
+  const thrower = activeThrowerName(gs, p) || namesBefore[p];
 
   cktUndoStack.push({
     gameState: JSON.parse(JSON.stringify(gs)),
@@ -9283,8 +9502,8 @@ function cktSubmitVisit() {
   const names = cktPlayerNames();
   const display = darts.map(d => d.label).join(' ');
   let note;
-  if (res.matchOver) note = `${names[res.winnerIdx]} wins the match!`;
-  else if (res.legWon) note = `${names[res.legWinnerIdx]} wins the leg!`;
+  if (res.matchOver) note = `${thrower} wins the match!`;
+  else if (res.legWon) note = `${thrower} wins the leg!`;
   else if (res.points > 0) note = `${display} · +${res.points}`;
   else note = display;
 
@@ -9306,7 +9525,7 @@ function cktSubmitVisit() {
         time: Math.floor((Date.now() - S.stats.startTime) / 1000),
         bestRound: res.points
       },
-      ...(S.isLocal ? { playerIdx: p, scorerName: names[p] } : {}),
+      ...(S.isLocal ? { playerIdx: p, scorerName: thrower } : {}),
     });
   }
 
@@ -9317,7 +9536,7 @@ function cktSubmitVisit() {
   }
   if (S.isLocal) {
     announceVisitScore(display, {
-      player: names[p] || S.username || 'Player',
+      player: thrower || names[p] || S.username || 'Player',
       visit: Number(res.points) || 0,
       remaining: 0,
       legWon: !!res.legWon,
@@ -9421,11 +9640,14 @@ function renderCricketMatch() {
   const isMyTurn = isMyMatchTurn();
 
   const gameLabel = gs.game === 'Tactics' ? 'TACTICS' : 'CRICKET';
-  document.getElementById('ckt-header-title').textContent = `${gameLabel} — ${cktVariationLabel(gs.variation)}`;
+  document.getElementById('ckt-header-title').textContent = `${gameLabel} — ${cktVariationLabel(gs.variation)}${gs.doubles ? ' · Doubles' : ''}`;
   const targetBit = gs.game === 'Tactics' ? 'Targets 20–10 & Bull' : 'Targets 20–15 & Bull';
   const legsBit = (gs.bestOf || 1) > 1 ? ` · Best of ${gs.bestOf}` : '';
   document.getElementById('ckt-game-label').textContent = `${targetBit}${legsBit}`;
-  document.getElementById('ckt-turn-line').textContent = `${(names[active] || 'Player').toUpperCase()}'S TURN TO THROW!`;
+  const thrower = activeThrowerName(gs, active) || names[active] || 'Player';
+  document.getElementById('ckt-turn-line').textContent = `${thrower.toUpperCase()}'S TURN TO THROW!`;
+  if (lastArenaTurn != null && lastArenaTurn !== active) showChangeoverCue(thrower);
+  lastArenaTurn = active;
 
   // Player cards
   const cardsEl = document.getElementById('ckt-cards');
@@ -9443,7 +9665,9 @@ function renderCricketMatch() {
         <div class="ckt-legs" title="Legs won">${legs}</div>
         <div class="ckt-card-top">
           <div class="ckt-avatar">${isBotCard ? '🤖' : avatarChar}</div>
-          <div class="ckt-card-name">${escapeX01(names[p] || ('Player ' + (p + 1)))}${lvl}</div>
+          <div class="ckt-card-name${gs.doubles ? ' duo' : ''}">${gs.doubles
+            ? `${shooterChipsHtml(gs, p, active).replaceAll('x01-shooter', 'ckt-shooter')}${lvl}`
+            : `${escapeX01(names[p] || ('Player ' + (p + 1)))}${lvl}`}</div>
         </div>
         <div class="ckt-remaining">${gs.variation === 'no-score' ? '—' : (gs.score[p] || 0)}</div>
         <div class="ckt-stat-row"><span>MPR</span><b>${mpr}</b></div>
@@ -9458,9 +9682,9 @@ function renderCricketMatch() {
   const preview1 = cktPreviewMarksForPlayer(gs, 1);
   const headRow = `
     <div class="ckt-row ckt-row-head">
-      <div class="ckt-mkcell">${escapeX01(names[0] || 'P1')}</div>
+      <div class="ckt-mkcell${gs.doubles ? ' duo' : ''}" title="${escapeX01(teamScoreLabel(gs, 0) || names[0] || 'P1')}">${escapeX01(gs.doubles ? teamScoreLabel(gs, 0) : (names[0] || 'P1'))}</div>
       <div class="ckt-num">${gs.variation === 'no-score' ? 'TARGET' : 'SCORE'}</div>
-      <div class="ckt-mkcell">${escapeX01(names[1] || 'P2')}</div>
+      <div class="ckt-mkcell${gs.doubles ? ' duo' : ''}" title="${escapeX01(teamScoreLabel(gs, 1) || names[1] || 'P2')}">${escapeX01(gs.doubles ? teamScoreLabel(gs, 1) : (names[1] || 'P2'))}</div>
     </div>`;
   const scoreRow = gs.variation === 'no-score' ? '' : `
     <div class="ckt-row ckt-row-score">
@@ -9536,7 +9760,8 @@ function updateCricketCamera() {
   const badge = document.getElementById('ckt-cam-badge');
   if (badge) {
     const names = cktPlayerNames();
-    badge.textContent = botTurn ? '🤖 Bot is throwing…' : `🎥 ${(names[S.turn] || 'Player')}`;
+    const thrower = activeThrowerName(S.gameState, S.turn) || names[S.turn] || 'Player';
+    badge.textContent = botTurn ? `🤖 ${thrower} is throwing…` : `🎥 ${thrower}`;
     badge.classList.toggle('bot', botTurn);
   }
 }
@@ -10669,15 +10894,16 @@ function renderX01Match() {
   const active = S.turn;
   const isMyTurn = isMyMatchTurn();
   const myIdx = myPlayerIdx();
+  const thrower = activeThrowerName(gs, active) || names[active] || 'Player';
 
   // Header
   gid('x01-header-title').textContent = `BEST OF ${gs.bestOf} LEGS`;
-  gid('x01-turn-line').textContent = `${(names[active] || 'Player').toUpperCase()}'S TURN TO THROW!`;
-  gid('x01-game-label').textContent = `${gs.base} · ${x01RuleLabel(gs.startRule, 'in')} / ${x01RuleLabel(gs.finishRule, 'out')}`;
+  gid('x01-turn-line').textContent = `${thrower.toUpperCase()}'S TURN TO THROW!`;
+  gid('x01-game-label').textContent = `${gs.base} · ${x01RuleLabel(gs.startRule, 'in')} / ${x01RuleLabel(gs.finishRule, 'out')}${gs.doubles ? ' · Doubles' : ''}`;
 
   // Changeover cue when thrower flips.
   if (lastArenaTurn != null && lastArenaTurn !== active) {
-    showChangeoverCue(names[active]);
+    showChangeoverCue(thrower);
   }
   lastArenaTurn = active;
 
@@ -10727,11 +10953,12 @@ function buildX01Cards(names) {
       <div class="x01-card${p === 1 ? ' alt' : ''}" data-p="${p}">
         <div class="x01-card-top">
           <div class="x01-avatar">${isBotCard ? '🤖' : avatarChar}</div>
-          <div class="x01-card-name">${escapeX01(names[p] || ('Player ' + (p + 1)))}${lvl}</div>
+          <div class="x01-card-name"><span class="x01-team-label">${escapeX01(names[p] || ('Player ' + (p + 1)))}</span>${lvl}</div>
           <div class="x01-legs-tools">
             <div class="x01-legs"></div>
           </div>
         </div>
+        <div class="x01-shooters"></div>
         <div class="x01-remaining"></div>
         <div class="x01-checkout-guide empty"></div>
         <div class="x01-pressure-row"><span>Pressure</span><div class="x01-pressure-bar"><div class="x01-pressure-fill"></div></div></div>
@@ -10747,6 +10974,8 @@ function buildX01Cards(names) {
     const card = cardsEl.querySelector(`.x01-card[data-p="${p}"]`);
     return {
       card,
+      name: card.querySelector('.x01-team-label'),
+      shooters: card.querySelector('.x01-shooters'),
       legs: card.querySelector('.x01-legs'),
       edit: null,
       remaining: card.querySelector('.x01-remaining'),
@@ -10763,7 +10992,7 @@ function buildX01Cards(names) {
 }
 
 function renderX01Cards(gs, names, active) {
-  const sig = `${names[0]}|${names[1]}|${!!S.isBot}|${normalizeBotLevel(S.botSkill)}`;
+  const sig = `${names[0]}|${names[1]}|${!!gs?.doubles}|${gs?.partners?.host || ''}|${gs?.partners?.guest || ''}|${S.hostSeat ?? 0}|${!!S.isBot}|${normalizeBotLevel(S.botSkill)}`;
   if (!x01CardRefs || x01CardSig !== sig || !x01CardRefs[0].card.isConnected) {
     buildX01Cards(names);
     x01CardSig = sig;
@@ -10779,6 +11008,13 @@ function renderX01Cards(gs, names, active) {
     const darts = gs.dartsThrown?.[p] || 0;
     const stats = x01LiveDramaStats(gs, p);
     const canEdit = false; // Inline visit editors live in the score log (current leg only).
+    const title = gs?.doubles ? teamScoreLabel(gs, p) : (names[p] || ('Player ' + (p + 1)));
+    if (r.name && r.name.textContent !== title) r.name.textContent = title;
+    if (r.shooters) {
+      const chips = gs?.doubles ? shooterChipsHtml(gs, p, active) : '';
+      if (r.shooters.innerHTML !== chips) r.shooters.innerHTML = chips;
+      r.shooters.classList.toggle('hidden', !gs?.doubles);
+    }
     if (r.legs.textContent != legs) r.legs.textContent = legs;
     if (r.edit) r.edit.disabled = !canEdit;
     if (r.remaining.textContent != rem) r.remaining.textContent = rem;
@@ -10812,10 +11048,11 @@ function x01CanEditVisit(entryP) {
   return entryP === myPlayerIdx();
 }
 
-function x01TurnRowHtml(entry, legIdx, visitIdx) {
+function x01TurnRowHtml(entry, legIdx, visitIdx, leg, gs) {
   const side = entry.p === 0 ? 'left' : 'right';
   const cls = entry.bust ? ' bust' : '';
   const label = entry.bust ? 'BUST' : entry.v;
+  const who = x01ShooterAt(gs, leg, visitIdx);
   const canEdit = x01CanEditVisit(entry.p);
   const editBits = canEdit
     ? `<input type="number" class="x01-visit-edit-input" min="0" max="180" step="1"
@@ -10826,7 +11063,7 @@ function x01TurnRowHtml(entry, legIdx, visitIdx) {
          onclick="commitX01VisitEditFromInput(this.previousElementSibling)">✓</button>`
     : '';
   return `<div class="x01-visit-line ${side}" data-visit="${visitIdx}">
-    <div class="x01-turn-row ${side}${cls}">${label}</div>
+    <div class="x01-turn-row ${side}${cls}">${who ? `<span class="x01-turn-who">${escapeX01(who)}</span>` : ''}<span class="x01-turn-score">${label}</span></div>
     ${editBits}
   </div>`;
 }
@@ -10846,7 +11083,7 @@ function renderX01History(gs) {
   const li = legs.length - 1;
   const leg = legs[li] || [];
   const editKey = `${x01EditAwaitingApproval ? 1 : 0}|${x01EditApprovalPromptOpen ? 1 : 0}|${S.isLocal ? 'L' : myPlayerIdx()}`;
-  const histSig = `${li}|${editKey}|` + leg.map(entry => `${entry.p}:${entry.v}:${entry.bust ? 1 : 0}`).join(',');
+  const histSig = `${li}|${editKey}|${gs.doubles ? 1 : 0}|` + leg.map((entry, vi) => `${entry.p}:${entry.v}:${entry.bust ? 1 : 0}:${x01ShooterAt(gs, leg, vi)}`).join(',');
   const renderedLen = x01HistRendered[0] || 0;
   const sameLeg = histEl.querySelector(`.x01-leg-col[data-leg="${li}"]`);
   let needFull = !sameLeg
@@ -10860,7 +11097,7 @@ function renderX01History(gs) {
   }
 
   if (needFull) {
-    const rows = leg.map((entry, vi) => x01TurnRowHtml(entry, li, vi)).join('');
+    const rows = leg.map((entry, vi) => x01TurnRowHtml(entry, li, vi, leg, gs)).join('');
     histEl.innerHTML = `<div class="x01-leg-col" data-leg="${li}">
         <div class="x01-leg-badge">#${li + 1}</div>
         <div class="x01-leg-hint">Edit boxes = correct a visit (this leg only)</div>
@@ -10882,7 +11119,7 @@ function renderX01History(gs) {
       if (ph) ph.remove();
     }
     let html = '';
-    for (let k = already; k < now; k++) html += x01TurnRowHtml(leg[k], li, k);
+    for (let k = already; k < now; k++) html += x01TurnRowHtml(leg[k], li, k, leg, gs);
     turnsEl.insertAdjacentHTML('beforeend', html);
     x01HistRendered = [now];
   }
@@ -10917,7 +11154,8 @@ function updateX01Camera() {
   const badge = document.getElementById('x01-cam-badge');
   if (badge) {
     const names = x01PlayerNames();
-    badge.textContent = botTurn ? '🤖 Bot is throwing…' : `🎥 ${(names[S.turn] || 'Player')}`;
+    const thrower = activeThrowerName(S.gameState, S.turn) || names[S.turn] || 'Player';
+    badge.textContent = botTurn ? `🤖 ${thrower} is throwing…` : `🎥 ${thrower}`;
     badge.classList.toggle('bot', botTurn);
   }
 }
@@ -14368,11 +14606,13 @@ function speakX01Base(base) {
 function announceGameLabel(preview = null, { spoken = false } = {}) {
   const src = preview || pendingMatchPreview;
   const game = S.game || src?.game || 'Match';
+  let label = String(game);
   if (isX01Game(game)) {
     const base = resolveX01AnnounceBase(game, src);
-    if (base) return spoken ? speakX01Base(base) : String(base);
+    if (base) label = spoken ? speakX01Base(base) : String(base);
   }
-  return String(game);
+  if (!spoken && S.gameState?.doubles) return `${label} · Doubles`;
+  return label;
 }
 
 function matchIntroPlayersAndNames(preview = null) {

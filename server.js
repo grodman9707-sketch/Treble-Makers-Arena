@@ -1140,6 +1140,48 @@ function isX01Game(game) { return X01_GAMES.includes(game); }
 const CRICKET_GAMES = ['Cricket', 'Tactics'];
 function isCricketGame(game) { return CRICKET_GAMES.includes(game); }
 
+function supportsDoubles(game) {
+  return isX01Game(game) || isCricketGame(game);
+}
+
+function sanitizeShooterName(name, fallback) {
+  const s = typeof name === 'string' ? name.trim().slice(0, 24) : '';
+  return s || fallback;
+}
+
+/** Doubles is two teams of two shooters. Each team keeps one shared score. */
+function applyDoublesToConfig(config, msg) {
+  const requested = msg && (msg.format === 'doubles' || msg.doubles === true);
+  if (!supportsDoubles(config.game) || !requested) {
+    config.doubles = false;
+    return config;
+  }
+  config.doubles = true;
+  config.hostPartner = sanitizeShooterName(msg.partnerName || msg.hostPartner, 'Partner');
+  if (config.bot) config.guestPartner = 'Bot 2';
+  else if (config.local) config.guestPartner = sanitizeShooterName(msg.guestPartner, 'Partner 2');
+  else config.guestPartner = null;
+  return config;
+}
+
+function stampDoublesState(gs, cfg) {
+  if (!gs || !cfg?.doubles) return gs;
+  gs.doubles = true;
+  gs.partners = {
+    host: cfg.hostPartner || 'Partner',
+    guest: cfg.guestPartner || 'Partner',
+  };
+  if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
+  return gs;
+}
+
+/** After a team visit, the partner throws that team's next visit. */
+function advanceDoublesShooter(gs, p) {
+  if (!gs?.doubles || (p !== 0 && p !== 1)) return;
+  if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
+  gs.nextShooter[p] = gs.nextShooter[p] === 1 ? 0 : 1;
+}
+
 const GOLF_CHECKOUT_COURSE_A = [
   { target: 144, par: 9 }, { target: 233, par: 12 }, { target: 52, par: 4 },
   { target: 141, par: 9 }, { target: 230, par: 12 }, { target: 49, par: 4 },
@@ -1367,7 +1409,7 @@ function initX01State(cfg, game) {
   const bestOf = parseInt(cfg.legs, 10) || X01_DEFAULT_BEST_OF;
   const reopen = cfg.startRule && cfg.startRule !== 'straight-in';
   const visitTimerSeconds = parseInt(cfg.visitTimerSeconds, 10) || 0;
-  return {
+  const state = {
     kind: 'x01',
     base,
     startRule: cfg.startRule || 'straight-in',
@@ -1387,6 +1429,7 @@ function initX01State(cfg, game) {
     turnEnded: false,
     nextTurn: null
   };
+  return stampDoublesState(state, cfg);
 }
 
 function x01IsValidCheckout(rem, finishRule) {
@@ -1414,6 +1457,7 @@ function x01ApplyTurn(gs, p, total) {
       x01PushLog(gs, p, 0, false);
       gs.turnEnded = true;
       gs.nextTurn = 1 - p;
+      advanceDoublesShooter(gs, p);
       return { bust: false, legWon: false, matchOver: false };
     }
     gs.opened[p] = true;
@@ -1458,6 +1502,7 @@ function x01ApplyTurn(gs, p, total) {
 
   gs.turnEnded = true;
   gs.nextTurn = matchOver ? null : (legWon ? gs.legStarter : 1 - p);
+  advanceDoublesShooter(gs, p);
   return { bust, legWon, matchOver };
 }
 
@@ -1531,7 +1576,7 @@ function initCricketState(cfg, game) {
   const targets = cricketTargetsFor(game);
   const blank = () => { const m = {}; targets.forEach(t => { m[t] = 0; }); return m; };
   const bestOf = Math.max(1, parseInt(cfg.legs, 10) || 1);
-  return {
+  const state = {
     kind: 'cricket',
     game,
     variation: cricketNormalizeVariation(cfg.variation),
@@ -1552,6 +1597,7 @@ function initCricketState(cfg, game) {
     currentLeg: 1,
     legStarter: 0
   };
+  return stampDoublesState(state, cfg);
 }
 
 function ensureCricketState(gs, cfg, game) {
@@ -1567,7 +1613,7 @@ function ensureCricketState(gs, cfg, game) {
     gs.legsToWin = Math.ceil(gs.bestOf / 2);
   }
   if (gs.legsToWin == null) gs.legsToWin = Math.ceil((gs.bestOf || 1) / 2);
-  return gs;
+  return stampDoublesState(gs, cfg);
 }
 
 // Parse a single dart token into cricket terms.
@@ -1705,6 +1751,7 @@ function applyCricketVisit(gs, p, darts) {
     gs.nextTurn = opp;
   }
   gs.turnEnded = true;
+  advanceDoublesShooter(gs, p);
   return {
     winnerIdx: matchOver ? w : null,
     legWinnerIdx,
@@ -2293,6 +2340,7 @@ async function handleMessage(wsId, msg) {
         guestIntroNameId: '',
         guestIntroNicknameId: '',
       });
+      applyDoublesToConfig(room.config, msg);
       client.roomId = room.id;
       send(wsId, { type: 'room_created', roomId: room.id, game: msg.game });
       broadcastLobbyUpdate();
@@ -2349,6 +2397,7 @@ async function handleMessage(wsId, msg) {
         guestIntroNameId: '',
         guestIntroNicknameId: '',
       });
+      applyDoublesToConfig(room.config, msg);
       room.gameState = initGameState(msg.game, room.config);
       client.roomId = room.id;
       send(wsId, {
@@ -2395,6 +2444,7 @@ async function handleMessage(wsId, msg) {
         guestIntroNameId: '',
         guestIntroNicknameId: '',
       });
+      applyDoublesToConfig(room.config, { ...msg, local: true });
       // Local rooms start active immediately (pass-and-play on one device).
       room.status = 'active';
       room.gameState = initGameState(msg.game, room.config);
@@ -2429,6 +2479,9 @@ async function handleMessage(wsId, msg) {
       room.config.guestIntroNicknameId = sanitizeIntroCallId(
         msg.introNicknameId != null ? msg.introNicknameId : guestProfile.introNicknameId, 'nickname'
       );
+      if (room.config.doubles) {
+        room.config.guestPartner = sanitizeShooterName(msg.partnerName, 'Partner');
+      }
       room.gameState = initGameState(room.config.game, room.config);
       room.lastActivity = Date.now();
       client.roomId = room.id;
@@ -3389,6 +3442,7 @@ async function handleMessage(wsId, msg) {
         game: room.config.game,
         from: client.username,
         hostName: room.config.hostName,
+        doubles: !!room.config.doubles,
       });
       if (!delivered) {
         return send(wsId, { type: 'error', message: `${targetName} is not online.` });
@@ -4104,6 +4158,7 @@ function lobbyRoomPayload(r) {
     spectators: spectators.get(r.id)?.size || 0,
     local: !!r.config.local,
     bot: !!r.config.bot,
+    doubles: !!r.config.doubles,
   };
 }
 
