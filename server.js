@@ -1110,6 +1110,29 @@ function partnerRoleOf(room, wsId) {
   return null;
 }
 
+function camRoleOf(room, wsId) {
+  if (!room || !wsId) return null;
+  if (wsId === room.hostWsId) return 'host';
+  if (wsId === room.hostPartnerWsId) return 'hostPartner';
+  if (wsId === room.guestWsId) return 'guest';
+  if (wsId === room.guestPartnerWsId) return 'guestPartner';
+  return null;
+}
+
+function camRosterMessage(room) {
+  const players = [];
+  if (room.hostWsId) players.push({ wsId: room.hostWsId, role: 'host' });
+  if (room.hostPartnerWsId) players.push({ wsId: room.hostPartnerWsId, role: 'hostPartner' });
+  if (room.guestWsId) players.push({ wsId: room.guestWsId, role: 'guest' });
+  if (room.guestPartnerWsId) players.push({ wsId: room.guestPartnerWsId, role: 'guestPartner' });
+  return { type: 'cam_roster', roomId: room.id, players };
+}
+
+function broadcastCamRoster(room) {
+  if (!room || room.config?.local) return;
+  broadcastToPlayers(room, camRosterMessage(room));
+}
+
 function eachPlayerWs(room, fn) {
   if (!room || typeof fn !== 'function') return;
   const seen = new Set();
@@ -1290,6 +1313,7 @@ function clearDoublesPartnerSocket(room, role, info = {}) {
     left: true,
     username: info.username || room.config?.[`${role}Partner`] || 'Partner',
   }));
+  broadcastCamRoster(room);
 }
 
 /**
@@ -2734,6 +2758,7 @@ async function handleMessage(wsId, msg) {
           guestSeat: roomGuestSeat(room),
         });
       }
+      broadcastCamRoster(room);
       broadcastLobbyUpdate();
       break;
     }
@@ -2958,26 +2983,23 @@ async function handleMessage(wsId, msg) {
       const room = rooms.get(client.roomId);
       if (!room) return;
       const spectSet = spectators.get(room.id);
-      const isHost = room.hostWsId === wsId;
-      const isGuest = room.guestWsId === wsId;
+      const camRole = camRoleOf(room, wsId);
       const isSpectator = !!spectSet?.has(wsId);
-      if (!isHost && !isGuest && !isSpectator) return;
+      if (!camRole && !isSpectator) return;
 
-      const fromRole = isHost ? 'host' : (isGuest ? 'guest' : 'spectator');
+      const fromRole = camRole || 'spectator';
       const payload = { ...msg, fromWsId: wsId, fromRole };
       delete payload.targetWsId;
 
       let targetId = msg.targetWsId;
       if (!targetId) {
         // Legacy player↔player path (no explicit target).
-        if (isHost) targetId = room.guestWsId;
-        else if (isGuest) targetId = room.hostWsId;
+        if (camRole === 'host') targetId = room.guestWsId;
+        else if (camRole === 'guest') targetId = room.hostWsId;
       }
       if (!targetId || targetId === wsId) return;
 
-      const targetOk = targetId === room.hostWsId
-        || targetId === room.guestWsId
-        || !!spectSet?.has(targetId);
+      const targetOk = !!camRoleOf(room, targetId) || !!spectSet?.has(targetId);
       if (targetOk) send(targetId, payload);
       break;
     }
@@ -3798,6 +3820,7 @@ async function handleMessage(wsId, msg) {
         here: true,
         username: client.username,
       }));
+      broadcastCamRoster(room);
       broadcastLobbyUpdate();
       break;
     }
