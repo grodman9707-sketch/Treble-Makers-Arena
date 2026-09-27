@@ -554,16 +554,28 @@ body.app-active .arena-bg { animation: none !important; }
   text-transform: uppercase; color: var(--gold); margin: 0.85rem 0 0.45rem;
 }
 .presence-empty { color: var(--muted); font-size: 0.85rem; padding: 0.75rem 0; text-align: center; }
+.partner-where { display: flex; gap: 0.4rem; margin-top: 0.35rem; }
+.partner-where-btn {
+  flex: 1; padding: 0.45rem 0.55rem; border: 2px solid rgba(201,168,76,0.35); border-radius: 6px;
+  background: var(--deep); color: var(--silver-light); cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.partner-where-btn.active { border-color: var(--gold); color: var(--gold-light); background: rgba(201,168,76,0.12); }
 
 .lobby-toolbar {
   display: flex; align-items: center; gap: 0.65rem; padding: 1rem 2rem;
-  border-bottom: 1px solid var(--border); flex-wrap: wrap; background: transparent;
+  border-bottom: 1px solid var(--border); flex-wrap: nowrap; overflow-x: auto;
+  background: transparent;
 }
 .filter-chip {
   padding: 0.55rem 1.1rem; border: 2px solid rgba(201,168,76,0.35); border-radius: 6px;
   background: var(--deep); color: var(--silver-light); cursor: pointer; font-size: 0.78rem;
   font-family: 'Cinzel', serif; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-  transition: all 0.15s; box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+  transition: all 0.15s; box-shadow: 0 2px 10px rgba(0,0,0,0.45); flex-shrink: 0;
+}
+.filter-chip.doubles-tab {
+  border-color: var(--gold);
+  color: var(--gold-light);
 }
 .filter-chip:hover {
   border-color: var(--gold);
@@ -2815,22 +2827,16 @@ body.app-active .arena-bg { animation: none !important; }
 }
 .x01-visit-line.right { flex-direction: row-reverse; }
 .x01-visit-line .x01-turn-row { flex-shrink: 0; }
-.x01-visit-edit-input {
-  width: 3.4rem; min-width: 3.4rem; padding: 0.2rem 0.3rem;
-  border-radius: 5px; border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(0,0,0,0.45); color: #f0f2f8;
-  font-family: 'Orbitron', monospace; font-size: 0.72rem; text-align: center;
+.x01-score-pencil {
+  width: 1.5rem; height: 1.5rem; border-radius: 5px; padding: 0; flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.4);
+  color: var(--gold-light); cursor: pointer; font-size: 0.85rem; line-height: 1;
 }
-.x01-visit-edit-input:focus {
-  outline: none; border-color: var(--gold); background: rgba(0,0,0,0.65);
+.x01-score-pencil:hover { border-color: var(--gold); color: #fff; }
+.x01-score-edit-input {
+  width: 100%; margin-top: 0.65rem; padding: 0.7rem 0.8rem; text-align: center;
+  font-family: 'Orbitron', monospace; font-size: 1.4rem;
 }
-.x01-visit-edit-save {
-  width: 1.55rem; height: 1.55rem; border-radius: 5px; padding: 0;
-  border: 1px solid rgba(255,255,255,0.16); background: rgba(109,191,130,0.25);
-  color: #b8f0c6; cursor: pointer; font-size: 0.75rem; line-height: 1;
-  flex-shrink: 0;
-}
-.x01-visit-edit-save:hover { filter: brightness(1.12); border-color: #6dbf82; }
 .x01-remaining {
   font-family: 'Orbitron', monospace; font-size: 2.9rem; font-weight: 800; line-height: 1;
   height: 2.9rem; margin: 0.2rem 0 0.55rem; color: var(--silver-light);
@@ -3710,6 +3716,7 @@ body.app-active .arena-bg { animation: none !important; }
       </div>
       <div class="lobby-toolbar">
         <button class="filter-chip active" data-filter="all">All Games</button>
+        <button class="filter-chip doubles-tab" data-filter="doubles">Doubles</button>
         <button class="filter-chip" data-filter="X01">X01</button>
         <button class="filter-chip" data-filter="Cricket">Cricket</button>
         <button class="filter-chip" data-filter="Tactics">Tactics</button>
@@ -4416,8 +4423,24 @@ body.app-active .arena-bg { animation: none !important; }
             Each side shares one score. Shooters alternate visits: your lead, their lead, your partner, their partner.
           </p>
           <div id="m-doubles-names" class="hidden">
-            <label style="margin-top:0.6rem">Your partner</label>
-            <input id="m-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off" />
+            <div id="m-partner-where-row">
+              <label style="margin-top:0.6rem">Your partner</label>
+              <div class="partner-where" id="m-partner-where">
+                <button type="button" class="partner-where-btn active" id="m-partner-home" onclick="setPartnerWhere('home')">At home</button>
+                <button type="button" class="partner-where-btn" id="m-partner-online" onclick="setPartnerWhere('online')">Online</button>
+              </div>
+            </div>
+            <div id="m-partner-home-fields">
+              <label style="margin-top:0.6rem">Partner name</label>
+              <input id="m-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off" />
+              <p class="presence-row-meta" style="margin-top:0.35rem">They throw beside you. You enter both visits. The screen names who is throwing.</p>
+            </div>
+            <div id="m-partner-online-fields" class="hidden">
+              <label style="margin-top:0.6rem">Online partner</label>
+              <button type="button" class="btn btn-sm" onclick="openInviteFriendPicker('partner')">Invite partner</button>
+              <div id="invite-partner-selected" class="presence-row-meta" style="margin-top:0.45rem"></div>
+              <p class="presence-row-meta" style="margin-top:0.35rem">They join on their own device and enter their own visits. Your camera stays the team feed.</p>
+            </div>
             <div id="m-doubles-local-names" class="hidden">
               <label style="margin-top:0.6rem">Other team — first shooter</label>
               <input id="m-opp-name" type="text" maxlength="24" placeholder="Player 2" autocomplete="off" />
@@ -4425,10 +4448,10 @@ body.app-active .arena-bg { animation: none !important; }
               <input id="m-opp-partner" type="text" maxlength="24" placeholder="Partner 2" autocomplete="off" />
             </div>
             <p id="m-doubles-bot-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
-              The bot team shares the other score and alternates Bot and Bot 2.
+              The bot team shares the other score and alternates Bot and Bot 2. You can still invite a friend as your online partner.
             </p>
             <p id="m-doubles-human-hint" class="presence-row-meta hidden" style="margin-top:0.45rem">
-              Your opponent names their partner when they join. Each device enters the score for its team.
+              The other team chooses their own partner when they join — at home, or an online friend.
             </p>
           </div>
         </div>
@@ -4533,10 +4556,20 @@ body.app-active .arena-bg { animation: none !important; }
     </div>
     <div class="modal-body">
       <p class="presence-row-meta" style="margin-bottom:0.75rem">Doubles — you and your partner share one score. You alternate visits with the other team.</p>
-      <div class="form-group" style="margin:0">
+      <div class="partner-where" style="margin-bottom:0.75rem">
+        <button type="button" class="partner-where-btn active" id="join-partner-home" onclick="setJoinPartnerWhere('home')">At home</button>
+        <button type="button" class="partner-where-btn" id="join-partner-online" onclick="setJoinPartnerWhere('online')">Online</button>
+      </div>
+      <div class="form-group" id="join-partner-home-fields" style="margin:0">
         <label>Partner name</label>
         <input id="join-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off"
           onkeydown="if(event.key==='Enter'){event.preventDefault();confirmDoublesPartner();}" />
+        <p class="presence-row-meta" style="margin-top:0.35rem">They throw beside you. You enter both visits.</p>
+      </div>
+      <div class="form-group hidden" id="join-partner-online-fields" style="margin:0.75rem 0 0">
+        <button type="button" class="btn btn-sm" onclick="openInviteFriendPicker('join')">Invite partner</button>
+        <div id="join-partner-selected" class="presence-row-meta" style="margin-top:0.45rem"></div>
+        <p class="presence-row-meta" style="margin-top:0.35rem">They join on their own device and enter their own visits.</p>
       </div>
     </div>
     <div class="modal-footer">
@@ -4557,7 +4590,18 @@ body.app-active .arena-bg { animation: none !important; }
       <p id="match-invite-text" style="color:var(--silver-light);line-height:1.5"></p>
       <div class="form-group hidden" id="invite-partner-row" style="margin-top:0.85rem">
         <label>Your partner</label>
-        <input id="invite-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off" />
+        <div class="partner-where" style="margin-bottom:0.65rem">
+          <button type="button" class="partner-where-btn active" id="invite-accept-home" onclick="setInvitePartnerWhere('home')">At home</button>
+          <button type="button" class="partner-where-btn" id="invite-accept-online" onclick="setInvitePartnerWhere('online')">Online</button>
+        </div>
+        <div id="invite-accept-home-fields">
+          <input id="invite-partner-name" type="text" maxlength="24" placeholder="Partner name" autocomplete="off" />
+          <p class="presence-row-meta" style="margin-top:0.35rem">They throw beside you. You enter both visits.</p>
+        </div>
+        <div id="invite-accept-online-fields" class="hidden" style="margin-top:0.45rem">
+          <button type="button" class="btn btn-sm" onclick="openInviteFriendPicker('invite')">Invite partner</button>
+          <div id="invite-accept-partner-selected" class="presence-row-meta" style="margin-top:0.45rem"></div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -4789,6 +4833,26 @@ body.app-active .arena-bg { animation: none !important; }
   </div>
 </div>
 
+<!-- X01 visit score edit -->
+<div class="modal-overlay" id="x01-score-edit-modal">
+  <div class="modal" style="width:380px">
+    <div class="modal-header">
+      <h2>Edit Score</h2>
+      <button class="modal-close" onclick="closeX01ScoreEdit()" title="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="x01-score-edit-who" style="margin:0;color:var(--silver-light);line-height:1.45"></p>
+      <input id="x01-score-edit-input" class="x01-score-edit-input" type="number" min="0" max="180" step="1" inputmode="numeric"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();saveX01ScoreEdit();}" />
+      <p style="margin:0.75rem 0 0;font-size:0.78rem;color:var(--muted);line-height:1.45">Current leg only. A change that wins the leg waits for your opponent to approve it.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeX01ScoreEdit()">Cancel</button>
+      <button class="btn btn-gold" onclick="saveX01ScoreEdit()">Save Score</button>
+    </div>
+  </div>
+</div>
+
 <!-- X01 finishing-edit approval (human matches) -->
 <div class="modal-overlay" id="x01-edit-approve-modal">
   <div class="modal" style="width:440px">
@@ -4963,6 +5027,10 @@ const S = {
   onlineFriends: [],
   isLocal: false,
   localNames: null,
+  isPartner: false,
+  myShooter: 0,
+  myTeamRole: null,
+  leadName: null,
   isSpectating: false,
   standsOptInMap: {},
 };
@@ -5237,16 +5305,24 @@ function handleWS(msg) {
       break;
     case 'room_created':
       S.roomId = msg.roomId; S.isHost = true;
+      clearPartnerRole();
       resetMatchSeats();
       setChatEnabled(true);
       updateConnStatusVisibility();
-      if (pendingInviteFriend) {
-        wsSend({ type: 'invite_friend', username: pendingInviteFriend, roomId: msg.roomId });
-        toast(`Match created! Invite sent to ${pendingInviteFriend}.`);
-        pendingInviteFriend = null;
-        updateInviteFriendSelectedLabel();
-      } else {
-        toast('Match created! Waiting for opponent...');
+      {
+        const notes = [];
+        if (pendingInviteFriend) {
+          wsSend({ type: 'invite_friend', username: pendingInviteFriend, roomId: msg.roomId });
+          notes.push(`Invite sent to ${pendingInviteFriend}.`);
+          pendingInviteFriend = null;
+          updateInviteFriendSelectedLabel();
+        }
+        pendingInvitePartner = null;
+        updateInvitePartnerSelectedLabel();
+        if (msg.partnerInviteError) notes.push(msg.partnerInviteError);
+        else if (msg.partnerInvited) notes.push(`Partner invite sent to ${msg.partnerInvited}.`);
+        if (!notes.length) notes.push('Match created! Waiting for opponent...');
+        toast(notes.join(' '));
       }
       break;
     case 'room_cancelled':
@@ -5264,6 +5340,8 @@ function handleWS(msg) {
       S.roomId = msg.roomId; S.isHost = true; S.game = msg.game;
       S.isLocal = false;
       S.localNames = null;
+      clearPartnerRole();
+      S.myTeamRole = 'host';
       resetMatchSeats();
       {
         const skillMatch = (msg.opponentName || '').match(/\((?:level\s*)?(\d{1,2}|easy|medium|hard|adaptive)\)/i);
@@ -5276,6 +5354,10 @@ function handleWS(msg) {
       toast(msg.tournamentName
         ? `🏆 ${msg.tournamentName} — bracket match started!`
         : `Bot match started — Level ${normalizeBotLevel(S.botSkill)}. Good luck!`);
+      if (msg.partnerInviteError) toast(msg.partnerInviteError);
+      else if (msg.partnerInvited) toast(`Partner invite sent to ${msg.partnerInvited}.`);
+      pendingInvitePartner = null;
+      updateInvitePartnerSelectedLabel();
       break;
     case 'local_room_started':
       S.roomId = msg.roomId;
@@ -5283,6 +5365,8 @@ function handleWS(msg) {
       S.isLocal = true;
       S.isBot = false;
       S.game = msg.game;
+      clearPartnerRole();
+      S.myTeamRole = 'host';
       resetMatchSeats();
       S.mySeat = 0;
       {
@@ -5300,13 +5384,86 @@ function handleWS(msg) {
       S.roomId = msg.roomId; S.isHost = false; S.game = msg.game;
       S.isLocal = false;
       S.localNames = null;
+      clearPartnerRole();
+      S.myTeamRole = 'guest';
       resetMatchSeats();
       startMatchUI(msg.game, msg.opponentName, false, msg.gameState, msg.matchPreview);
+      if (msg.partnerInviteError) toast(msg.partnerInviteError);
+      else if (msg.partnerInvited) toast(`Partner invite sent to ${msg.partnerInvited}.`);
       break;
     case 'opponent_joined':
       toast(`${msg.opponentName} joined! Starting match...`);
+      if (msg.gameState) S.gameState = msg.gameState;
       startMatchUI(S.game, msg.opponentName, false, msg.gameState, msg.matchPreview);
       initWebRTC(true);
+      break;
+    case 'partner_joined':
+      S.roomId = msg.roomId;
+      S.isHost = false;
+      S.isPartner = true;
+      S.myShooter = 1;
+      S.myTeamRole = msg.teamRole === 'guest' ? 'guest' : 'host';
+      S.leadName = msg.leadName || 'Lead';
+      S.isLocal = false;
+      S.isBot = !!msg.bot;
+      S.localNames = null;
+      S.game = msg.game;
+      S.opponentName = msg.opponentName || 'Opponent';
+      resetMatchSeats();
+      if (msg.status === 'waiting') {
+        toast(`You're on ${S.leadName}'s team. Waiting for the match to start.`);
+        showPage('lobby');
+        break;
+      }
+      if (msg.starterLocked) {
+        startMatchUI(msg.game, msg.opponentName || 'Opponent', false, msg.gameState, null);
+        if (typeof msg.turn === 'number') S.turn = msg.turn;
+        if (Array.isArray(msg.scores)) S.scores = msg.scores.slice(0, 2);
+        if (Array.isArray(msg.history)) S.history = msg.history.slice();
+        if (typeof msg.hostSeat === 'number' || typeof msg.guestSeat === 'number') {
+          applyMatchSeats(msg.hostSeat, msg.guestSeat);
+        }
+        updateMatchUI();
+      } else {
+        startMatchUI(msg.game, msg.opponentName || 'Opponent', false, msg.gameState, msg.matchPreview);
+        if (typeof msg.hostSeat === 'number' || typeof msg.guestSeat === 'number') {
+          applyMatchSeats(msg.hostSeat, msg.guestSeat);
+        }
+      }
+      toast(`You joined ${S.leadName}'s team.`);
+      break;
+    case 'team_match_ready':
+      if (!S.isPartner) break;
+      S.game = msg.game || S.game;
+      S.opponentName = msg.opponentName || S.opponentName;
+      S.isLocal = false;
+      if (typeof msg.hostSeat === 'number' || typeof msg.guestSeat === 'number') {
+        applyMatchSeats(msg.hostSeat, msg.guestSeat);
+      }
+      startMatchUI(S.game, msg.opponentName || 'Opponent', false, msg.gameState, msg.matchPreview);
+      toast('Your match is starting.');
+      break;
+    case 'partner_connected':
+      if (S.gameState) {
+        if (msg.partnerHere) S.gameState.partnerHere = msg.partnerHere;
+        if (msg.partnerMode) S.gameState.partnerMode = msg.partnerMode;
+        if (msg.partners) S.gameState.partners = msg.partners;
+        if (msg.gameState?.nextShooter && !S.gameState.nextShooter) {
+          S.gameState.nextShooter = msg.gameState.nextShooter;
+        }
+      }
+      if (msg.here && msg.username && msg.username !== S.user?.username) {
+        toast(`${msg.username} joined the team.`);
+      } else if (msg.left && msg.username) {
+        toast(`${msg.username} left the team.`);
+      }
+      if (document.getElementById('page-match')?.classList.contains('active')) updateMatchUI();
+      break;
+    case 'cam_roster':
+      S.camRoster = Array.isArray(msg.players) ? msg.players : [];
+      syncDoublesCamPeers();
+      if (isX01Game(S.game)) updateX01Camera();
+      if (isCricketGame(S.game)) updateCricketCamera();
       break;
     case 'opponent_disconnected':
       if (msg.roomId && msg.roomId !== S.roomId) break;
@@ -6042,6 +6199,7 @@ function showPage(name) {
 // ═══════════════════════════════════════════════════════════
 function lobbyRoomMatchesFilter(r, filter) {
   if (filter === 'all') return true;
+  if (filter === 'doubles') return !!r.doubles;
   // The "X01" chip matches the whole X01 family (X01 base games plus tournament
   // rooms tagged directly with a base like 501/301/701/1001).
   if (filter === 'X01') return X01_GAMES.includes(r.game);
@@ -6061,16 +6219,30 @@ function renderLobby(filter = currentFilter) {
   const wg = document.getElementById('matches-grid');
   const ag = document.getElementById('active-grid');
 
+  const openEmpty = filter === 'doubles'
+    ? 'No open doubles matches. Create one for X01, Cricket, or Tactics.'
+    : 'No open matches. Create one!';
+  const liveEmpty = filter === 'doubles'
+    ? 'No doubles matches in progress.'
+    : 'No active matches right now.';
   wg.innerHTML = waiting.length ? waiting.map(r => matchCard(r, false)).join('') :
-    '<div class="empty-state"><div class="big-icon">🎯</div><p>No open matches. Create one!</p></div>';
+    `<div class="empty-state"><div class="big-icon">🎯</div><p>${openEmpty}</p></div>`;
 
   ag.innerHTML = active.length ? active.map(r => matchCard(r, true)).join('') :
-    '<div class="empty-state"><div class="big-icon">🎮</div><p>No active matches right now.</p></div>';
+    `<div class="empty-state"><div class="big-icon">🎮</div><p>${liveEmpty}</p></div>`;
 }
 
 // ── Presence & friends UI ──
 let pendingInviteFriend = null;
+let pendingInvitePartner = null;
+let pendingJoinPartner = null;
+let pendingInviteAcceptPartner = null;
 let pendingMatchInvite = null;
+let pendingPartnerJoin = null;
+let invitePickerRole = 'opponent';
+let partnerWhere = 'home';
+let joinPartnerWhere = 'home';
+let invitePartnerWhere = 'home';
 
 function computeOnlineFriends() {
   const onlineSet = new Set((S.onlinePlayers || []).map(p => p.username));
@@ -6278,9 +6450,29 @@ function updateInviteFriendSelectedLabel() {
     : '';
 }
 
-function openInviteFriendPicker() {
+function updateInvitePartnerSelectedLabel() {
+  const createEl = document.getElementById('invite-partner-selected');
+  const joinEl = document.getElementById('join-partner-selected');
+  const acceptEl = document.getElementById('invite-accept-partner-selected');
+  if (createEl) createEl.textContent = pendingInvitePartner ? `Partner: ${pendingInvitePartner}` : '';
+  if (joinEl) joinEl.textContent = pendingJoinPartner ? `Partner: ${pendingJoinPartner}` : '';
+  if (acceptEl) acceptEl.textContent = pendingInviteAcceptPartner ? `Partner: ${pendingInviteAcceptPartner}` : '';
+}
+
+function openInviteFriendPicker(role) {
   if (isGuestUser()) return toast('Sign in with a registered account to invite friends.');
-  if (selectedMatchType !== 'human') return toast('Switch opponent to Human to invite a friend.');
+  invitePickerRole = role === 'partner' || role === 'join' || role === 'invite' ? role : 'opponent';
+  if (invitePickerRole === 'opponent' && selectedMatchType !== 'human') {
+    return toast('Switch opponent to Human to invite a friend.');
+  }
+  const title = document.querySelector('#invite-friend-modal h2');
+  const blurb = document.querySelector('#invite-friend-modal .presence-row-meta');
+  if (title) title.textContent = invitePickerRole === 'opponent' ? 'Invite a Friend' : 'Invite Your Partner';
+  if (blurb) {
+    blurb.textContent = invitePickerRole === 'opponent'
+      ? 'Choose an online friend to invite when the match starts. Tap Add to select them.'
+      : 'Choose an online friend for your team. They enter their own visits.';
+  }
   renderInviteFriendPicker();
   openModal('invite-friend-modal');
 }
@@ -6303,10 +6495,23 @@ function renderInviteFriendPicker() {
 }
 
 function selectInviteFriend(username) {
-  pendingInviteFriend = username;
+  if (invitePickerRole === 'partner') {
+    if (username === pendingInviteFriend) return toast('That friend is already invited as the opponent.');
+    pendingInvitePartner = username;
+  } else if (invitePickerRole === 'join') {
+    pendingJoinPartner = username;
+  } else if (invitePickerRole === 'invite') {
+    pendingInviteAcceptPartner = username;
+  } else {
+    if (username === pendingInvitePartner) return toast('That friend is already your partner.');
+    pendingInviteFriend = username;
+  }
   updateInviteFriendSelectedLabel();
+  updateInvitePartnerSelectedLabel();
   closeModal('invite-friend-modal');
-  toast(`Will invite ${username} when the match starts.`);
+  toast(invitePickerRole === 'opponent'
+    ? `Will invite ${username} when the match starts.`
+    : `${username} will join your team.`);
 }
 
 function inviteFriendFromPanel(username) {
@@ -6332,37 +6537,70 @@ function showMatchInvite(msg) {
     game: msg.game,
     from: msg.from || msg.hostName,
     doubles: !!msg.doubles,
+    role: msg.role === 'partner' ? 'partner' : 'opponent',
+    teamRole: msg.teamRole === 'guest' ? 'guest' : 'host',
   };
   const text = document.getElementById('match-invite-text');
+  const asPartner = pendingMatchInvite.role === 'partner';
   if (text) {
-    text.textContent = pendingMatchInvite.doubles
-      ? `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} doubles match. You and a partner share one score.`
-      : `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} match.`;
+    if (asPartner) {
+      text.textContent = `${pendingMatchInvite.from} invited you to be their partner in a ${pendingMatchInvite.game} doubles match. You share one score and throw your own visits.`;
+    } else if (pendingMatchInvite.doubles) {
+      text.textContent = `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} doubles match. You and a partner share one score.`;
+    } else {
+      text.textContent = `${pendingMatchInvite.from} invited you to a ${pendingMatchInvite.game} match.`;
+    }
   }
-  document.getElementById('invite-partner-row')?.classList.toggle('hidden', !pendingMatchInvite.doubles);
+  document.getElementById('invite-partner-row')?.classList.toggle('hidden', asPartner || !pendingMatchInvite.doubles);
   const partnerInp = document.getElementById('invite-partner-name');
   if (partnerInp) partnerInp.value = '';
+  pendingInviteAcceptPartner = null;
+  setInvitePartnerWhere('home');
+  updateInvitePartnerSelectedLabel();
   openModal('match-invite-modal');
 }
 
 function acceptMatchInvite() {
   if (!pendingMatchInvite) return;
   const invite = pendingMatchInvite;
-  const partnerName = invite.doubles
-    ? (document.getElementById('invite-partner-name')?.value || '').trim()
-    : '';
+  if (invite.role === 'partner') {
+    pendingMatchInvite = null;
+    closeModal('match-invite-modal');
+    joinPartnerRoom(invite.roomId, invite.game, invite.from, invite.teamRole);
+    return;
+  }
+  let partnerName = '';
+  let partnerMode = 'home';
+  let partnerUser = '';
+  if (invite.doubles) {
+    if (invitePartnerWhere === 'online') {
+      if (!pendingInviteAcceptPartner) return toast('Invite an online friend, or choose At home.');
+      partnerMode = 'online';
+      partnerUser = pendingInviteAcceptPartner;
+      partnerName = pendingInviteAcceptPartner;
+    } else {
+      partnerName = (document.getElementById('invite-partner-name')?.value || '').trim();
+    }
+  }
   pendingMatchInvite = null;
   closeModal('match-invite-modal');
   joinRoom(invite.roomId, invite.game, invite.from, {
     doubles: invite.doubles,
     partnerName,
+    partnerMode,
+    partnerUser,
     partnerReady: true,
   });
 }
 
 function declineMatchInvite() {
   if (pendingMatchInvite?.roomId) {
-    wsSend({ type: 'decline_invite', roomId: pendingMatchInvite.roomId });
+    wsSend({
+      type: 'decline_invite',
+      roomId: pendingMatchInvite.roomId,
+      role: pendingMatchInvite.role,
+      teamRole: pendingMatchInvite.teamRole,
+    });
   }
   pendingMatchInvite = null;
   closeModal('match-invite-modal');
@@ -6394,9 +6632,18 @@ function matchCard(r, isActive) {
   const expLabel = expiresIn >= 60 ? `${Math.ceil(expiresIn / 60)}m left` : `${expiresIn}s left`;
   const constructionBadge = isGameUnderConstruction(r.game)
     ? '<span class="mc-tag">🚧 Under Construction</span>' : '';
-  const vsLine = r.guestName
-    ? `<div class="mc-host">${usernameLinkHtml(r.hostName)} <span style="color:var(--muted)">vs</span> ${isLocal || r.bot ? escapeHtml(r.guestName) : usernameLinkHtml(r.guestName)}</div>`
-    : `<div class="mc-host">Host: <strong>${usernameLinkHtml(r.hostName)}</strong></div>`;
+  const hostLabel = r.doubles && r.hostPartner
+    ? `${usernameLinkHtml(r.hostName)} & ${escapeHtml(r.hostPartner)}`
+    : usernameLinkHtml(r.hostName);
+  const guestLabel = r.guestName
+    ? ((isLocal || r.bot) ? escapeHtml(r.guestName) : usernameLinkHtml(r.guestName))
+    : '';
+  const guestFull = guestLabel && r.doubles && r.guestPartner
+    ? `${guestLabel} & ${escapeHtml(r.guestPartner)}`
+    : guestLabel;
+  const vsLine = guestFull
+    ? `<div class="mc-host">${hostLabel} <span style="color:var(--muted)">vs</span> ${guestFull}</div>`
+    : `<div class="mc-host">Host: <strong>${hostLabel}</strong></div>`;
   return `<div class="match-card">
     <div class="mc-game">${r.game}</div>
     ${vsLine}
@@ -6478,6 +6725,20 @@ function updateCamNavButton() {
 function openCreateMatch() {
   updateGameAccessUI();
   openModal('create-match-modal');
+  if (currentFilter === 'doubles') {
+    const fmt = document.getElementById('m-format');
+    if (fmt) fmt.value = 'doubles';
+    if (!supportsDoublesFormat(selectedGame)) {
+      const card = document.querySelector('.game-pick[data-game="X01"]');
+      if (card) pickGame(card);
+      else {
+        selectedGame = 'X01';
+        updateMatchVariationVisibility();
+      }
+    } else {
+      updateMatchVariationVisibility();
+    }
+  }
 }
 
 function pickGame(el) {
@@ -6512,11 +6773,39 @@ function updateMatchVariationVisibility() {
   updateDoublesFields();
 }
 
+function setPartnerWhere(where) {
+  partnerWhere = where === 'online' ? 'online' : 'home';
+  document.getElementById('m-partner-home')?.classList.toggle('active', partnerWhere === 'home');
+  document.getElementById('m-partner-online')?.classList.toggle('active', partnerWhere === 'online');
+  updateDoublesFields();
+}
+
+function setJoinPartnerWhere(where) {
+  joinPartnerWhere = where === 'online' ? 'online' : 'home';
+  document.getElementById('join-partner-home')?.classList.toggle('active', joinPartnerWhere === 'home');
+  document.getElementById('join-partner-online')?.classList.toggle('active', joinPartnerWhere === 'online');
+  document.getElementById('join-partner-home-fields')?.classList.toggle('hidden', joinPartnerWhere === 'online');
+  document.getElementById('join-partner-online-fields')?.classList.toggle('hidden', joinPartnerWhere !== 'online');
+}
+
+function setInvitePartnerWhere(where) {
+  invitePartnerWhere = where === 'online' ? 'online' : 'home';
+  document.getElementById('invite-accept-home')?.classList.toggle('active', invitePartnerWhere === 'home');
+  document.getElementById('invite-accept-online')?.classList.toggle('active', invitePartnerWhere === 'online');
+  document.getElementById('invite-accept-home-fields')?.classList.toggle('hidden', invitePartnerWhere === 'online');
+  document.getElementById('invite-accept-online-fields')?.classList.toggle('hidden', invitePartnerWhere !== 'online');
+}
+
 function updateDoublesFields() {
   const doubles = supportsDoublesFormat(selectedGame) && document.getElementById('m-format')?.value === 'doubles';
+  const local = selectedMatchType === 'local';
+  const online = doubles && !local && partnerWhere === 'online';
   document.getElementById('m-doubles-hint')?.classList.toggle('hidden', !doubles);
   document.getElementById('m-doubles-names')?.classList.toggle('hidden', !doubles);
-  document.getElementById('m-doubles-local-names')?.classList.toggle('hidden', !doubles || selectedMatchType !== 'local');
+  document.getElementById('m-partner-where-row')?.classList.toggle('hidden', !doubles || local);
+  document.getElementById('m-partner-home-fields')?.classList.toggle('hidden', !doubles || online);
+  document.getElementById('m-partner-online-fields')?.classList.toggle('hidden', !online);
+  document.getElementById('m-doubles-local-names')?.classList.toggle('hidden', !doubles || !local);
   document.getElementById('m-doubles-bot-hint')?.classList.toggle('hidden', !doubles || selectedMatchType !== 'bot');
   document.getElementById('m-doubles-human-hint')?.classList.toggle('hidden', !doubles || selectedMatchType !== 'human');
 }
@@ -6560,7 +6849,15 @@ function collectMatchVariation() {
   }
   if (supportsDoublesFormat(selectedGame) && document.getElementById('m-format')?.value === 'doubles') {
     payload.format = 'doubles';
-    payload.partnerName = (document.getElementById('m-partner-name')?.value || '').trim();
+    const atHome = selectedMatchType === 'local' || partnerWhere !== 'online';
+    if (atHome) {
+      payload.partnerMode = 'home';
+      payload.partnerName = (document.getElementById('m-partner-name')?.value || '').trim();
+    } else {
+      payload.partnerMode = 'online';
+      payload.partnerUser = pendingInvitePartner || '';
+      payload.partnerName = pendingInvitePartner || '';
+    }
     if (selectedMatchType === 'local') {
       payload.guestName = (document.getElementById('m-opp-name')?.value || '').trim() || 'Player 2';
       payload.guestPartner = (document.getElementById('m-opp-partner')?.value || '').trim();
@@ -6576,6 +6873,7 @@ function setMatchType(type) {
   document.getElementById('local-match-hint')?.classList.toggle('hidden', type !== 'local');
   updateDoublesFields();
   if (type === 'bot') readSelectedBotSkill();
+  if (type === 'local') setPartnerWhere('home');
   if (type !== 'human') {
     pendingInviteFriend = null;
     updateInviteFriendSelectedLabel();
@@ -6635,7 +6933,7 @@ function updateGameAccessUI() {
   });
   document.querySelectorAll('.filter-chip[data-filter]').forEach(chip => {
     const game = chip.dataset.filter;
-    if (game === 'all') return;
+    if (game === 'all' || game === 'doubles') return;
     const underConstruction = isGameUnderConstruction(game);
     chip.classList.toggle('construction', underConstruction);
     chip.classList.toggle('locked', underConstruction && !isAdmin);
@@ -6767,6 +7065,7 @@ function closeCameraModal() {
   camModalAutoProceed = false;
   if (!isCamReady()) {
     pendingJoin = null;
+    pendingPartnerJoin = null;
     pendingBracketMatch = null;
   }
   closeModal('cam-modal');
@@ -6808,11 +7107,22 @@ function enterMatch() {
       matchId: pendingBracketMatch.matchId
     });
     pendingBracketMatch = null;
+  } else if (pendingPartnerJoin) {
+    wsSend({
+      type: 'join_partner',
+      roomId: pendingPartnerJoin.roomId,
+      ...arenaPresencePrefsPayload(),
+    });
+    pendingPartnerJoin = null;
   } else if (pendingJoin) {
     wsSend({
       type: 'join_room',
       roomId: pendingJoin.roomId,
-      ...(pendingJoin.doubles ? { partnerName: pendingJoin.partnerName || 'Partner' } : {}),
+      ...(pendingJoin.doubles ? {
+        partnerName: pendingJoin.partnerName || 'Partner',
+        partnerMode: pendingJoin.partnerMode || 'home',
+        ...(pendingJoin.partnerUser ? { partnerUser: pendingJoin.partnerUser } : {}),
+      } : {}),
       ...arenaPresencePrefsPayload(),
     });
     pendingJoin = null;
@@ -6905,6 +7215,18 @@ function startMatchFromModal() {
     toast('This game is not available.');
     return;
   }
+  const doublesOnline = supportsDoublesFormat(selectedGame)
+    && document.getElementById('m-format')?.value === 'doubles'
+    && selectedMatchType !== 'local'
+    && partnerWhere === 'online';
+  if (doublesOnline && !pendingInvitePartner) {
+    toast('Invite an online friend as your partner, or switch to At home.');
+    return;
+  }
+  if (doublesOnline && pendingInvitePartner && pendingInvitePartner === pendingInviteFriend) {
+    toast('Your partner and your opponent need to be different friends.');
+    return;
+  }
   S.game = selectedGame;
   S.matchVariation = collectMatchVariation();
   pendingJoin = null;
@@ -6957,6 +7279,7 @@ function attachLocalCamera() {
   applyCamView();
   if (isX01Game(S.game)) updateX01Camera();
   if (isCricketGame(S.game)) updateCricketCamera();
+  syncDoublesCamPeers();
 }
 
 function createBotMatch() {
@@ -6984,22 +7307,50 @@ function joinRoom(roomId, game, hostName, opts = {}) {
     hostName,
     doubles,
     partnerName: opts.partnerName || null,
+    partnerMode: opts.partnerMode || 'home',
+    partnerUser: opts.partnerUser || '',
   };
+  pendingPartnerJoin = null;
   pendingBracketMatch = null;
   S.game = game;
   updateCamSettingsLock(S.game);
   if (doubles && !opts.partnerReady) {
     const inp = document.getElementById('join-partner-name');
     if (inp) inp.value = '';
+    pendingJoinPartner = null;
+    setJoinPartnerWhere('home');
+    updateInvitePartnerSelectedLabel();
     openModal('doubles-partner-modal');
     return;
   }
   requestCameraThen();
 }
 
+function joinPartnerRoom(roomId, game, from, teamRole) {
+  if (!canPlayGame(game, S.user)) {
+    toast('This game is not available.');
+    return;
+  }
+  pendingPartnerJoin = { roomId, game, from, teamRole };
+  pendingJoin = null;
+  pendingBracketMatch = null;
+  S.game = game;
+  updateCamSettingsLock(S.game);
+  requestCameraThen();
+}
+
 function confirmDoublesPartner() {
   if (!pendingJoin?.doubles) return;
-  pendingJoin.partnerName = (document.getElementById('join-partner-name')?.value || '').trim() || 'Partner';
+  if (joinPartnerWhere === 'online') {
+    if (!pendingJoinPartner) return toast('Invite an online friend, or choose At home.');
+    pendingJoin.partnerMode = 'online';
+    pendingJoin.partnerUser = pendingJoinPartner;
+    pendingJoin.partnerName = pendingJoinPartner;
+  } else {
+    pendingJoin.partnerMode = 'home';
+    pendingJoin.partnerUser = '';
+    pendingJoin.partnerName = (document.getElementById('join-partner-name')?.value || '').trim() || 'Partner';
+  }
   closeModal('doubles-partner-modal');
   requestCameraThen();
 }
@@ -7047,6 +7398,7 @@ async function flushIceCandidateQueue() {
 function attachRemoteStream(stream) {
   if (!stream) return;
   S.remoteStream = stream;
+  rememberCamStream(myCamRole() === 'host' ? 'guest' : 'host', stream);
   const vid = document.getElementById('video-remote');
   // muted avoids autoplay blocks; audio is not used for cams anyway
   bindVideoElement(vid, stream, { muted: true });
@@ -7147,7 +7499,7 @@ async function offerCamToSpectator(spectatorWsId) {
       type: 'webrtc_offer',
       sdp: offer,
       targetWsId: spectatorWsId,
-      fromRole: S.isHost ? 'host' : 'guest',
+      fromRole: myCamRole() || (S.isHost ? 'host' : 'guest'),
     });
   } catch (err) {
     console.warn('offerCamToSpectator failed:', err?.message || err);
@@ -7158,8 +7510,8 @@ async function offerCamToSpectator(spectatorWsId) {
 /** Bind a received player cam into the spectator seat slots / match videos. */
 function attachSpectatorRoleStream(role, stream) {
   if (!stream || !S.isSpectating) return;
-  const key = role === 'guest' ? 'guest' : 'host';
-  if (!S.roleStreams) S.roleStreams = { host: null, guest: null };
+  const key = CAM_ROLE_ORDER.includes(role) ? role : (role === 'guest' ? 'guest' : 'host');
+  if (!S.roleStreams) S.roleStreams = { host: null, guest: null, hostPartner: null, guestPartner: null };
   S.roleStreams[key] = stream;
   rebindSpectatorSeatVideos();
   updateMatchUI();
@@ -7168,11 +7520,166 @@ function attachSpectatorRoleStream(role, stream) {
 /** Current thrower feed for spectators (mirrors how players bind X01/Cricket cam). */
 function spectatorThrowerStream() {
   const streams = spectatorSeatStreams();
+  const role = throwerCamRole(S.gameState, S.turn);
+  if (S.roleStreams?.[role]) return S.roleStreams[role];
   if (S.isBot) {
-    // Vs bot, players keep the human cam on the thrower view for both turns.
-    return streams[S.hostSeat ?? 0] || streams.find(Boolean) || null;
+    return S.roleStreams?.host || streams[S.hostSeat ?? 0] || streams.find(Boolean) || null;
   }
-  return streams[typeof S.turn === 'number' ? S.turn : 0] || null;
+  return S.roleStreams?.[teamCamRole(role)]
+    || streams[typeof S.turn === 'number' ? S.turn : 0]
+    || null;
+}
+
+const CAM_ROLE_ORDER = ['host', 'hostPartner', 'guest', 'guestPartner'];
+
+function myCamRole() {
+  if (S.isSpectating) return null;
+  if (S.isPartner) return S.myTeamRole === 'guest' ? 'guestPartner' : 'hostPartner';
+  if (S.isHost) return 'host';
+  return 'guest';
+}
+
+function teamCamRole(role) {
+  return role === 'guest' || role === 'guestPartner' ? 'guest' : 'host';
+}
+
+/** Which camera belongs to the player who is throwing this visit. */
+function throwerCamRole(gs, seat) {
+  const hostSeat = S.hostSeat ?? 0;
+  const onHost = seat === hostSeat;
+  if (!gs?.doubles) return onHost ? 'host' : 'guest';
+  const team = onHost ? 'host' : 'guest';
+  const shooter = gs.nextShooter?.[seat] === 1 ? 1 : 0;
+  if (shooter === 1 && gs.partnerMode?.[team] === 'online') {
+    return team === 'host' ? 'hostPartner' : 'guestPartner';
+  }
+  return team === 'host' ? 'host' : 'guest';
+}
+
+function rememberCamStream(role, stream) {
+  if (!role || !stream) return;
+  if (!S.camStreams) S.camStreams = {};
+  S.camStreams[role] = stream;
+}
+
+function doublesThrowerStream() {
+  const role = throwerCamRole(S.gameState, S.turn);
+  if (S.isSpectating) {
+    return S.roleStreams?.[role] || S.roleStreams?.[teamCamRole(role)] || null;
+  }
+  if (role === myCamRole()) return S.localStream || null;
+  if (S.camStreams?.[role]) return S.camStreams[role];
+  const team = teamCamRole(role);
+  if (team === teamCamRole(myCamRole())) return S.localStream || null;
+  return S.camStreams?.[team] || S.remoteStream || null;
+}
+
+function shouldOfferCam(me, them) {
+  if (!me || !them || me === them) return false;
+  if ((me === 'host' && them === 'guest') || (me === 'guest' && them === 'host')) return false;
+  return CAM_ROLE_ORDER.indexOf(me) < CAM_ROLE_ORDER.indexOf(them);
+}
+
+/** Host↔guest still uses the original peer connection. Every other pair is a partner feed. */
+function isLegacyLeadCam(fromRole) {
+  const me = myCamRole();
+  return (me === 'host' && fromRole === 'guest') || (me === 'guest' && fromRole === 'host');
+}
+
+function isPartnerCamSignal(msg) {
+  if (!msg) return false;
+  if (msg.directed || msg.targetWsId) return true;
+  return !!msg.fromRole && msg.fromRole !== 'spectator' && !isLegacyLeadCam(msg.fromRole);
+}
+
+function closeDoublesPeers() {
+  if (S.doublesPeers instanceof Map) {
+    S.doublesPeers.forEach(entry => { try { entry.pc?.close(); } catch { /* ignore */ } });
+  }
+  S.doublesPeers = new Map();
+  S.camStreams = {};
+  S.camRoster = [];
+}
+
+function syncDoublesCamPeers() {
+  if (S.isSpectating || S.isLocal || !S.localStream || !S.roomId) return;
+  if (!S.gameState?.doubles) return;
+  const me = myCamRole();
+  const roster = Array.isArray(S.camRoster) ? S.camRoster : [];
+  if (!(S.doublesPeers instanceof Map)) S.doublesPeers = new Map();
+  const live = new Set(roster.map(p => p.wsId));
+  for (const [wsId, entry] of S.doublesPeers) {
+    if (!live.has(wsId)) {
+      try { entry.pc?.close(); } catch { /* ignore */ }
+      S.doublesPeers.delete(wsId);
+    }
+  }
+  for (const other of roster) {
+    if (!other?.wsId || other.role === me) continue;
+    if (!shouldOfferCam(me, other.role)) continue;
+    if (S.doublesPeers.has(other.wsId)) continue;
+    offerCamToPlayer(other);
+  }
+}
+
+async function offerCamToPlayer(other) {
+  if (!other?.wsId || !S.localStream) return;
+  if (!(S.doublesPeers instanceof Map)) S.doublesPeers = new Map();
+  const existing = S.doublesPeers.get(other.wsId);
+  if (existing?.pc) {
+    try { existing.pc.close(); } catch { /* ignore */ }
+  }
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const iceQueue = [];
+  S.doublesPeers.set(other.wsId, { pc, iceQueue, role: other.role });
+  S.localStream.getTracks().forEach(t => pc.addTrack(t, S.localStream));
+  pc.ontrack = (e) => {
+    const stream = e.streams?.[0] || (e.track ? new MediaStream([e.track]) : null);
+    rememberCamStream(other.role, stream);
+    if (isX01Game(S.game)) updateX01Camera();
+    if (isCricketGame(S.game)) updateCricketCamera();
+  };
+  pc.onicecandidate = (e) => {
+    if (e.candidate) wsSend({ type: 'webrtc_ice', candidate: e.candidate, targetWsId: other.wsId });
+  };
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    wsSend({ type: 'webrtc_offer', sdp: offer, targetWsId: other.wsId, fromRole: myCamRole() });
+  } catch (err) {
+    console.warn('offerCamToPlayer failed:', err?.message || err);
+    try { pc.close(); } catch { /* ignore */ }
+    S.doublesPeers.delete(other.wsId);
+  }
+}
+
+async function handleDoublesOffer(msg) {
+  if (!msg?.sdp || !msg.fromWsId) return;
+  if (!(S.doublesPeers instanceof Map)) S.doublesPeers = new Map();
+  const prev = S.doublesPeers.get(msg.fromWsId);
+  if (prev?.pc) { try { prev.pc.close(); } catch { /* ignore */ } }
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const iceQueue = [];
+  S.doublesPeers.set(msg.fromWsId, { pc, iceQueue, role: msg.fromRole });
+  if (S.localStream) S.localStream.getTracks().forEach(t => pc.addTrack(t, S.localStream));
+  pc.ontrack = (e) => {
+    const stream = e.streams?.[0] || (e.track ? new MediaStream([e.track]) : null);
+    rememberCamStream(msg.fromRole, stream);
+    if (isX01Game(S.game)) updateX01Camera();
+    if (isCricketGame(S.game)) updateCricketCamera();
+  };
+  pc.onicecandidate = (e) => {
+    if (e.candidate) wsSend({ type: 'webrtc_ice', candidate: e.candidate, targetWsId: msg.fromWsId });
+  };
+  try {
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    wsSend({ type: 'webrtc_answer', sdp: answer, targetWsId: msg.fromWsId, fromRole: myCamRole() });
+    await flushPeerIceQueue(pc, iceQueue);
+  } catch (err) {
+    console.warn('handleDoublesOffer failed:', err?.message || err);
+  }
 }
 
 async function flushPeerIceQueue(pc, queue) {
@@ -7189,7 +7696,7 @@ async function flushPeerIceQueue(pc, queue) {
 
 async function handleSpectateOffer(msg) {
   if (!msg?.sdp || !msg.fromWsId || !msg.fromRole) return;
-  const role = msg.fromRole === 'guest' ? 'guest' : 'host';
+  const role = CAM_ROLE_ORDER.includes(msg.fromRole) ? msg.fromRole : 'host';
   const map = ensureSpectatePeerMap();
   const existing = map.get(role);
   if (existing) {
@@ -7252,7 +7759,7 @@ async function handleSpectatorIce(msg) {
   }
   // Spectator receiving ICE from a player (host/guest)
   if (S.isSpectating && msg.fromRole) {
-    const role = msg.fromRole === 'guest' ? 'guest' : 'host';
+    const role = CAM_ROLE_ORDER.includes(msg.fromRole) ? msg.fromRole : 'host';
     const pc = S.spectatePeers?.get(role);
     if (!pc) return true;
     if (pc.remoteDescription) {
@@ -7312,6 +7819,10 @@ async function handleRTCOffer(msg) {
   }
   // Spectators never send offers to players; ignore stray offers.
   if (msg.fromRole === 'spectator') return;
+  if (isPartnerCamSignal(msg)) {
+    await handleDoublesOffer(msg);
+    return;
+  }
   if (!S.peerConn) await initWebRTC(false);
   await S.peerConn.setRemoteDescription(new RTCSessionDescription(msg.sdp));
   const answer = await S.peerConn.createAnswer();
@@ -7326,6 +7837,17 @@ async function handleRTCAnswer(msg) {
     await handleSpectatorAnswer(msg);
     return;
   }
+  const directed = msg.fromWsId && S.doublesPeers?.get(msg.fromWsId);
+  if (isPartnerCamSignal(msg) && !directed?.pc) return;
+  if (directed?.pc) {
+    try {
+      await directed.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      await flushPeerIceQueue(directed.pc, directed.iceQueue);
+    } catch (err) {
+      console.warn('doubles answer failed:', err?.message || err);
+    }
+    return;
+  }
   if (!S.peerConn) return;
   await S.peerConn.setRemoteDescription(new RTCSessionDescription(msg.sdp));
   // Critical: early ICE from the answerer was queued before remoteDescription
@@ -7337,6 +7859,17 @@ async function handleRTCAnswer(msg) {
 async function handleRTCIce(msg) {
   if (!msg?.candidate) return;
   if (await handleSpectatorIce(msg)) return;
+  const directed = msg.fromWsId && S.doublesPeers?.get(msg.fromWsId);
+  if (isPartnerCamSignal(msg) && !directed?.pc) return;
+  if (directed?.pc) {
+    if (directed.pc.remoteDescription) {
+      try { await directed.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); }
+      catch (err) { console.warn('addIceCandidate failed:', err?.message || err); }
+    } else {
+      directed.iceQueue.push(msg.candidate);
+    }
+    return;
+  }
   if (S.peerConn?.remoteDescription) {
     try {
       await S.peerConn.addIceCandidate(new RTCIceCandidate(msg.candidate));
@@ -7355,6 +7888,7 @@ function closePeerConnection() {
   S.peerConn = null;
   S.remoteStream = null;
   S.iceCandidateQueue = [];
+  closeDoublesPeers();
   closeAllSpectatorPeers();
   closeSpectatePeers();
   const remoteVid = document.getElementById('video-remote');
@@ -7380,6 +7914,11 @@ async function replaceLocalPeerTracks() {
   };
 
   await replaceOnPc(S.peerConn);
+  if (S.doublesPeers instanceof Map) {
+    for (const entry of S.doublesPeers.values()) {
+      await replaceOnPc(entry.pc);
+    }
+  }
   if (S.spectatorPeers instanceof Map) {
     for (const entry of S.spectatorPeers.values()) {
       await replaceOnPc(entry.pc);
@@ -7824,18 +8363,33 @@ function quickPickStarter(starterIdx) {
   finalizeStarter(starterIdx === 1 ? 1 : 0, 'quick');
 }
 
+function clearPartnerRole() {
+  S.isPartner = false;
+  S.myShooter = 0;
+  S.myTeamRole = null;
+  S.leadName = null;
+}
+
+function myTeamSeat() {
+  if (S.isPartner) return S.myTeamRole === 'guest' ? (S.guestSeat ?? 1) : (S.hostSeat ?? 0);
+  if (S.isHost) return S.hostSeat ?? 0;
+  return S.guestSeat ?? 1;
+}
+
 function applyMatchSeats(hostSeat, guestSeat) {
   S.hostSeat = hostSeat === 1 ? 1 : 0;
   S.guestSeat = guestSeat === 0 ? 0 : 1;
   // Spectators keep a neutral seat-0-left broadcast view.
-  S.mySeat = S.isSpectating ? 0 : (S.isHost ? S.hostSeat : S.guestSeat);
+  if (S.isSpectating) S.mySeat = 0;
+  else if (S.isPartner) S.mySeat = myTeamSeat();
+  else S.mySeat = S.isHost ? S.hostSeat : S.guestSeat;
   if (S.isSpectating) rebindSpectatorSeatVideos();
 }
 
 function resetMatchSeats() {
   S.hostSeat = 0;
   S.guestSeat = 1;
-  S.mySeat = S.isHost ? 0 : 1;
+  S.mySeat = S.isPartner ? myTeamSeat() : (S.isHost ? 0 : 1);
 }
 
 /** Names ordered by match seat: [Player One / starter, Player Two]. */
@@ -7846,6 +8400,11 @@ function seatPlayerNames() {
   if (S.isSpectating && (S.matchHostName || S.matchGuestName)) {
     const host = S.matchHostName || 'Host';
     const guest = S.matchGuestName || 'Guest';
+    return (S.hostSeat ?? 0) === 0 ? [host, guest] : [guest, host];
+  }
+  if (S.isPartner) {
+    const host = S.myTeamRole === 'host' ? (S.leadName || 'Lead') : (S.opponentName || 'Opponent');
+    const guest = S.myTeamRole === 'guest' ? (S.leadName || 'Lead') : (S.opponentName || 'Opponent');
     return (S.hostSeat ?? 0) === 0 ? [host, guest] : [guest, host];
   }
   const host = S.isHost ? (S.user.username || 'You') : (S.opponentName || 'Opponent');
@@ -8625,6 +9184,10 @@ function initX01State(cfg, game) {
       host: cfg.hostPartner || 'Partner',
       guest: cfg.guestPartner || 'Partner',
     };
+    state.partnerMode = cfg.partnerMode || {
+      host: cfg.hostPartnerMode === 'online' ? 'online' : 'home',
+      guest: cfg.guestPartnerMode === 'online' ? 'online' : 'home',
+    };
     state.nextShooter = [0, 0];
   }
   return state;
@@ -9023,7 +9586,8 @@ function x01ReplayVisits(visits, sourceGs, names) {
     legs: sourceGs.bestOf,
     visitTimerSeconds: sourceGs.visitTimerSeconds,
     doubles: !!sourceGs.doubles,
-    partners: sourceGs.partners
+    partners: sourceGs.partners,
+    partnerMode: sourceGs.partnerMode,
   }, S.game);
   let turn = 0;
   let matchOver = false;
@@ -9092,22 +9656,54 @@ function commitX01Edit(payload, { toastMsg } = {}) {
   if (toastMsg) toast(toastMsg);
 }
 
+let x01ScoreEditTarget = null;
+
 function editX01Score(playerIdx) {
-  // Legacy card ✎ entry point — edits are inline next to each current-leg visit.
-  toast('Use the edit box next to a visit in the score log (current leg only).');
-  const hist = gid('x01-leg-history');
-  const input = hist?.querySelector('.x01-visit-edit-input');
-  if (input) {
-    try { input.focus({ preventScroll: true }); input.select(); } catch { input.focus(); }
+  const legs = S.gameState?.legLog || [];
+  const legIdx = legs.length - 1;
+  const leg = legs[legIdx] || [];
+  const visitIdx = leg.findIndex(entry => entry && entry.p === playerIdx);
+  if (visitIdx < 0) {
+    toast('No visit to edit in this leg yet.');
+    return;
   }
+  openX01ScoreEdit(legIdx, visitIdx);
 }
 
-function commitX01VisitEditFromInput(inputEl) {
-  if (!inputEl || inputEl.disabled) return;
-  const legIdx = parseInt(inputEl.dataset.leg, 10);
-  const visitIdx = parseInt(inputEl.dataset.visit, 10);
-  const total = parseInt(String(inputEl.value).trim(), 10);
+function openX01ScoreEdit(legIdx, visitIdx) {
+  const gs = S.gameState;
+  const legs = gs?.legLog || [];
+  const currentLegIdx = legs.length - 1;
+  const entry = legs[legIdx]?.[visitIdx];
+  if (!entry || legIdx !== currentLegIdx || !x01CanEditVisit(entry.p)) {
+    toast('You can only edit your own visits in the current leg.');
+    return;
+  }
+  x01ScoreEditTarget = { legIdx, visitIdx };
+  const who = x01ShooterAt(gs, legs[legIdx], visitIdx) || x01PlayerNames()[entry.p] || 'Player';
+  const whoEl = document.getElementById('x01-score-edit-who');
+  if (whoEl) whoEl.textContent = `${who} · Leg ${legIdx + 1}, visit ${visitIdx + 1}. Current score ${entry.bust ? 'BUST' : entry.v}.`;
+  const input = document.getElementById('x01-score-edit-input');
+  if (input) input.value = entry.v;
+  openModal('x01-score-edit-modal');
+  setTimeout(() => {
+    try { input?.focus({ preventScroll: true }); input?.select(); } catch { input?.focus(); }
+  }, 40);
+}
+
+function closeX01ScoreEdit() {
+  x01ScoreEditTarget = null;
+  closeModal('x01-score-edit-modal');
+}
+
+function saveX01ScoreEdit() {
+  if (!x01ScoreEditTarget) return;
+  const { legIdx, visitIdx } = x01ScoreEditTarget;
+  const total = parseInt(String(document.getElementById('x01-score-edit-input')?.value ?? '').trim(), 10);
+  const before = S.gameState?.legLog?.[legIdx]?.[visitIdx]?.v;
   editX01VisitAt(legIdx, visitIdx, total);
+  const after = S.gameState?.legLog?.[legIdx]?.[visitIdx]?.v;
+  if (x01EditAwaitingApproval || after === total || total === before) closeX01ScoreEdit();
 }
 
 /** Edit one recorded visit in the current leg only. */
@@ -9260,6 +9856,10 @@ function initCricketState(cfg, game) {
     state.partners = cfg.partners || {
       host: cfg.hostPartner || 'Partner',
       guest: cfg.guestPartner || 'Partner',
+    };
+    state.partnerMode = cfg.partnerMode || {
+      host: cfg.hostPartnerMode === 'online' ? 'online' : 'home',
+      guest: cfg.guestPartnerMode === 'online' ? 'online' : 'home',
     };
     state.nextShooter = [0, 0];
   }
@@ -9646,7 +10246,7 @@ function renderCricketMatch() {
   const legsBit = (gs.bestOf || 1) > 1 ? ` · Best of ${gs.bestOf}` : '';
   document.getElementById('ckt-game-label').textContent = `${targetBit}${legsBit}`;
   const thrower = activeThrowerName(gs, active) || names[active] || 'Player';
-  document.getElementById('ckt-turn-line').textContent = `${thrower.toUpperCase()}'S TURN TO THROW!`;
+  document.getElementById('ckt-turn-line').textContent = doublesTurnLine(gs, active, thrower);
   if (lastArenaTurn != null && lastArenaTurn !== active) showChangeoverCue(thrower);
   lastArenaTurn = active;
 
@@ -9748,14 +10348,12 @@ function updateCricketCamera() {
   if (!v) return;
   const isMyTurn = isMyMatchTurn();
   const botTurn = S.isBot && (S.isSpectating ? S.turn !== (S.hostSeat ?? 0) : !isMyTurn);
+  if (S.gameState?.doubles && !S.isLocal && !S.isSpectating) syncDoublesCamPeers();
   let stream;
-  if (S.isSpectating) {
-    stream = spectatorThrowerStream();
-  } else if (isMyTurn || S.isBot) {
-    stream = S.localStream;
-  } else {
-    stream = S.remoteStream || S.localStream;
-  }
+  if (S.gameState?.doubles && !S.isLocal) stream = doublesThrowerStream() || (S.isBot ? S.localStream : null);
+  else if (S.isSpectating) stream = spectatorThrowerStream();
+  else if (isMyTurn || S.isBot) stream = S.localStream;
+  else stream = S.remoteStream || S.localStream;
   if (stream) bindVideoElement(v, stream, { muted: true });
   applySpecialtyCamZoom();
   const badge = document.getElementById('ckt-cam-badge');
@@ -10899,7 +11497,7 @@ function renderX01Match() {
 
   // Header
   gid('x01-header-title').textContent = `BEST OF ${gs.bestOf} LEGS`;
-  gid('x01-turn-line').textContent = `${thrower.toUpperCase()}'S TURN TO THROW!`;
+  gid('x01-turn-line').textContent = doublesTurnLine(gs, active, thrower);
   gid('x01-game-label').textContent = `${gs.base} · ${x01RuleLabel(gs.startRule, 'in')} / ${x01RuleLabel(gs.finishRule, 'out')}${gs.doubles ? ' · Doubles' : ''}`;
 
   // Changeover cue when thrower flips.
@@ -11056,12 +11654,7 @@ function x01TurnRowHtml(entry, legIdx, visitIdx, leg, gs) {
   const who = x01ShooterAt(gs, leg, visitIdx);
   const canEdit = x01CanEditVisit(entry.p);
   const editBits = canEdit
-    ? `<input type="number" class="x01-visit-edit-input" min="0" max="180" step="1"
-         value="${entry.v}" inputmode="numeric" aria-label="Edit visit score"
-         data-leg="${legIdx}" data-visit="${visitIdx}"
-         onkeydown="if(event.key==='Enter'){event.preventDefault();commitX01VisitEditFromInput(this);}" />
-       <button type="button" class="x01-visit-edit-save" title="Save corrected score"
-         onclick="commitX01VisitEditFromInput(this.previousElementSibling)">✓</button>`
+    ? `<button type="button" class="x01-score-pencil" title="Edit this score" aria-label="Edit visit score" onclick="openX01ScoreEdit(${legIdx}, ${visitIdx})">✎</button>`
     : '';
   return `<div class="x01-visit-line ${side}" data-visit="${visitIdx}">
     <div class="x01-turn-row ${side}${cls}">${who ? `<span class="x01-turn-who">${escapeX01(who)}</span>` : ''}<span class="x01-turn-score">${label}</span></div>
@@ -11088,8 +11681,9 @@ function renderX01History(gs) {
   const renderedLen = x01HistRendered[0] || 0;
   const sameLeg = histEl.querySelector(`.x01-leg-col[data-leg="${li}"]`);
   let needFull = !sameLeg
+    || !x01HistSig
     || leg.length < renderedLen
-    || (x01HistSig && leg.length === renderedLen && histSig !== x01HistSig);
+    || (leg.length === renderedLen && histSig !== x01HistSig);
   if (!needFull && x01HistSig && x01HistSig.split('|')[0] !== String(li)) needFull = true;
   // Rebuild when editability flips (approval lock / seat) even if scores are unchanged.
   if (!needFull && x01HistSig) {
@@ -11101,7 +11695,6 @@ function renderX01History(gs) {
     const rows = leg.map((entry, vi) => x01TurnRowHtml(entry, li, vi, leg, gs)).join('');
     histEl.innerHTML = `<div class="x01-leg-col" data-leg="${li}">
         <div class="x01-leg-badge">#${li + 1}</div>
-        <div class="x01-leg-hint">Edit boxes = correct a visit (this leg only)</div>
         <div class="x01-leg-turns">${rows || '<div class="x01-turn-empty">—</div>'}</div>
       </div>`;
     x01HistRendered = [leg.length];
@@ -11142,14 +11735,12 @@ function updateX01Camera() {
   if (!v) return;
   const isMyTurn = isMyMatchTurn();
   const botTurn = S.isBot && (S.isSpectating ? S.turn !== (S.hostSeat ?? 0) : !isMyTurn);
+  if (S.gameState?.doubles && !S.isLocal && !S.isSpectating) syncDoublesCamPeers();
   let stream;
-  if (S.isSpectating) {
-    stream = spectatorThrowerStream();
-  } else if (isMyTurn || S.isBot) {
-    stream = S.localStream;            // human's feed (also shown during bot's turn)
-  } else {
-    stream = S.remoteStream || S.localStream; // PvP opponent's turn
-  }
+  if (S.gameState?.doubles && !S.isLocal) stream = doublesThrowerStream() || (S.isBot ? S.localStream : null);
+  else if (S.isSpectating) stream = spectatorThrowerStream();
+  else if (isMyTurn || S.isBot) stream = S.localStream;
+  else stream = S.remoteStream || S.localStream;
   if (stream) bindVideoElement(v, stream, { muted: true });
   applySpecialtyCamZoom();
   const badge = document.getElementById('x01-cam-badge');
@@ -11292,10 +11883,39 @@ function golfScoreCellClass(score) {
   return '';
 }
 
+function doublesTeamRoleForSeat(seat) {
+  return seat === (S.hostSeat ?? 0) ? 'host' : 'guest';
+}
+
+/** Name of an online partner who has not joined yet, when it is their visit. */
+function doublesPartnerWaitName(gs, seat) {
+  if (!gs?.doubles || (seat !== 0 && seat !== 1)) return null;
+  const role = doublesTeamRoleForSeat(seat);
+  if (gs.partnerMode?.[role] !== 'online') return null;
+  if (gs.partnerHere?.[role] !== false) return null;
+  if ((gs.nextShooter?.[seat] === 1 ? 1 : 0) !== 1) return null;
+  return shooterPair(gs, seat)?.[1] || 'Partner';
+}
+
+function doublesTurnLine(gs, seat, thrower) {
+  const waiting = doublesPartnerWaitName(gs, seat);
+  if (waiting) return `WAITING FOR ${String(waiting).toUpperCase()} TO JOIN`;
+  return `${String(thrower || 'Player').toUpperCase()}'S TURN TO THROW!`;
+}
+
 function isMyMatchTurn() {
   if (S.isSpectating) return false;
   if (S.isLocal) return true;
-  return S.turn === myPlayerIdx();
+  if (S.turn !== myPlayerIdx()) return false;
+  const gs = S.gameState;
+  if (!gs?.doubles) return true;
+  const seat = myPlayerIdx();
+  const role = doublesTeamRoleForSeat(seat);
+  const online = gs.partnerMode?.[role] === 'online';
+  const shooter = gs.nextShooter?.[seat] === 1 ? 1 : 0;
+  if (!online) return S.myShooter !== 1;
+  if (shooter === 1 && gs.partnerHere?.[role] === false) return false;
+  return shooter === (S.myShooter === 1 ? 1 : 0);
 }
 
 function myPlayerIdx() {
@@ -12774,6 +13394,7 @@ function leaveMatch() {
   S.isHost = false;
   S.isLocal = false;
   S.localNames = null;
+  clearPartnerRole();
   resetChatUI();
   setChatEnabled(false);
   showPage('lobby');
