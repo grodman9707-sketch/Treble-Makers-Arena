@@ -144,6 +144,8 @@ On first run (when `data.json` does not exist), an admin is seeded:
 - **Username:** `ADMIN_USERNAME` (default `GViking01`)
 - **Password:** `ADMIN_PASSWORD` from env, or a random one-time password printed in the server log
 
+That seeded account is the **arena owner**. Only the owner sees the **Owner Desk** tab (site stats, and granting or removing admin status). A player sees the **Admin** tab only while they hold admin status. Admins can create tournaments, change arena access, and remove player accounts. They cannot grant admin status, and they cannot remove the owner or another admin.
+
 **Change this password after first login.** Sessions use opaque tokens (passwords are never stored in the browser). Do not expose port 3000 without TLS in production.
 
 ## Project layout
