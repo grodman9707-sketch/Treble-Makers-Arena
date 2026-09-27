@@ -123,6 +123,7 @@ function loadData() {
           username: ADMIN_USERNAME,
           passwordHash: bcrypt.hashSync(seeded.password, BCRYPT_ROUNDS),
           admin: true,
+          owner: true,
           approved: true,
           mustChangePassword: seeded.mustChange,
           stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0 },
@@ -216,6 +217,7 @@ function migrateDbSecurity() {
       } catch { /* ignore */ }
     }
   }
+  if (ensureOwnerAccount()) dirty = true;
   if (SOFT_LAUNCH) {
     const arena = ensureArenaSettings();
     if (arena.mode === 'open') {
@@ -459,7 +461,8 @@ function authOkPayload(user, token) {
   return {
     type: 'auth_ok',
     username: user.username,
-    admin: !!user.admin,
+    admin: userIsAdmin(user),
+    owner: userIsOwner(user),
     stats: payload.stats,
     profile: payload.profile,
     token: token || undefined,
@@ -566,8 +569,60 @@ function getIceServers() {
 
 function isUserApproved(user) {
   if (!user) return false;
-  if (user.admin) return true;
+  if (userIsAdmin(user)) return true;
   return user.approved !== false; // legacy accounts without the field stay approved
+}
+
+function userIsOwner(user) {
+  return !!(user && user.owner);
+}
+
+function userIsAdmin(user) {
+  return !!(user && (user.admin || user.owner));
+}
+
+function clientIsOwner(client) {
+  return !!(client?.username && userIsOwner(db.users[client.username]));
+}
+
+function clientIsAdmin(client) {
+  return !!(client?.username && userIsAdmin(db.users[client.username]));
+}
+
+// The seeded arena account is the owner. Exactly one owner, and that account
+// always keeps admin status so the Owner Desk cannot lock itself out.
+function ensureOwnerAccount() {
+  const users = Object.values(db.users || {}).filter(u => u && typeof u === 'object' && u.username);
+  let dirty = false;
+  let owners = users.filter(u => u.owner === true);
+  if (owners.length > 1) {
+    const preferred = owners.find(u => u.username === ADMIN_USERNAME)
+      || owners.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
+    for (const u of owners) {
+      if (u !== preferred) {
+        u.owner = false;
+        dirty = true;
+      }
+    }
+    owners = [preferred];
+    log('warn', `Multiple owners found — kept "${preferred.username}" as the arena owner.`);
+  }
+  if (!owners.length) {
+    const seeded = users.find(u => u.username === ADMIN_USERNAME);
+    const oldestAdmin = users.filter(u => u.admin).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
+    const pick = seeded || oldestAdmin;
+    if (pick) {
+      pick.owner = true;
+      owners = [pick];
+      dirty = true;
+      log('info', `Marked "${pick.username}" as the arena owner.`);
+    }
+  }
+  for (const u of owners) {
+    if (!u.admin) { u.admin = true; dirty = true; }
+    if (u.approved === false) { u.approved = true; dirty = true; }
+  }
+  return dirty;
 }
 
 function arenaStatusPayload() {
@@ -900,7 +955,7 @@ function kickNonAdminSessions(reason) {
   clients.forEach((client, wsId) => {
     if (!client.username) return;
     const user = db.users[client.username];
-    if (user?.admin) return;
+    if (userIsAdmin(user)) return;
     send(wsId, { type: 'force_logout', message: reason || 'Arena access has changed.' });
   });
 }
@@ -2070,6 +2125,135 @@ function validateRegistration(username, password, email) {
 const RESET_REQUEST_OK =
   'If an account matches, a password reset link has been sent. Check your email.';
 
+function onlinePresenceSets() {
+  const registered = new Set();
+  const guests = new Set();
+  for (const c of clients.values()) {
+    if (!c.username) continue;
+    if (isGuestUsername(c.username) || !isRegisteredUser(c.username)) guests.add(c.username);
+    else registered.add(c.username);
+  }
+  return { registered, guests };
+}
+
+function rosterEntry(user, onlineNames) {
+  const stats = user.stats || {};
+  return {
+    username: user.username,
+    admin: !!user.admin,
+    owner: !!user.owner,
+    approved: user.approved !== false,
+    pending: user.approved === false,
+    createdAt: user.createdAt || null,
+    gamesPlayed: stats.gamesPlayed || 0,
+    wins: stats.wins || 0,
+    losses: stats.losses || 0,
+    tournamentsWon: stats.tournamentsWon || 0,
+    online: !!(onlineNames && onlineNames.has(user.username)),
+  };
+}
+
+function ownerDeskPayload() {
+  const arena = ensureArenaSettings();
+  const users = Object.values(db.users || {}).filter(u => u && u.username);
+  const { registered, guests } = onlinePresenceSets();
+  let live = 0;
+  let waiting = 0;
+  for (const room of rooms.values()) {
+    if (room.status === 'active') live++;
+    else if (room.status === 'waiting') waiting++;
+  }
+  const tournaments = Array.isArray(db.tournaments) ? db.tournaments : [];
+  const countStatus = (status) => tournaments.filter(t => t.status === status).length;
+  let gamesPlayed = 0;
+  let wins = 0;
+  let oneEighties = 0;
+  for (const u of users) {
+    gamesPlayed += u.stats?.gamesPlayed || 0;
+    wins += u.stats?.wins || 0;
+    oneEighties += u.stats?.oneEighties || 0;
+  }
+  let dataBytes = 0;
+  try { dataBytes = fs.statSync(DATA_FILE).size; } catch { /* missing store */ }
+  const players = users.map(u => ({
+    ...rosterEntry(u, registered),
+    email: typeof u.email === 'string' ? u.email : '',
+  })).sort((a, b) => a.username.localeCompare(b.username));
+  return {
+    type: 'owner_desk',
+    generatedAt: Date.now(),
+    uptimeSec: Math.round(process.uptime()),
+    softLaunch: SOFT_LAUNCH,
+    env: NODE_ENV,
+    dataBytes,
+    sessions: Object.keys(db.sessions || {}).length,
+    arena: { mode: arena.mode, message: arena.message || '' },
+    counts: {
+      registered: users.length,
+      approved: users.filter(u => u.approved !== false).length,
+      pending: users.filter(u => u.approved === false).length,
+      admins: users.filter(u => u.admin && !u.owner).length,
+      onlineRegistered: registered.size,
+      onlineGuests: guests.size,
+      onlineTotal: registered.size + guests.size,
+      liveMatches: live,
+      waitingMatches: waiting,
+      tournaments: tournaments.length,
+      tournamentsRegistration: countStatus('registration'),
+      tournamentsActive: countStatus('active'),
+      tournamentsCompleted: countStatus('completed'),
+      gamesPlayed,
+      wins,
+      oneEighties,
+    },
+    players,
+  };
+}
+
+function pushRoleChanged(user) {
+  if (!user?.username) return;
+  const admin = userIsAdmin(user);
+  sendToUsername(user.username, {
+    type: 'role_changed',
+    admin,
+    owner: userIsOwner(user),
+    message: admin
+      ? 'You have admin status. The Admin tab is now in your navigation.'
+      : 'Your admin status was removed. The Admin tab is no longer available.',
+  });
+}
+
+function scrubRemovedPlayer(username) {
+  for (const user of Object.values(db.users || {})) {
+    if (!user || user.username === username) continue;
+    const f = ensureFriendsFields(user);
+    f.friends = f.friends.filter(n => n !== username);
+    f.friendRequests.incoming = f.friendRequests.incoming.filter(n => n !== username);
+    f.friendRequests.outgoing = f.friendRequests.outgoing.filter(n => n !== username);
+  }
+  for (const t of db.tournaments || []) {
+    if (!t || t.status !== 'registration' || !Array.isArray(t.players)) continue;
+    t.players = t.players.filter(p => p !== username);
+  }
+}
+
+function disconnectRemovedPlayer(username, message) {
+  const sockets = [];
+  for (const c of clients.values()) {
+    if (c.username === username && c.ws) sockets.push(c.ws);
+  }
+  const payload = JSON.stringify({
+    type: 'account_removed',
+    message: message || 'Your account was removed from the arena.',
+  });
+  for (const ws of sockets) {
+    try { if (ws.readyState === 1) ws.send(payload); } catch { /* ignore */ }
+    setTimeout(() => {
+      try { ws.close(4000, 'account removed'); } catch { /* already closing */ }
+    }, 200);
+  }
+}
+
 wss.on('connection', (ws, req) => {
   const ip = clientIp(req);
   const n = (wsConnByIp.get(ip) || 0) + 1;
@@ -2148,6 +2332,7 @@ async function handleMessage(wsId, msg) {
         type: 'auth_ok',
         username: client.username,
         admin: false,
+        owner: false,
         softLaunch: SOFT_LAUNCH,
         ...publicProfilePayload(null),
       });
@@ -2223,7 +2408,7 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'auth_error', message: 'Invalid username or password.' });
       }
       const arena = ensureArenaSettings();
-      if (arena.mode === 'maintenance' && !user.admin) {
+      if (arena.mode === 'maintenance' && !userIsAdmin(user)) {
         return send(wsId, {
           type: 'auth_error',
           message: arena.message || 'The arena is offline for maintenance.',
@@ -2253,7 +2438,7 @@ async function handleMessage(wsId, msg) {
       }
       const { user } = found;
       const arena = ensureArenaSettings();
-      if (arena.mode === 'maintenance' && !user.admin) {
+      if (arena.mode === 'maintenance' && !userIsAdmin(user)) {
         return send(wsId, {
           type: 'auth_error',
           message: arena.message || 'The arena is offline for maintenance.',
@@ -2422,14 +2607,68 @@ async function handleMessage(wsId, msg) {
 
     // ── ADMIN ─────────────────────────────────
     case 'set_admin': {
-      if (!client.username || !db.users[client.username]?.admin) {
-        return send(wsId, { type: 'error', message: 'Unauthorized.' });
+      if (!clientIsOwner(client)) {
+        return send(wsId, { type: 'error', message: 'Only the arena owner can assign admin status.' });
       }
-      const target = db.users[msg.username];
-      if (!target) return send(wsId, { type: 'error', message: 'User not found.' });
-      target.admin = !!msg.value;
-      saveData(db);
-      send(wsId, { type: 'admin_updated', username: msg.username, admin: target.admin });
+      const username = String(msg.username || '').trim();
+      const target = db.users[username];
+      if (!target || !isRegisteredUser(username)) {
+        return send(wsId, { type: 'error', message: 'Registered player not found.' });
+      }
+      if (userIsOwner(target)) {
+        return send(wsId, { type: 'error', message: 'The owner always keeps admin status.' });
+      }
+      const next = !!msg.value;
+      if (!!target.admin === next) {
+        send(wsId, { type: 'admin_updated', username, admin: !!target.admin });
+        break;
+      }
+      target.admin = next;
+      if (next) target.approved = true;
+      saveDirty = true;
+      await flushData();
+      pushRoleChanged(target);
+      send(wsId, { type: 'admin_updated', username, admin: !!target.admin });
+      log('info', `${client.username} ${next ? 'granted' : 'revoked'} admin for "${username}".`);
+      break;
+    }
+
+    case 'get_owner_desk': {
+      if (!clientIsOwner(client)) {
+        return send(wsId, { type: 'error', message: 'Owner Desk is private.' });
+      }
+      send(wsId, ownerDeskPayload());
+      break;
+    }
+
+    case 'remove_player': {
+      if (!clientIsAdmin(client)) {
+        return send(wsId, { type: 'error', message: 'Admin only.' });
+      }
+      const username = String(msg.username || '').trim();
+      const target = db.users[username];
+      if (!target || !isRegisteredUser(username)) {
+        return send(wsId, { type: 'error', message: 'Registered player not found.' });
+      }
+      if (username === client.username) {
+        return send(wsId, { type: 'error', message: 'You cannot remove your own account.' });
+      }
+      if (userIsOwner(target)) {
+        return send(wsId, { type: 'error', message: 'The owner account cannot be removed.' });
+      }
+      if (target.admin && !clientIsOwner(client)) {
+        return send(wsId, { type: 'error', message: 'Only the owner can remove an admin. Revoke admin status first.' });
+      }
+      clearPasswordResetsForUser(username);
+      revokeUserSessions(username);
+      scrubRemovedPlayer(username);
+      disconnectRemovedPlayer(username, 'Your account was removed by an arena admin.');
+      delete db.users[username];
+      saveDirty = true;
+      await flushData();
+      broadcastArenaStatus();
+      send(wsId, { type: 'player_removed', username });
+      log('info', `${client.username} removed player "${username}".`);
       break;
     }
 
@@ -2439,7 +2678,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'set_arena_mode': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const mode = msg.mode;
@@ -2459,7 +2698,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'approve_user': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const username = String(msg.username || '').trim();
@@ -2479,7 +2718,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'reject_user': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const username = String(msg.username || '').trim();
@@ -3327,7 +3566,7 @@ async function handleMessage(wsId, msg) {
 
     // ── TOURNAMENTS ───────────────────────────
     case 'create_tournament': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const name = typeof msg.name === 'string' ? msg.name.trim().slice(0, 60) : '';
@@ -3383,23 +3622,20 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'get_users': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
+      const { registered } = onlinePresenceSets();
       const data = Object.values(db.users)
-        .map(u => ({
-          username: u.username,
-          admin: !!u.admin,
-          approved: u.approved !== false,
-          pending: u.approved === false,
-        }))
+        .filter(u => u && u.username)
+        .map(u => rosterEntry(u, registered))
         .sort((a, b) => a.username.localeCompare(b.username));
       send(wsId, { type: 'users', data });
       break;
     }
 
     case 'add_tournament_player': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -3420,7 +3656,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'remove_tournament_player': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -3440,7 +3676,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'add_tournament_bots': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -3454,7 +3690,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'start_tournament': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -3544,7 +3780,7 @@ async function handleMessage(wsId, msg) {
       if (!isTournamentUnplayed(t)) {
         return send(wsId, { type: 'error', message: 'Only unplayed tournaments can be removed.' });
       }
-      const isAdmin = !!db.users[client.username]?.admin;
+      const isAdmin = clientIsAdmin(client);
       if (t.createdBy !== client.username && !isAdmin) {
         return send(wsId, { type: 'error', message: 'Only the creator or an admin can remove this tournament.' });
       }

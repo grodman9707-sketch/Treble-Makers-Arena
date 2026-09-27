@@ -463,7 +463,8 @@ body.app-active .arena-bg { animation: none !important; }
   margin-right: 1.5rem; white-space: nowrap; cursor: pointer;
 }
 .nav-logo span { color: var(--silver-light); -webkit-text-fill-color: var(--silver-light); }
-.nav-links { display: flex; align-items: stretch; flex: 1; gap: 0; }
+.nav-links { display: flex; align-items: stretch; flex: 1; gap: 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.nav-links::-webkit-scrollbar { display: none; }
 .nav-link {
   padding: 0 1rem; display: flex; align-items: center;
   font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.1em;
@@ -2685,6 +2686,73 @@ body.app-active .arena-bg { animation: none !important; }
   color: var(--gold-light);
 }
 .admin-bar-title { font-family: 'Cinzel', serif; font-size: 0.75rem; letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase; }
+.nav-link-owner.active, .nav-link-owner:hover { color: var(--gold-light); }
+
+.desk-page { padding: 1.5rem 2rem 2.5rem; max-width: 1180px; }
+.desk-stats {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 0.7rem; margin-bottom: 1.6rem;
+}
+.desk-stat {
+  padding: 0.8rem 0.9rem; border-radius: 6px;
+  background: rgba(0,0,0,0.45); border: 1px solid rgba(201,168,76,0.28);
+}
+.desk-stat .ds-label {
+  display: block; font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); font-family: 'Cinzel', serif; margin-bottom: 0.28rem;
+}
+.desk-stat .ds-val {
+  font-family: 'Orbitron', monospace; font-size: 1.12rem; color: var(--gold-light);
+}
+.desk-stat .ds-sub { font-size: 0.68rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.35; }
+.desk-columns {
+  display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.8fr);
+  gap: 1.25rem; align-items: start;
+}
+.desk-section-title {
+  font-family: 'Cinzel', serif; font-size: 0.78rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold); margin: 0.2rem 0 0.4rem;
+}
+.desk-note { font-size: 0.78rem; color: var(--muted); margin: 0 0 0.85rem; line-height: 1.45; }
+.desk-search {
+  width: 100%; margin-bottom: 0.75rem; padding: 0.55rem 0.8rem;
+  background: var(--black); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); font-family: 'Exo 2', sans-serif; font-size: 0.86rem;
+}
+.desk-search:focus { outline: none; border-color: var(--gold); }
+.desk-roster { display: flex; flex-direction: column; gap: 0.45rem; max-height: 540px; overflow-y: auto; }
+.desk-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 0.6rem 0.75rem; background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.desk-row-main { min-width: 0; }
+.desk-row-name {
+  font-family: 'Cinzel', serif; color: var(--silver-light); font-size: 0.88rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.desk-row-meta { font-size: 0.72rem; color: var(--muted); margin-top: 0.12rem; }
+.desk-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.28rem; }
+.desk-badge {
+  font-family: 'Orbitron', monospace; font-size: 0.52rem; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 3px;
+  border: 1px solid var(--border); color: var(--silver);
+}
+.desk-badge.admin { color: var(--gold-light); border-color: rgba(201,168,76,0.55); }
+.desk-badge.owner { color: #f0d080; border-color: var(--gold); }
+.desk-badge.pending { color: #ffc9c9; border-color: rgba(204,34,34,0.45); }
+.desk-badge.online { color: var(--green-bright); border-color: rgba(42,139,90,0.5); }
+.desk-snapshot {
+  padding: 0.9rem 1rem; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(0,0,0,0.28); font-size: 0.82rem; line-height: 1.7; color: var(--silver-light);
+}
+.desk-snapshot div { display: flex; justify-content: space-between; gap: 1rem; }
+.desk-snapshot strong { color: var(--gold-light); font-weight: 600; }
+.desk-empty { padding: 1.25rem; text-align: center; color: var(--muted); font-size: 0.82rem; }
+@media (max-width: 900px) {
+  .desk-columns { grid-template-columns: 1fr; }
+  .desk-page { padding: 1.1rem 1rem 2rem; }
+}
 .arena-mode-pill {
   font-family: 'Orbitron', monospace; font-size: 0.58rem; letter-spacing: 0.08em;
   padding: 3px 8px; border-radius: 3px; border: 1px solid var(--border);
@@ -3680,6 +3748,8 @@ body.app-active .arena-bg { animation: none !important; }
       <div class="nav-link" data-page="tournaments" onclick="showPage('tournaments')">Tournaments</div>
       <div class="nav-link" data-page="leaderboard" onclick="showPage('leaderboard')">Leaderboard</div>
       <div class="nav-link" data-page="spectate" onclick="showPage('spectate')">Stands</div>
+      <div class="nav-link hidden" id="nav-link-admin" data-page="admin" onclick="showPage('admin')">Admin</div>
+      <div class="nav-link nav-link-owner hidden" id="nav-link-owner" data-page="owner" onclick="showPage('owner')">Owner Desk</div>
     </div>
     <div class="nav-right-items">
       <span class="nav-live-badge" id="nav-live">● 0 LIVE</span>
@@ -4098,14 +4168,6 @@ body.app-active .arena-bg { animation: none !important; }
         <div class="page-section-title">Tournaments</div>
         <div class="page-section-sub">Official competitions — X01, Cricket & more. Admin-hosted events only.</div>
 
-        <div id="admin-bar" class="admin-bar hidden">
-          <span class="admin-bar-title">👑 Admin Controls</span>
-          <span id="admin-arena-mode-pill" class="arena-mode-pill open">Open</span>
-          <button class="btn btn-gold btn-sm" onclick="openCreateTournament()">+ Create Tournament</button>
-          <button class="btn btn-sm" onclick="openArenaAccessPanel()">Arena Access</button>
-          <button class="btn btn-sm" onclick="openAdminPanel()">Manage Players</button>
-        </div>
-
         <div class="tournament-cards" id="tournament-cards">
           <div style="padding:3rem;text-align:center;color:var(--muted);grid-column:1/-1">
             <div style="font-size:2rem;opacity:0.3;margin-bottom:0.5rem">🏆</div>
@@ -4117,6 +4179,47 @@ body.app-active .arena-bg { animation: none !important; }
         <div id="bracket-section" class="hidden">
           <div class="matches-section-title" id="bracket-title">Tournament Bracket</div>
           <div class="bracket-view" id="bracket-view"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ADMIN TAB (visible only while the player holds admin status) ── -->
+    <div class="page" id="page-admin">
+      <div class="desk-page">
+        <div class="page-section-title">Admin</div>
+        <div class="page-section-sub">Create tournaments, control arena access, and remove players when you have to. This tab stays only while you hold admin status.</div>
+        <div class="admin-bar" id="admin-desk-actions">
+          <span class="admin-bar-title">Controls</span>
+          <span id="admin-arena-mode-pill" class="arena-mode-pill open">Open</span>
+          <button class="btn btn-gold btn-sm" onclick="openCreateTournament()">+ Create Tournament</button>
+          <button class="btn btn-sm" onclick="openArenaAccessPanel()">Arena Access</button>
+          <button class="btn btn-sm" onclick="openAdminPanel()">Tournament Players</button>
+        </div>
+        <div class="desk-section-title">Registered players</div>
+        <p class="desk-note">Removing a player deletes their account and signs them out. An admin cannot remove another admin or the owner. The owner can remove an admin from this list, and the owner account itself cannot be removed.</p>
+        <input type="search" id="admin-player-search" class="desk-search" placeholder="Search players…" oninput="renderAdminRoster()" />
+        <div id="admin-roster" class="desk-roster"></div>
+      </div>
+    </div>
+
+    <!-- ── OWNER DESK (owner only) ── -->
+    <div class="page" id="page-owner">
+      <div class="desk-page">
+        <div class="page-section-title">Owner Desk</div>
+        <div class="page-section-sub">Private to you. Site stats and admin assignments are not shown to anyone else.</div>
+        <div id="owner-stats" class="desk-stats"></div>
+        <div class="desk-columns">
+          <section>
+            <div class="desk-section-title">Assign admin status</div>
+            <p class="desk-note">Turn admin on for a registered player and the Admin tab appears for them. Turn it off and that tab goes away. Only you can make this change.</p>
+            <input type="search" id="owner-player-search" class="desk-search" placeholder="Search registered players…" oninput="renderOwnerRoster()" />
+            <div id="owner-roster" class="desk-roster"></div>
+          </section>
+          <section>
+            <div class="desk-section-title">Arena snapshot</div>
+            <div id="owner-snapshot" class="desk-snapshot"></div>
+            <button class="btn btn-sm" style="margin-top:0.75rem" onclick="refreshOwnerDesk()">Refresh stats</button>
+          </section>
         </div>
       </div>
     </div>
@@ -4994,7 +5097,7 @@ function saveCamViewPrefs() {
 // ═══════════════════════════════════════════════════════════
 const S = {
   ws: null, wsId: null,
-  user: { username: null, admin: false, stats: {} },
+  user: { username: null, admin: false, owner: false, stats: {} },
   roomId: null, isHost: false,
   game: 'Halve-It', turn: 0,
   scores: [0, 0], history: [],
@@ -5013,6 +5116,7 @@ const S = {
   iceCandidateQueue: [],
   lobbies: [], tournaments: [],
   platformUsers: [],
+  ownerDesk: null,
   arena: { mode: 'open', message: '', registrationOpen: true, guestAllowed: true, pendingCount: 0 },
   camView: loadCamViewPrefs(),
   // Seat 0 = Player One = match starter. Host/guest are room roles, not seats.
@@ -5246,7 +5350,8 @@ function handleWS(msg) {
       const wasInApp = !!(S.user && S.user.username);
       S.user = {
         username: msg.username,
-        admin: msg.admin,
+        admin: !!msg.admin,
+        owner: !!msg.owner,
         stats: msg.stats || {},
         profile: msg.profile || {},
         mustChangePassword: !!msg.mustChangePassword,
@@ -5272,9 +5377,7 @@ function handleWS(msg) {
       pendingRemember = false;
       if (wasInApp) {
         document.getElementById('nav-username').textContent = S.user.username || 'Player';
-        document.getElementById('nav-crown').classList.toggle('hidden', !S.user.admin);
-        document.getElementById('admin-bar').classList.toggle('hidden', !S.user.admin);
-        updateArenaAdminUI();
+        syncPrivilegedNav();
         updateGameAccessUI();
         wsSend({ type: 'get_lobby' });
         wsSend({ type: 'get_presence' });
@@ -5571,6 +5674,49 @@ function handleWS(msg) {
       if (document.getElementById('arena-access-modal')?.classList.contains('open')) {
         renderArenaPendingList();
       }
+      if (document.getElementById('page-admin')?.classList.contains('active')) {
+        renderAdminRoster();
+      }
+      break;
+    case 'owner_desk':
+      S.ownerDesk = msg;
+      renderOwnerDesk();
+      break;
+    case 'admin_updated': {
+      const name = msg.username;
+      const isAdminNow = !!msg.admin;
+      if (S.ownerDesk?.players) {
+        const row = S.ownerDesk.players.find(p => p.username === name);
+        if (row) row.admin = isAdminNow;
+        if (S.ownerDesk.counts) {
+          S.ownerDesk.counts.admins = S.ownerDesk.players.filter(p => p.admin && !p.owner).length;
+        }
+        renderOwnerDesk();
+      }
+      toast(isAdminNow ? `${name} is now an admin.` : `${name} is no longer an admin.`);
+      wsSend({ type: 'get_owner_desk' });
+      break;
+    }
+    case 'role_changed':
+      if (S.user) {
+        S.user.admin = !!msg.admin;
+        S.user.owner = !!msg.owner;
+      }
+      syncPrivilegedNav();
+      toast(msg.message || (msg.admin ? 'Admin status granted.' : 'Admin status removed.'));
+      break;
+    case 'player_removed':
+      S.platformUsers = (S.platformUsers || []).filter(u => u.username !== msg.username);
+      if (S.ownerDesk?.players) {
+        S.ownerDesk.players = S.ownerDesk.players.filter(p => p.username !== msg.username);
+      }
+      renderAdminRoster();
+      if (S.user?.owner) wsSend({ type: 'get_owner_desk' });
+      toast(`Removed ${msg.username}.`);
+      break;
+    case 'account_removed':
+      toast(msg.message || 'Your account was removed.');
+      doLogout();
       break;
     case 'webrtc_offer': handleRTCOffer(msg); break;
     case 'webrtc_answer': handleRTCAnswer(msg); break;
@@ -5909,7 +6055,7 @@ function updateArenaLandingUI() {
 }
 
 function updateArenaAdminUI() {
-  const isAdmin = !!S.user.admin;
+  const isAdmin = !!S.user?.admin;
   const mode = S.arena?.mode || 'open';
   const pill = document.getElementById('arena-mode-pill');
   const adminPill = document.getElementById('admin-arena-mode-pill');
@@ -5917,14 +6063,207 @@ function updateArenaAdminUI() {
   [pill, adminPill].forEach(el => {
     if (!el) return;
     el.classList.remove('hidden', 'open', 'invite', 'maintenance');
-    if (!isAdmin && el === adminPill) { el.classList.add('hidden'); return; }
-    if (!isAdmin && el === pill) { el.classList.add('hidden'); return; }
+    if (!isAdmin) { el.classList.add('hidden'); return; }
     el.textContent = mode;
     el.classList.add(mode);
-    if (el === pill && isAdmin) el.classList.remove('hidden');
   });
-  if (adminPill && isAdmin) adminPill.classList.remove('hidden');
-  if (navBtn) navBtn.classList.toggle('hidden', !isAdmin);
+  if (navBtn) navBtn.classList.add('hidden');
+}
+
+let ownerDeskTimer = null;
+
+function syncPrivilegedNav() {
+  const isAdmin = !!S.user?.admin;
+  const isOwner = !!S.user?.owner;
+  document.getElementById('nav-link-admin')?.classList.toggle('hidden', !isAdmin);
+  document.getElementById('nav-link-owner')?.classList.toggle('hidden', !isOwner);
+  document.getElementById('nav-crown')?.classList.toggle('hidden', !isAdmin);
+  const active = document.querySelector('.page.active')?.id || '';
+  if (active === 'page-admin' && !isAdmin) showPage('lobby');
+  else if (active === 'page-owner' && !isOwner) showPage('lobby');
+  updateArenaAdminUI();
+}
+
+function formatDeskUptime(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d) return `${d}d ${h}h ${m}m`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function formatDeskBytes(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatDeskDate(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function deskBadges(u) {
+  const bits = [];
+  if (u.owner) bits.push('<span class="desk-badge owner">Owner</span>');
+  else if (u.admin) bits.push('<span class="desk-badge admin">Admin</span>');
+  else bits.push('<span class="desk-badge">Player</span>');
+  if (u.pending) bits.push('<span class="desk-badge pending">Pending</span>');
+  if (u.online) bits.push('<span class="desk-badge online">Online</span>');
+  return `<div class="desk-badges">${bits.join('')}</div>`;
+}
+
+function playerCanBeRemoved(u) {
+  if (!u || !S.user?.admin) return false;
+  if (u.username === S.user.username) return false;
+  if (u.owner) return false;
+  if (u.admin && !S.user.owner) return false;
+  return true;
+}
+
+function renderAdminRoster() {
+  const el = document.getElementById('admin-roster');
+  if (!el) return;
+  const q = (document.getElementById('admin-player-search')?.value || '').trim().toLowerCase();
+  const rows = (S.platformUsers || []).filter(u => !q || String(u.username || '').toLowerCase().includes(q));
+  if (!rows.length) {
+    el.innerHTML = '<div class="desk-empty">No players match.</div>';
+    return;
+  }
+  el.innerHTML = rows.map(u => {
+    const removable = playerCanBeRemoved(u);
+    const why = u.owner
+      ? 'Owner account'
+      : (u.admin && !S.user?.owner ? 'Owner must revoke admin first' : (u.username === S.user?.username ? 'Your account' : ''));
+    const action = removable
+      ? `<button class="btn btn-danger btn-sm" onclick="removePlayerAccount(${escapeHtml(JSON.stringify(u.username))})">Remove</button>`
+      : `<span class="desk-row-meta">${escapeHtml(why)}</span>`;
+    return `<div class="desk-row">
+      <div class="desk-row-main">
+        <div class="desk-row-name">${escapeHtml(u.username)}</div>
+        <div class="desk-row-meta">${u.gamesPlayed || 0} games · ${u.wins || 0} wins · joined ${formatDeskDate(u.createdAt)}</div>
+        ${deskBadges(u)}
+      </div>
+      ${action}
+    </div>`;
+  }).join('');
+}
+
+function removePlayerAccount(username) {
+  if (!S.user?.admin) return toast('Admin status required.');
+  if (!confirm(`Remove ${username} from the arena? Their account will be deleted and they will be signed out.`)) return;
+  wsSend({ type: 'remove_player', username });
+}
+
+function renderOwnerStats() {
+  const el = document.getElementById('owner-stats');
+  const snap = document.getElementById('owner-snapshot');
+  const desk = S.ownerDesk;
+  if (!el || !desk?.counts) return;
+  const c = desk.counts;
+  const cards = [
+    ['Registered', c.registered, `${c.approved} approved · ${c.pending} pending`],
+    ['Admins', c.admins, 'Besides you'],
+    ['Online', c.onlineTotal, `${c.onlineRegistered} players · ${c.onlineGuests} guests`],
+    ['Live matches', c.liveMatches, `${c.waitingMatches} waiting`],
+    ['Tournaments', c.tournaments, `${c.tournamentsRegistration} open · ${c.tournamentsActive} active`],
+    ['Games played', c.gamesPlayed, `${c.wins} wins · ${c.oneEighties} 180s`],
+    ['Arena', desk.arena?.mode || 'open', desk.softLaunch ? 'Soft launch on' : 'Soft launch off'],
+    ['Uptime', formatDeskUptime(desk.uptimeSec), `${desk.sessions || 0} sessions`],
+  ];
+  el.innerHTML = cards.map(([label, val, sub]) => `
+    <div class="desk-stat">
+      <span class="ds-label">${escapeHtml(label)}</span>
+      <div class="ds-val">${escapeHtml(val)}</div>
+      <div class="ds-sub">${escapeHtml(sub)}</div>
+    </div>`).join('');
+  if (snap) {
+    const recent = (desk.players || [])
+      .filter(p => p.createdAt)
+      .slice()
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .slice(0, 6);
+    const recentHtml = recent.length
+      ? recent.map(p => `<div><span>${escapeHtml(p.username)}</span><strong>${formatDeskDate(p.createdAt)}</strong></div>`).join('')
+      : '<div><span>No join dates yet</span></div>';
+    snap.innerHTML = `
+      <div><span>Environment</span><strong>${escapeHtml(desk.env || '—')}</strong></div>
+      <div><span>Data store</span><strong>${escapeHtml(formatDeskBytes(desk.dataBytes))}</strong></div>
+      <div><span>Completed events</span><strong>${c.tournamentsCompleted || 0}</strong></div>
+      <div><span>Updated</span><strong>${escapeHtml(desk.generatedAt ? new Date(desk.generatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—')}</strong></div>
+      <div style="margin-top:0.65rem;color:var(--gold);font-family:'Cinzel',serif;font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase">Recent sign-ups</div>
+      ${recentHtml}`;
+  }
+}
+
+function renderOwnerRoster() {
+  const el = document.getElementById('owner-roster');
+  if (!el) return;
+  const q = (document.getElementById('owner-player-search')?.value || '').trim().toLowerCase();
+  const rows = (S.ownerDesk?.players || []).filter(p => {
+    if (!q) return true;
+    return String(p.username || '').toLowerCase().includes(q)
+      || String(p.email || '').toLowerCase().includes(q);
+  });
+  if (!rows.length) {
+    el.innerHTML = '<div class="desk-empty">No registered players match.</div>';
+    return;
+  }
+  el.innerHTML = rows.map(p => {
+    let action = '';
+    if (p.owner) {
+      action = '<span class="desk-row-meta">Always admin</span>';
+    } else if (p.admin) {
+      action = `<button class="btn btn-sm" onclick="setPlayerAdmin(${escapeHtml(JSON.stringify(p.username))}, false)">Remove Admin</button>`;
+    } else {
+      action = `<button class="btn btn-gold btn-sm" onclick="setPlayerAdmin(${escapeHtml(JSON.stringify(p.username))}, true)">Make Admin</button>`;
+    }
+    const email = p.email ? ` · ${escapeHtml(p.email)}` : '';
+    return `<div class="desk-row">
+      <div class="desk-row-main">
+        <div class="desk-row-name">${escapeHtml(p.username)}</div>
+        <div class="desk-row-meta">${p.gamesPlayed || 0} games · ${p.wins || 0}–${p.losses || 0} · joined ${formatDeskDate(p.createdAt)}${email}</div>
+        ${deskBadges(p)}
+      </div>
+      ${action}
+    </div>`;
+  }).join('');
+}
+
+function renderOwnerDesk() {
+  renderOwnerStats();
+  renderOwnerRoster();
+}
+
+function refreshOwnerDesk() {
+  if (!S.user?.owner) return;
+  wsSend({ type: 'get_owner_desk' });
+}
+
+function startOwnerDeskPoll() {
+  if (ownerDeskTimer) clearInterval(ownerDeskTimer);
+  ownerDeskTimer = setInterval(() => {
+    if (document.getElementById('page-owner')?.classList.contains('active') && S.user?.owner) {
+      wsSend({ type: 'get_owner_desk' });
+    } else if (ownerDeskTimer) {
+      clearInterval(ownerDeskTimer);
+      ownerDeskTimer = null;
+    }
+  }, 15000);
+}
+
+function setPlayerAdmin(username, value) {
+  if (!S.user?.owner) return toast('Only the owner can assign admin status.');
+  const prompt = value
+    ? `Give ${username} admin status? The Admin tab will appear for them until you turn it off.`
+    : `Remove admin status from ${username}? Their Admin tab will disappear.`;
+  if (!confirm(prompt)) return;
+  wsSend({ type: 'set_admin', username, value });
 }
 
 function openArenaAccessPanel() {
@@ -6041,6 +6380,9 @@ function doLogout() {
   sessionToken = null;
   pendingRemember = false;
   stopLocalStream(); S.user = {}; S.roomId = null;
+  S.ownerDesk = null;
+  S.platformUsers = [];
+  if (ownerDeskTimer) { clearInterval(ownerDeskTimer); ownerDeskTimer = null; }
   S.friends = [];
   S.friendRequests = { incoming: [], outgoing: [] };
   S.onlineFriends = [];
@@ -6125,9 +6467,7 @@ function enterApp(skipDoorAnimation) {
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
   document.getElementById('nav-username').textContent = S.user.username || 'Player';
-  document.getElementById('nav-crown').classList.toggle('hidden', !S.user.admin);
-  document.getElementById('admin-bar').classList.toggle('hidden', !S.user.admin);
-  updateArenaAdminUI();
+  syncPrivilegedNav();
   updateGameAccessUI();
   updateCamNavButton();
   wsSend({ type: 'get_lobby' });
@@ -6184,6 +6524,14 @@ function updateConnStatusVisibility() {
 }
 
 function showPage(name) {
+  if (name === 'admin' && !S.user?.admin) {
+    toast('Admin status required.');
+    name = 'lobby';
+  }
+  if (name === 'owner' && !S.user?.owner) {
+    toast('Owner Desk is private.');
+    name = 'lobby';
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.page === name));
   document.getElementById(`page-${name}`)?.classList.add('active');
@@ -6191,6 +6539,17 @@ function showPage(name) {
   if (name === 'tournaments') wsSend({ type: 'get_tournaments' });
   if (name === 'spectate') renderSpectate();
   if (name === 'profile') openProfilePage(viewingProfileUsername || undefined);
+  if (name === 'admin') {
+    wsSend({ type: 'get_users' });
+    renderAdminRoster();
+  }
+  if (name === 'owner') {
+    refreshOwnerDesk();
+    startOwnerDeskPoll();
+  } else if (ownerDeskTimer) {
+    clearInterval(ownerDeskTimer);
+    ownerDeskTimer = null;
+  }
   updateConnStatusVisibility();
 }
 
@@ -13608,7 +13967,11 @@ function rematch() {
 // ═══════════════════════════════════════════════════════════
 //  TOURNAMENTS
 // ═══════════════════════════════════════════════════════════
-function openCreateTournament() { openModal('create-tournament-modal'); onTGameChange(); }
+function openCreateTournament() {
+  if (!S.user?.admin) { toast('Admin status required.'); return; }
+  openModal('create-tournament-modal');
+  onTGameChange();
+}
 
 const TOURNAMENT_TEST_BOTS = ['Bot (Level 2)', 'Bot (Level 5)', 'Bot (Level 8)', 'Bot (Level 10)'];
 
