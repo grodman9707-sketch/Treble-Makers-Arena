@@ -7580,6 +7580,18 @@ function shouldOfferCam(me, them) {
   return CAM_ROLE_ORDER.indexOf(me) < CAM_ROLE_ORDER.indexOf(them);
 }
 
+/** Host↔guest still uses the original peer connection. Every other pair is a partner feed. */
+function isLegacyLeadCam(fromRole) {
+  const me = myCamRole();
+  return (me === 'host' && fromRole === 'guest') || (me === 'guest' && fromRole === 'host');
+}
+
+function isPartnerCamSignal(msg) {
+  if (!msg) return false;
+  if (msg.directed || msg.targetWsId) return true;
+  return !!msg.fromRole && msg.fromRole !== 'spectator' && !isLegacyLeadCam(msg.fromRole);
+}
+
 function closeDoublesPeers() {
   if (S.doublesPeers instanceof Map) {
     S.doublesPeers.forEach(entry => { try { entry.pc?.close(); } catch { /* ignore */ } });
@@ -7807,7 +7819,7 @@ async function handleRTCOffer(msg) {
   }
   // Spectators never send offers to players; ignore stray offers.
   if (msg.fromRole === 'spectator') return;
-  if (msg.targetWsId) {
+  if (isPartnerCamSignal(msg)) {
     await handleDoublesOffer(msg);
     return;
   }
@@ -7826,6 +7838,7 @@ async function handleRTCAnswer(msg) {
     return;
   }
   const directed = msg.fromWsId && S.doublesPeers?.get(msg.fromWsId);
+  if (isPartnerCamSignal(msg) && !directed?.pc) return;
   if (directed?.pc) {
     try {
       await directed.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
@@ -7847,6 +7860,7 @@ async function handleRTCIce(msg) {
   if (!msg?.candidate) return;
   if (await handleSpectatorIce(msg)) return;
   const directed = msg.fromWsId && S.doublesPeers?.get(msg.fromWsId);
+  if (isPartnerCamSignal(msg) && !directed?.pc) return;
   if (directed?.pc) {
     if (directed.pc.remoteDescription) {
       try { await directed.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); }
@@ -10334,6 +10348,7 @@ function updateCricketCamera() {
   if (!v) return;
   const isMyTurn = isMyMatchTurn();
   const botTurn = S.isBot && (S.isSpectating ? S.turn !== (S.hostSeat ?? 0) : !isMyTurn);
+  if (S.gameState?.doubles && !S.isLocal && !S.isSpectating) syncDoublesCamPeers();
   let stream;
   if (S.gameState?.doubles && !S.isLocal) stream = doublesThrowerStream() || (S.isBot ? S.localStream : null);
   else if (S.isSpectating) stream = spectatorThrowerStream();
@@ -11666,8 +11681,9 @@ function renderX01History(gs) {
   const renderedLen = x01HistRendered[0] || 0;
   const sameLeg = histEl.querySelector(`.x01-leg-col[data-leg="${li}"]`);
   let needFull = !sameLeg
+    || !x01HistSig
     || leg.length < renderedLen
-    || (x01HistSig && leg.length === renderedLen && histSig !== x01HistSig);
+    || (leg.length === renderedLen && histSig !== x01HistSig);
   if (!needFull && x01HistSig && x01HistSig.split('|')[0] !== String(li)) needFull = true;
   // Rebuild when editability flips (approval lock / seat) even if scores are unchanged.
   if (!needFull && x01HistSig) {
@@ -11719,6 +11735,7 @@ function updateX01Camera() {
   if (!v) return;
   const isMyTurn = isMyMatchTurn();
   const botTurn = S.isBot && (S.isSpectating ? S.turn !== (S.hostSeat ?? 0) : !isMyTurn);
+  if (S.gameState?.doubles && !S.isLocal && !S.isSpectating) syncDoublesCamPeers();
   let stream;
   if (S.gameState?.doubles && !S.isLocal) stream = doublesThrowerStream() || (S.isBot ? S.localStream : null);
   else if (S.isSpectating) stream = spectatorThrowerStream();

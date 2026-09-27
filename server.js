@@ -2988,7 +2988,8 @@ async function handleMessage(wsId, msg) {
       if (!camRole && !isSpectator) return;
 
       const fromRole = camRole || 'spectator';
-      const payload = { ...msg, fromWsId: wsId, fromRole };
+      const directed = !!msg.targetWsId;
+      const payload = { ...msg, fromWsId: wsId, fromRole, directed };
       delete payload.targetWsId;
 
       let targetId = msg.targetWsId;
