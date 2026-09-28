@@ -45,36 +45,6 @@ const TASKS = [
     // threshold must stay very low to seal the crest interior.
     tLow: 6,
   },
-  {
-    src: 'wdl-images/_originals/WDL_American_Crest.png',
-    out: 'wdl-images/WDL_American_Crest.png',
-    tLow: 10,
-  },
-  {
-    src: 'wdl-images/_originals/WDL_Crest.jpeg',
-    out: 'wdl-images/WDL_Crest.png',
-    tLow: 10,
-  },
-  {
-    src: 'wdl-images/_originals/WDL_European_Crest.jpg',
-    out: 'wdl-images/WDL_European_Crest.png',
-    tLow: 10,
-  },
-  {
-    src: 'wdl-images/_originals/WDL_UK_Crest.jpg',
-    out: 'wdl-images/WDL_UK_Crest.png',
-    tLow: 10,
-  },
-  {
-    src: 'lazy-images/_originals/LazyLeagues_Crest.png',
-    out: 'lazy-images/LazyLeagues_Crest.png',
-    // The Lazy Leagues emblem sits on a flat dark-charcoal field (~rgb 29,33,35),
-    // NOT near-black, so luminance keying fails here. Key on colour distance to the
-    // sampled border colour instead; tol is small enough that the emblem's own
-    // near-black outlines stay farther than tol from the field and survive intact.
-    mode: 'color',
-    tol: 44,
-  },
 ];
 
 const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;

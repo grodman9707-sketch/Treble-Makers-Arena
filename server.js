@@ -1,5 +1,5 @@
 /**
- * TREBLE-MAKERS FUNHOUSE — WDL Platform Server
+ * TREBLE-MAKERS FUNHOUSE — Arena Server
  * Run: node server.js
  * Then open: http://localhost:3000
  */
@@ -21,6 +21,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const Groq = require('groq-sdk');
+const PERSONALITIES = require('./personalities');
 
 const app = express();
 const server = http.createServer(app);
@@ -121,6 +123,7 @@ function loadData() {
           username: ADMIN_USERNAME,
           passwordHash: bcrypt.hashSync(seeded.password, BCRYPT_ROUNDS),
           admin: true,
+          owner: true,
           approved: true,
           mustChangePassword: seeded.mustChange,
           stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0 },
@@ -214,6 +217,7 @@ function migrateDbSecurity() {
       } catch { /* ignore */ }
     }
   }
+  if (ensureOwnerAccount()) dirty = true;
   if (SOFT_LAUNCH) {
     const arena = ensureArenaSettings();
     if (arena.mode === 'open') {
@@ -450,8 +454,6 @@ function bindClientSession(client, user, token) {
   client.userId = user.id;
   client.username = user.username;
   client.sessionToken = token || null;
-  // Presence updates after username is bound (login / resume).
-  setImmediate(() => broadcastPresence());
 }
 
 function authOkPayload(user, token) {
@@ -459,13 +461,96 @@ function authOkPayload(user, token) {
   return {
     type: 'auth_ok',
     username: user.username,
-    admin: !!user.admin,
+    admin: userIsAdmin(user),
+    owner: userIsOwner(user),
     stats: payload.stats,
     profile: payload.profile,
     token: token || undefined,
     mustChangePassword: !!user.mustChangePassword,
     softLaunch: SOFT_LAUNCH,
   };
+}
+
+// ─── Presence & friends ───
+function isGuestUsername(name) {
+  return typeof name === 'string' && /^Guest_/i.test(name);
+}
+
+function isRegisteredUser(username) {
+  const user = db.users?.[username];
+  return !!(user && user.passwordHash && !isGuestUsername(username));
+}
+
+function ensureFriendsFields(user) {
+  if (!user) return null;
+  if (!Array.isArray(user.friends)) user.friends = [];
+  if (!user.friendRequests || typeof user.friendRequests !== 'object') {
+    user.friendRequests = { incoming: [], outgoing: [] };
+  }
+  if (!Array.isArray(user.friendRequests.incoming)) user.friendRequests.incoming = [];
+  if (!Array.isArray(user.friendRequests.outgoing)) user.friendRequests.outgoing = [];
+  return user;
+}
+
+function presencePayload() {
+  const seen = new Map();
+  for (const c of clients.values()) {
+    if (!c.username) continue;
+    if (seen.has(c.username)) continue;
+    seen.set(c.username, {
+      username: c.username,
+      isGuest: isGuestUsername(c.username) || !isRegisteredUser(c.username),
+    });
+  }
+  const online = [...seen.values()].sort((a, b) => a.username.localeCompare(b.username));
+  return { type: 'presence_update', onlineCount: online.length, online };
+}
+
+function broadcastPresence() {
+  broadcastAll(presencePayload());
+}
+
+function sendToUsername(username, msg) {
+  if (!username) return 0;
+  let n = 0;
+  for (const [id, c] of clients) {
+    if (c.username === username) {
+      send(id, msg);
+      n++;
+    }
+  }
+  return n;
+}
+
+function friendsPayloadFor(username) {
+  const user = ensureFriendsFields(db.users[username]);
+  if (!user) {
+    return {
+      type: 'friends',
+      friends: [],
+      friendRequests: { incoming: [], outgoing: [] },
+      onlineFriends: [],
+    };
+  }
+  const onlineSet = new Set();
+  for (const c of clients.values()) {
+    if (c.username) onlineSet.add(c.username);
+  }
+  const friends = user.friends.filter(n => isRegisteredUser(n));
+  return {
+    type: 'friends',
+    friends,
+    friendRequests: {
+      incoming: [...user.friendRequests.incoming],
+      outgoing: [...user.friendRequests.outgoing],
+    },
+    onlineFriends: friends.filter(n => onlineSet.has(n)),
+  };
+}
+
+function pushFriendsUpdate(username) {
+  if (!username) return;
+  sendToUsername(username, friendsPayloadFor(username));
 }
 
 function getIceServers() {
@@ -484,8 +569,60 @@ function getIceServers() {
 
 function isUserApproved(user) {
   if (!user) return false;
-  if (user.admin) return true;
+  if (userIsAdmin(user)) return true;
   return user.approved !== false; // legacy accounts without the field stay approved
+}
+
+function userIsOwner(user) {
+  return !!(user && user.owner);
+}
+
+function userIsAdmin(user) {
+  return !!(user && (user.admin || user.owner));
+}
+
+function clientIsOwner(client) {
+  return !!(client?.username && userIsOwner(db.users[client.username]));
+}
+
+function clientIsAdmin(client) {
+  return !!(client?.username && userIsAdmin(db.users[client.username]));
+}
+
+// The seeded arena account is the owner. Exactly one owner, and that account
+// always keeps admin status so the Owner Desk cannot lock itself out.
+function ensureOwnerAccount() {
+  const users = Object.values(db.users || {}).filter(u => u && typeof u === 'object' && u.username);
+  let dirty = false;
+  let owners = users.filter(u => u.owner === true);
+  if (owners.length > 1) {
+    const preferred = owners.find(u => u.username === ADMIN_USERNAME)
+      || owners.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
+    for (const u of owners) {
+      if (u !== preferred) {
+        u.owner = false;
+        dirty = true;
+      }
+    }
+    owners = [preferred];
+    log('warn', `Multiple owners found — kept "${preferred.username}" as the arena owner.`);
+  }
+  if (!owners.length) {
+    const seeded = users.find(u => u.username === ADMIN_USERNAME);
+    const oldestAdmin = users.filter(u => u.admin).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
+    const pick = seeded || oldestAdmin;
+    if (pick) {
+      pick.owner = true;
+      owners = [pick];
+      dirty = true;
+      log('info', `Marked "${pick.username}" as the arena owner.`);
+    }
+  }
+  for (const u of owners) {
+    if (!u.admin) { u.admin = true; dirty = true; }
+    if (u.approved === false) { u.approved = true; dirty = true; }
+  }
+  return dirty;
 }
 
 function arenaStatusPayload() {
@@ -522,20 +659,17 @@ const UNDER_CONSTRUCTION_GAMES = new Set([
 ]);
 
 function canPlayGame(game, username) {
-  if (!UNDER_CONSTRUCTION_GAMES.has(game)) return true;
-  const user = db.users[username];
-  return !!user?.admin;
+  return !UNDER_CONSTRUCTION_GAMES.has(game);
 }
 
 function underConstructionMessage() {
-  return 'This game is under construction. Admin access only.';
+  return 'This game is not available.';
 }
 
 function defaultUserStats() {
   return {
     wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0,
-    threeDartAvg: 0, highestCheckout: 0, oneEighties: 0,
-    x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0,
+    threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0,
   };
 }
 
@@ -550,7 +684,43 @@ function ensureUserStats(user) {
 }
 
 function defaultUserProfile() {
-  return { country: '', league: '', equipment: '', avatarUrl: '' };
+  return {
+    country: '',
+    league: '',
+    equipment: '',
+    avatarUrl: '',
+    walkoutId: '',          // '' = none (default); wo01–wo27
+    standsOptIn: '0',       // '1' = allow Stands gallery reactions
+    introNameId: '',        // e.g. male_name_jack — canned ring-intro first name
+    introNicknameId: '',    // e.g. male_nickname_the_hammer — canned ring-intro nickname
+  };
+}
+
+const WALKOUT_IDS = new Set(Array.from({ length: 27 }, (_, i) => `wo${String(i + 1).padStart(2, '0')}`));
+/** Fixed walk-out clip for bot opponents (Sports Intro). */
+const BOT_WALKOUT_ID = 'wo18';
+
+function sanitizeWalkoutId(raw) {
+  const id = String(raw == null ? '' : raw).trim();
+  if (!id) return '';
+  return WALKOUT_IDS.has(id) ? id : '';
+}
+
+function sanitizeStandsOptIn(raw) {
+  return raw === true || raw === 1 || raw === '1' ? '1' : '0';
+}
+
+/** Canned intro call ids from sfx/match_intro_calls (male_name_*, female_nickname_*, …). */
+function sanitizeIntroCallId(raw, kind) {
+  const id = String(raw == null ? '' : raw).trim().toLowerCase();
+  if (!id) return '';
+  if (kind === 'name') {
+    return /^(male|female)_name_[a-z0-9_]+$/.test(id) ? id : '';
+  }
+  if (kind === 'nickname') {
+    return /^(male|female)_nickname_[a-z0-9_]+$/.test(id) ? id : '';
+  }
+  return '';
 }
 
 function ensureUserProfile(user) {
@@ -572,6 +742,10 @@ function publicProfilePayload(user, { includeEmail = false } = {}) {
       league: profile.league,
       equipment: profile.equipment,
       avatarUrl: profile.avatarUrl,
+      walkoutId: sanitizeWalkoutId(profile.walkoutId),
+      standsOptIn: sanitizeStandsOptIn(profile.standsOptIn),
+      introNameId: sanitizeIntroCallId(profile.introNameId, 'name'),
+      introNicknameId: sanitizeIntroCallId(profile.introNicknameId, 'nickname'),
     },
     stats: {
       wins: stats.wins || 0,
@@ -603,14 +777,51 @@ function sanitizeAvatarDataUrl(raw) {
   return raw;
 }
 
-function botPreviewStats(skill) {
-  const table = {
-    easy: { threeDartAvg: 42, highestCheckout: 80, oneEighties: 0 },
-    medium: { threeDartAvg: 58, highestCheckout: 100, oneEighties: 1 },
-    hard: { threeDartAvg: 72, highestCheckout: 132, oneEighties: 3 },
-    adaptive: { threeDartAvg: 65, highestCheckout: 120, oneEighties: 2 },
+// Bot skill is Level 1–10 (legacy easy/medium/hard/adaptive still accepted).
+// L1 = 30 avg / 10% checkout → L10 = 95 avg / 45% checkout.
+const LEGACY_BOT_SKILL_LEVEL = { easy: 2, medium: 5, hard: 8, adaptive: 6 };
+const BOT_MOVE_DELAY_MS = 4500;   // after a human visit — let announcer finish
+const BOT_CHAIN_DELAY_MS = 3200;  // consecutive bot throws (keepTurn)
+const BOT_RETRY_DELAY_MS = 2000;
+
+function normalizeBotLevel(skill) {
+  if (typeof skill === 'number' && Number.isFinite(skill)) {
+    return Math.min(10, Math.max(1, Math.round(skill)));
+  }
+  const s = String(skill || '').trim().toLowerCase();
+  if (LEGACY_BOT_SKILL_LEVEL[s]) return LEGACY_BOT_SKILL_LEVEL[s];
+  const m = s.match(/^(?:level\s*)?(\d{1,2})$/);
+  if (m) return Math.min(10, Math.max(1, parseInt(m[1], 10)));
+  return 3;
+}
+
+function botLevelLerp(level, lo, hi) {
+  const t = (normalizeBotLevel(level) - 1) / 9;
+  return lo + t * (hi - lo);
+}
+
+function botLevelProfile(skill) {
+  const level = normalizeBotLevel(skill);
+  return {
+    level,
+    threeDartAvg: Math.round(botLevelLerp(level, 30, 95)),
+    checkoutPct: botLevelLerp(level, 0.10, 0.45),
+    difficulty: botLevelLerp(level, 0.30, 0.90),
+    hitChance: botLevelLerp(level, 0.35, 0.85),
+    tripleChance: botLevelLerp(level, 0.05, 0.30),
+    highestCheckout: Math.round(botLevelLerp(level, 40, 170)),
+    oneEighties: Math.round(botLevelLerp(level, 0, 5)),
+    label: `Level ${level}`,
   };
-  return table[skill] || table.easy;
+}
+
+function botPreviewStats(skill) {
+  const p = botLevelProfile(skill);
+  return {
+    threeDartAvg: p.threeDartAvg,
+    highestCheckout: p.highestCheckout,
+    oneEighties: p.oneEighties,
+  };
 }
 
 function playerPreviewProfile(username) {
@@ -622,6 +833,8 @@ function playerPreviewProfile(username) {
       isBot: true,
       avatar: '🤖',
       avatarUrl: '',
+      walkoutId: BOT_WALKOUT_ID,
+      standsOptIn: false,
       threeDartAvg: botStats.threeDartAvg,
       highestCheckout: botStats.highestCheckout,
       oneEighties: botStats.oneEighties,
@@ -639,6 +852,10 @@ function playerPreviewProfile(username) {
     country: profile.country || '',
     league: profile.league || '',
     equipment: profile.equipment || '',
+    walkoutId: sanitizeWalkoutId(profile.walkoutId),
+    standsOptIn: sanitizeStandsOptIn(profile.standsOptIn) === '1',
+    introNameId: sanitizeIntroCallId(profile.introNameId, 'name'),
+    introNicknameId: sanitizeIntroCallId(profile.introNicknameId, 'nickname'),
     threeDartAvg: s.threeDartAvg || 0,
     highestCheckout: s.highestCheckout || 0,
     oneEighties: s.oneEighties || 0,
@@ -646,120 +863,111 @@ function playerPreviewProfile(username) {
   };
 }
 
-function buildMatchPreview(game, hostName, guestName) {
-  return {
-    game,
-    players: [playerPreviewProfile(hostName), playerPreviewProfile(guestName)],
-  };
-}
-
-function ensureRoomPendingCareer(room) {
-  if (!room.pendingCareer || typeof room.pendingCareer !== 'object') {
-    room.pendingCareer = {};
-  }
-  return room.pendingCareer;
-}
-
-/** Track checkout highs during an X01 match; career stats commit only at match end. */
-function trackPendingX01Extras(room, username, extras = {}) {
-  if (!room || !isX01Game(room.config?.game)) return;
-  if (!username || isBotPlayer(username) || !db.users[username]) return;
-  const pending = ensureRoomPendingCareer(room);
-  if (!pending[username]) pending[username] = { highestCheckout: 0 };
-  const checkout = parseInt(extras.checkout, 10);
-  if (checkout > 0 && checkout > (pending[username].highestCheckout || 0)) {
-    pending[username].highestCheckout = checkout;
-  }
-}
-
-function countMatchOneEighties(gs, playerIdx) {
-  let n = 0;
-  for (const leg of (gs?.legLog || [])) {
-    if (!Array.isArray(leg)) continue;
-    for (const visit of leg) {
-      if (visit && visit.p === playerIdx && !visit.bust && visit.v === 180) n += 1;
+function buildMatchPreview(game, hostName, guestName, room = null) {
+  const players = [playerPreviewProfile(hostName), playerPreviewProfile(guestName)];
+  if (room?.config) {
+    if (room.config.hostWalkoutId != null && players[0]) {
+      players[0].walkoutId = sanitizeWalkoutId(room.config.hostWalkoutId);
+    }
+    if (room.config.guestWalkoutId != null && players[1]) {
+      players[1].walkoutId = sanitizeWalkoutId(room.config.guestWalkoutId);
+    }
+    if (typeof room.config.hostStandsOptIn === 'boolean' && players[0]) {
+      players[0].standsOptIn = room.config.hostStandsOptIn;
+    }
+    if (typeof room.config.guestStandsOptIn === 'boolean' && players[1]) {
+      players[1].standsOptIn = room.config.guestStandsOptIn;
+    }
+    if (room.config.hostIntroNameId != null && players[0]) {
+      players[0].introNameId = sanitizeIntroCallId(room.config.hostIntroNameId, 'name');
+    }
+    if (room.config.hostIntroNicknameId != null && players[0]) {
+      players[0].introNicknameId = sanitizeIntroCallId(room.config.hostIntroNicknameId, 'nickname');
+    }
+    if (room.config.guestIntroNameId != null && players[1]) {
+      players[1].introNameId = sanitizeIntroCallId(room.config.guestIntroNameId, 'name');
+    }
+    if (room.config.guestIntroNicknameId != null && players[1]) {
+      players[1].introNicknameId = sanitizeIntroCallId(room.config.guestIntroNicknameId, 'nickname');
     }
   }
-  return n;
-}
-
-/**
- * Fold a completed X01 match into career 3DA.
- * Match average is averaged with prior completed matches (not mid-match visits).
- */
-function commitMatchCareerStats(room) {
-  if (!room || !isX01Game(room.config?.game)) return;
-  if (room.careerStatsCommitted) return;
-  const gs = room.gameState;
-  if (!gs || !Array.isArray(gs.points) || !Array.isArray(gs.dartsThrown)) return;
-
-  const names = [room.config.hostName, room.config.guestName];
-  const pending = room.pendingCareer || {};
-  let dirty = false;
-
-  for (let i = 0; i < 2; i++) {
-    const username = names[i];
-    if (!username || isBotPlayer(username) || !db.users[username]) continue;
-    const points = Number(gs.points[i]) || 0;
-    const darts = Number(gs.dartsThrown[i]) || 0;
-    if (darts < 3) continue; // no completed visit
-
-    const matchAvg = (points / darts) * 3;
-    const s = ensureUserStats(db.users[username]);
-    const prevCount = s.x01MatchCount || 0;
-    const prevAvg = s.threeDartAvg || 0;
-    s.x01MatchCount = prevCount + 1;
-    s.threeDartAvg = Math.round(((prevAvg * prevCount) + matchAvg) / s.x01MatchCount * 100) / 100;
-    s.x01PointsTotal = (s.x01PointsTotal || 0) + points;
-    s.x01VisitCount = (s.x01VisitCount || 0) + Math.round(darts / 3);
-    s.oneEighties = (s.oneEighties || 0) + countMatchOneEighties(gs, i);
-
-    const checkout = pending[username]?.highestCheckout || 0;
-    if (checkout > (s.highestCheckout || 0)) s.highestCheckout = checkout;
-    dirty = true;
+  const preview = { game, players };
+  // So the client can announce "501" / "301" instead of the family name "X01".
+  const base = parseInt(room?.config?.x01Base, 10);
+  if (Number.isFinite(base) && base >= 101 && base <= 1001) preview.x01Base = base;
+  else if (room?.gameState && Number.isFinite(parseInt(room.gameState.base, 10))) {
+    preview.x01Base = parseInt(room.gameState.base, 10);
   }
+  return preview;
+}
 
+function roomStandsOptInMap(room) {
+  const host = room?.config?.hostName;
+  const guest = room?.config?.guestName;
+  const map = {};
+  if (host) map[host] = !!room.config.hostStandsOptIn;
+  if (guest) map[guest] = !!room.config.guestStandsOptIn;
+  return map;
+}
+
+// Per-visit career stats (3DA, 180s, high checkout) are accrued into the room as
+// the match progresses but NOT written to the player's profile yet. They are only
+// committed on a legitimate game over (commitCareerStats). If a player leaves/quits,
+// the room — and these pending stats — are discarded, so a quit match records nothing.
+function accrueCareerVisit(room, username, displayScore, extras = {}) {
+  if (!room || !username || isBotPlayer(username) || !db.users[username]) return;
+  if (!room.careerAccum) room.careerAccum = {};
+  const a = room.careerAccum[username] ||
+    (room.careerAccum[username] = { visitCount: 0, pointsTotal: 0, oneEighties: 0, highestCheckout: 0 });
+  const total = typeof displayScore === 'number'
+    ? displayScore
+    : (typeof displayScore === 'string' && displayScore !== 'BUST' ? parseInt(displayScore, 10) : NaN);
+  if (!Number.isNaN(total) && total >= 0 && total <= 180) {
+    a.visitCount += 1;
+    a.pointsTotal += total;
+    if (total === 180) a.oneEighties += 1;
+  }
+  const checkout = parseInt(extras.checkout, 10);
+  if (checkout > 0 && checkout > a.highestCheckout) a.highestCheckout = checkout;
+}
+
+// Commit the pending per-visit career stats accrued during a completed match.
+// X01 3-dart average is the mean of completed-match averages, not a running
+// visit total, and it is written only when the match actually finishes.
+function commitCareerStats(room) {
+  if (!room || !room.careerAccum || room.careerStatsCommitted) return;
+  const x01 = isX01Game(room.config?.game);
+  for (const [username, a] of Object.entries(room.careerAccum)) {
+    if (!db.users[username]) continue;
+    const s = ensureUserStats(db.users[username]);
+    if (a.visitCount > 0) {
+      s.x01VisitCount += a.visitCount;
+      s.x01PointsTotal += a.pointsTotal;
+      s.oneEighties += a.oneEighties;
+      if (x01) {
+        const matchAvg = a.pointsTotal / a.visitCount;
+        const prevCount = s.x01MatchCount || 0;
+        const prevAvg = s.threeDartAvg || 0;
+        // Averages saved before match counts existed stay as one prior sample.
+        const priorVisits = s.x01VisitCount - a.visitCount;
+        const seeded = prevCount === 0 && prevAvg > 0 && priorVisits > 0;
+        const baseCount = seeded ? 1 : prevCount;
+        s.x01MatchCount = baseCount + 1;
+        s.threeDartAvg = Math.round(((prevAvg * baseCount) + matchAvg) / s.x01MatchCount * 100) / 100;
+      }
+    }
+    if (a.highestCheckout > (s.highestCheckout || 0)) s.highestCheckout = a.highestCheckout;
+  }
   room.careerStatsCommitted = true;
-  room.pendingCareer = {};
-  if (dirty) saveData(db);
-}
-
-function getOnlineUserCount() {
-  const names = new Set();
-  clients.forEach((client) => {
-    if (client?.username) names.add(client.username);
-  });
-  return names.size;
-}
-
-/** Owner/admin only: how many distinct logged-in people are on the site. */
-function broadcastPresence() {
-  const onlineCount = getOnlineUserCount();
-  clients.forEach((client, wsId) => {
-    if (!client?.username) return;
-    if (!db.users[client.username]?.admin) return;
-    send(wsId, { type: 'presence', onlineCount });
-  });
-}
-
-function lobbyRoomPayload(room) {
-  const hostStats = ensureUserStats(db.users[room.config.hostName]);
-  return {
-    id: room.id,
-    game: room.config.game,
-    hostName: room.config.hostName,
-    hostThreeDartAvg: hostStats.threeDartAvg || 0,
-    status: room.status,
-    createdAt: room.createdAt,
-    spectators: spectators.get(room.id)?.size || 0,
-  };
+  room.careerAccum = {};
+  saveData(db);
 }
 
 function kickNonAdminSessions(reason) {
   clients.forEach((client, wsId) => {
     if (!client.username) return;
     const user = db.users[client.username];
-    if (user?.admin) return;
+    if (userIsAdmin(user)) return;
     send(wsId, { type: 'force_logout', message: reason || 'Arena access has changed.' });
   });
 }
@@ -917,6 +1125,8 @@ function createRoom(hostWsId, config) {
     id: uuidv4(),
     hostWsId,
     guestWsId: null,
+    hostPartnerWsId: null,
+    guestPartnerWsId: null,
     config,         // { game, hostName, guestName, tournamentId?, bot?, botSkill? }
     status: config.bot ? 'active' : 'waiting', // waiting | active | finished
     gameState: {},
@@ -924,12 +1134,102 @@ function createRoom(hostWsId, config) {
     turn: 0,
     round: 0,
     history: [],
+    // Seat 0 = Player One = whoever starts (throws first). Host/guest are roles, not seats.
+    hostSeat: 0,
+    guestSeat: 1,
+    starterLocked: false,
     createdAt: Date.now(),
     lastActivity: Date.now()
   };
   rooms.set(room.id, room);
   spectators.set(room.id, new Set());
   return room;
+}
+
+/** Match seat of the room creator (host role). Defaults to 0 until starter is locked. */
+function roomHostSeat(room) {
+  return room.hostSeat === 1 ? 1 : 0;
+}
+
+/** Match seat of the joiner / bot (guest role). */
+function roomGuestSeat(room) {
+  return room.guestSeat === 0 ? 0 : 1;
+}
+
+/** Resolve a websocket client's player seat (0 = Player One / starter). */
+function seatOfWs(room, wsId) {
+  if (wsId === room.hostWsId || wsId === room.hostPartnerWsId) return roomHostSeat(room);
+  if (wsId === room.guestWsId || wsId === room.guestPartnerWsId) return roomGuestSeat(room);
+  return -1;
+}
+
+/** 0 = team lead device, 1 = online partner device. */
+function shooterIndexOfWs(room, wsId) {
+  if (wsId === room.hostWsId || wsId === room.guestWsId) return 0;
+  if (wsId === room.hostPartnerWsId || wsId === room.guestPartnerWsId) return 1;
+  return -1;
+}
+
+function partnerRoleOf(room, wsId) {
+  if (!room || !wsId) return null;
+  if (wsId === room.hostPartnerWsId) return 'host';
+  if (wsId === room.guestPartnerWsId) return 'guest';
+  return null;
+}
+
+function camRoleOf(room, wsId) {
+  if (!room || !wsId) return null;
+  if (wsId === room.hostWsId) return 'host';
+  if (wsId === room.hostPartnerWsId) return 'hostPartner';
+  if (wsId === room.guestWsId) return 'guest';
+  if (wsId === room.guestPartnerWsId) return 'guestPartner';
+  return null;
+}
+
+function camRosterMessage(room) {
+  const players = [];
+  if (room.hostWsId) players.push({ wsId: room.hostWsId, role: 'host' });
+  if (room.hostPartnerWsId) players.push({ wsId: room.hostPartnerWsId, role: 'hostPartner' });
+  if (room.guestWsId) players.push({ wsId: room.guestWsId, role: 'guest' });
+  if (room.guestPartnerWsId) players.push({ wsId: room.guestPartnerWsId, role: 'guestPartner' });
+  return { type: 'cam_roster', roomId: room.id, players };
+}
+
+function broadcastCamRoster(room) {
+  if (!room || room.config?.local) return;
+  broadcastToPlayers(room, camRosterMessage(room));
+}
+
+function eachPlayerWs(room, fn) {
+  if (!room || typeof fn !== 'function') return;
+  const seen = new Set();
+  for (const id of [room.hostWsId, room.hostPartnerWsId, room.guestWsId, room.guestPartnerWsId]) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    fn(id);
+  }
+}
+
+function nameAtSeat(room, seat) {
+  return seat === roomHostSeat(room) ? room.config.hostName : room.config.guestName;
+}
+
+function botSeat(room) {
+  return room.config.bot ? roomGuestSeat(room) : -1;
+}
+
+/** Lock seats so the chosen starter becomes Player One (seat 0). roleStarter: 0=host, 1=guest. */
+function lockMatchSeats(room, roleStarter) {
+  const starterIsGuest = roleStarter === 1;
+  room.hostSeat = starterIsGuest ? 1 : 0;
+  room.guestSeat = starterIsGuest ? 0 : 1;
+  room.turn = 0;
+  room.starterLocked = true;
+  if (room.gameState && typeof room.gameState === 'object') {
+    if (room.gameState.legStarter !== undefined) room.gameState.legStarter = 0;
+    if ('nextTurn' in room.gameState) room.gameState.nextTurn = 0;
+    if (room.gameState.starter !== undefined) room.gameState.starter = 0;
+  }
 }
 
 function generateHalveItTargets() {
@@ -955,6 +1255,201 @@ function isX01Game(game) { return X01_GAMES.includes(game); }
 
 const CRICKET_GAMES = ['Cricket', 'Tactics'];
 function isCricketGame(game) { return CRICKET_GAMES.includes(game); }
+
+function supportsDoubles(game) {
+  return isX01Game(game) || isCricketGame(game);
+}
+
+function sanitizeShooterName(name, fallback) {
+  const s = typeof name === 'string' ? name.trim().slice(0, 24) : '';
+  return s || fallback;
+}
+
+/** Doubles is two teams of two shooters. Each team keeps one shared score. */
+function applyDoublesToConfig(config, msg) {
+  const requested = msg && (msg.format === 'doubles' || msg.doubles === true);
+  if (!supportsDoubles(config.game) || !requested) {
+    config.doubles = false;
+    return config;
+  }
+  config.doubles = true;
+  const local = !!config.local;
+  const wantOnline = !local && msg.partnerMode === 'online' && msg.partnerUser;
+  if (wantOnline) {
+    config.hostPartnerMode = 'online';
+    config.hostPartnerUser = sanitizeShooterName(msg.partnerUser, '');
+    config.hostPartner = config.hostPartnerUser || 'Partner';
+  } else {
+    config.hostPartnerMode = 'home';
+    config.hostPartnerUser = null;
+    config.hostPartner = sanitizeShooterName(msg.partnerName || msg.hostPartner, 'Partner');
+  }
+  if (config.bot) {
+    config.guestPartner = 'Bot 2';
+    config.guestPartnerMode = 'home';
+    config.guestPartnerUser = null;
+  } else if (local) {
+    config.guestPartnerMode = 'home';
+    config.guestPartnerUser = null;
+    config.guestPartner = sanitizeShooterName(msg.guestPartner, 'Partner 2');
+  } else {
+    config.guestPartner = null;
+    config.guestPartnerMode = 'home';
+    config.guestPartnerUser = null;
+  }
+  return config;
+}
+
+function stampDoublesState(gs, cfg) {
+  if (!gs || !cfg?.doubles) return gs;
+  gs.doubles = true;
+  gs.partners = {
+    host: cfg.hostPartner || 'Partner',
+    guest: cfg.guestPartner || 'Partner',
+  };
+  gs.partnerMode = {
+    host: cfg.hostPartnerMode === 'online' ? 'online' : 'home',
+    guest: cfg.guestPartnerMode === 'online' ? 'online' : 'home',
+  };
+  if (!gs.partnerHere) {
+    gs.partnerHere = {
+      host: gs.partnerMode.host !== 'online',
+      guest: gs.partnerMode.guest !== 'online',
+    };
+  }
+  if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
+  return gs;
+}
+
+/** Presence lives on the room, so a client gameState replace cannot clear it. */
+function syncDoublesPresence(room) {
+  const gs = room?.gameState;
+  const cfg = room?.config;
+  if (!gs || !cfg?.doubles) return gs;
+  gs.doubles = true;
+  gs.partnerMode = {
+    host: cfg.hostPartnerMode === 'online' ? 'online' : 'home',
+    guest: cfg.guestPartnerMode === 'online' ? 'online' : 'home',
+  };
+  gs.partnerHere = {
+    host: gs.partnerMode.host !== 'online' || !!room.hostPartnerWsId,
+    guest: gs.partnerMode.guest !== 'online' || !!room.guestPartnerWsId,
+  };
+  gs.partners = {
+    host: cfg.hostPartner || 'Partner',
+    guest: cfg.guestPartner || 'Partner',
+  };
+  if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
+  return gs;
+}
+
+function usersAreFriends(a, b) {
+  const me = ensureFriendsFields(db.users[a]);
+  return !!(me && me.friends.includes(b));
+}
+
+function usernameOnline(username) {
+  if (!username) return false;
+  for (const c of clients.values()) {
+    if (c.username === username) return true;
+  }
+  return false;
+}
+
+function partnerPresencePayload(room, extra = {}) {
+  const gs = room?.gameState || {};
+  return {
+    type: 'partner_connected',
+    roomId: room?.id,
+    partners: gs.partners || null,
+    partnerMode: gs.partnerMode || null,
+    partnerHere: gs.partnerHere || null,
+    gameState: gs,
+    ...extra,
+  };
+}
+
+function clearDoublesPartnerSocket(room, role, info = {}) {
+  if (!room || (role !== 'host' && role !== 'guest')) return;
+  if (role === 'host') room.hostPartnerWsId = null;
+  else room.guestPartnerWsId = null;
+  syncDoublesPresence(room);
+  broadcastToRoom(room, partnerPresencePayload(room, {
+    teamRole: role,
+    here: false,
+    left: true,
+    username: info.username || room.config?.[`${role}Partner`] || 'Partner',
+  }));
+  broadcastCamRoster(room);
+}
+
+/**
+ * Invite a friend onto a doubles team. teamRole is the lead's side ('host'|'guest').
+ * Returns { ok, error?, username? }.
+ */
+function inviteDoublesPartner(room, fromUsername, targetName, teamRole) {
+  const role = teamRole === 'guest' ? 'guest' : 'host';
+  const name = sanitizeShooterName(targetName, '');
+  if (!room?.config?.doubles) return { ok: false, error: 'Doubles matches can invite a partner.' };
+  if (!name) return { ok: false, error: 'Pick an online friend as your partner.' };
+  if (name === fromUsername) return { ok: false, error: 'You cannot be your own partner.' };
+  if (name === room.config.hostName || name === room.config.guestName) {
+    return { ok: false, error: 'That player is already in this match.' };
+  }
+  const otherUser = role === 'host' ? room.config.guestPartnerUser : room.config.hostPartnerUser;
+  if (otherUser && otherUser === name) {
+    return { ok: false, error: 'That player is already the other team’s partner.' };
+  }
+  if (!usersAreFriends(fromUsername, name)) {
+    return { ok: false, error: 'You can only invite friends.' };
+  }
+  if (!usernameOnline(name)) {
+    return { ok: false, error: `${name} is not online.` };
+  }
+  room.config[`${role}PartnerMode`] = 'online';
+  room.config[`${role}PartnerUser`] = name;
+  room.config[`${role}Partner`] = name;
+  if (room.gameState && room.gameState.doubles) syncDoublesPresence(room);
+  const delivered = sendToUsername(name, {
+    type: 'match_invite',
+    roomId: room.id,
+    game: room.config.game,
+    from: fromUsername,
+    hostName: room.config.hostName,
+    doubles: true,
+    role: 'partner',
+    teamRole: role,
+  });
+  if (!delivered) return { ok: false, error: `${name} is not online.` };
+  return { ok: true, username: name };
+}
+
+function revertPartnerHome(room, role, fallbackName) {
+  if (!room?.config || (role !== 'host' && role !== 'guest')) return;
+  room.config[`${role}PartnerMode`] = 'home';
+  room.config[`${role}PartnerUser`] = null;
+  room.config[`${role}Partner`] = sanitizeShooterName(fallbackName, 'Partner');
+}
+
+/** Lead device may enter both visits at home. Online, only the current shooter may submit. */
+function doublesShooterAllowed(room, wsId, seat) {
+  if (!room?.config?.doubles || room.config.local) return true;
+  const role = seat === roomHostSeat(room) ? 'host' : 'guest';
+  const online = room.config[`${role}PartnerMode`] === 'online';
+  if (!online) {
+    const leadId = role === 'host' ? room.hostWsId : room.guestWsId;
+    return wsId === leadId;
+  }
+  const next = room.gameState?.nextShooter?.[seat] === 1 ? 1 : 0;
+  return shooterIndexOfWs(room, wsId) === next;
+}
+
+/** After a team visit, the partner throws that team's next visit. */
+function advanceDoublesShooter(gs, p) {
+  if (!gs?.doubles || (p !== 0 && p !== 1)) return;
+  if (!Array.isArray(gs.nextShooter) || gs.nextShooter.length < 2) gs.nextShooter = [0, 0];
+  gs.nextShooter[p] = gs.nextShooter[p] === 1 ? 0 : 1;
+}
 
 const GOLF_CHECKOUT_COURSE_A = [
   { target: 144, par: 9 }, { target: 233, par: 12 }, { target: 52, par: 4 },
@@ -1070,6 +1565,7 @@ function gcSyncAdvanceBoth(gs) {
 }
 
 // Applies a whole turn total (X01-style entry). Mutates gs.
+// Golf Checkouts uses double-out: finish exactly on 0 via a legal checkout; leaving 1 busts.
 function gcApplyTurnTotal(gs, playerIdx, total, visitDarts = GC_DARTS_PER_TURN) {
   const capOn = gs.capEnabled !== false;
   const progress = gs.playerProgress[playerIdx];
@@ -1089,17 +1585,29 @@ function gcApplyTurnTotal(gs, playerIdx, total, visitDarts = GC_DARTS_PER_TURN) 
   progress.currentHoleDarts = (progress.currentHoleDarts || 0) + dartsThisVisit;
   progress.totalDarts = (progress.totalDarts || 0) + dartsThisVisit;
   let note;
+  let checkoutBust = false;
   if (total === 0) {
     note = `Miss · ${progress.remaining} left`;
   } else if (total > progress.remaining) {
     note = `Bust · ${progress.remaining} left`;
   } else {
-    progress.remaining -= total;
-    note = `${total} · ${progress.remaining} left`;
+    const after = progress.remaining - total;
+    if (after === 1) {
+      checkoutBust = true;
+      note = `BUST (must finish on a double) · ${progress.remaining} left`;
+    } else if (after === 0 && !x01IsValidCheckout(remainingBefore, 'double-out')) {
+      checkoutBust = true;
+      note = `BUST (no double-out) · ${progress.remaining} left`;
+    } else {
+      progress.remaining = after;
+      note = after === 0
+        ? `Checkout ${remainingBefore}`
+        : `${total} · ${progress.remaining} left`;
+    }
   }
   let holeComplete = false;
   let capped = false;
-  if (progress.remaining === 0) {
+  if (progress.remaining === 0 && !checkoutBust) {
     holeComplete = true;
   } else if (capOn && holeDef.cap && progress.currentHoleDarts >= holeDef.cap) {
     holeComplete = true;
@@ -1170,7 +1678,7 @@ function initX01State(cfg, game) {
   const bestOf = parseInt(cfg.legs, 10) || X01_DEFAULT_BEST_OF;
   const reopen = cfg.startRule && cfg.startRule !== 'straight-in';
   const visitTimerSeconds = parseInt(cfg.visitTimerSeconds, 10) || 0;
-  return {
+  const state = {
     kind: 'x01',
     base,
     startRule: cfg.startRule || 'straight-in',
@@ -1190,6 +1698,7 @@ function initX01State(cfg, game) {
     turnEnded: false,
     nextTurn: null
   };
+  return stampDoublesState(state, cfg);
 }
 
 function x01IsValidCheckout(rem, finishRule) {
@@ -1217,6 +1726,7 @@ function x01ApplyTurn(gs, p, total) {
       x01PushLog(gs, p, 0, false);
       gs.turnEnded = true;
       gs.nextTurn = 1 - p;
+      advanceDoublesShooter(gs, p);
       return { bust: false, legWon: false, matchOver: false };
     }
     gs.opened[p] = true;
@@ -1261,11 +1771,13 @@ function x01ApplyTurn(gs, p, total) {
 
   gs.turnEnded = true;
   gs.nextTurn = matchOver ? null : (legWon ? gs.legStarter : 1 - p);
+  advanceDoublesShooter(gs, p);
   return { bust, legWon, matchOver };
 }
 
 function applyX01EditToRoom(room, msg, { fromEdit = false } = {}) {
   if (msg.gameState) room.gameState = structuredClone(msg.gameState);
+  syncDoublesPresence(room);
   if (Array.isArray(msg.scores)) room.scores = msg.scores.slice(0, 2);
   if (typeof msg.turn === 'number') room.turn = msg.turn;
   room.pendingX01Edit = null;
@@ -1285,7 +1797,7 @@ function applyX01EditToRoom(room, msg, { fromEdit = false } = {}) {
   if (msg.gameOver) {
     room.status = 'finished';
     room.lastActivity = Date.now();
-    commitMatchCareerStats(room);
+    commitCareerStats(room);
     const winnerName = msg.winner;
     const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
     if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
@@ -1295,7 +1807,7 @@ function applyX01EditToRoom(room, msg, { fromEdit = false } = {}) {
       recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, winnerName);
     }
     broadcastLobbyUpdate();
-  } else if (room.config.bot && room.turn === 1) {
+  } else if (room.config.bot && room.turn === botSeat(room)) {
     scheduleBotMove(room.id);
   }
 }
@@ -1309,7 +1821,7 @@ function halveItGameOver(gs) {
 
 function halveItWinner(room) {
   if (room.scores[0] === room.scores[1]) return null;
-  return room.scores[0] > room.scores[1] ? room.config.hostName : room.config.guestName;
+  return room.scores[0] > room.scores[1] ? nameAtSeat(room, 0) : nameAtSeat(room, 1);
 }
 
 // ─────────────────────────────────────────────
@@ -1334,7 +1846,7 @@ function initCricketState(cfg, game) {
   const targets = cricketTargetsFor(game);
   const blank = () => { const m = {}; targets.forEach(t => { m[t] = 0; }); return m; };
   const bestOf = Math.max(1, parseInt(cfg.legs, 10) || 1);
-  return {
+  const state = {
     kind: 'cricket',
     game,
     variation: cricketNormalizeVariation(cfg.variation),
@@ -1355,6 +1867,7 @@ function initCricketState(cfg, game) {
     currentLeg: 1,
     legStarter: 0
   };
+  return stampDoublesState(state, cfg);
 }
 
 function ensureCricketState(gs, cfg, game) {
@@ -1370,7 +1883,7 @@ function ensureCricketState(gs, cfg, game) {
     gs.legsToWin = Math.ceil(gs.bestOf / 2);
   }
   if (gs.legsToWin == null) gs.legsToWin = Math.ceil((gs.bestOf || 1) / 2);
-  return gs;
+  return stampDoublesState(gs, cfg);
 }
 
 // Parse a single dart token into cricket terms.
@@ -1508,6 +2021,7 @@ function applyCricketVisit(gs, p, darts) {
     gs.nextTurn = opp;
   }
   gs.turnEnded = true;
+  advanceDoublesShooter(gs, p);
   return {
     winnerIdx: matchOver ? w : null,
     legWinnerIdx,
@@ -1525,14 +2039,14 @@ function cricketGameOver(room) {
   if (!gs || gs.kind !== 'cricket') return { gameOver: false, winner: null };
   const need = gs.legsToWin || 1;
   if (Array.isArray(gs.legs)) {
-    if (gs.legs[0] >= need) return { gameOver: true, winner: room.config.hostName };
-    if (gs.legs[1] >= need) return { gameOver: true, winner: room.config.guestName };
+    if (gs.legs[0] >= need) return { gameOver: true, winner: nameAtSeat(room, 0) };
+    if (gs.legs[1] >= need) return { gameOver: true, winner: nameAtSeat(room, 1) };
   }
   // Single-leg / legacy: board closed with a declared winner and no legs progress.
   if ((gs.bestOf || 1) <= 1) {
     const w = cricketWinnerIdx(gs);
     if (w === null || w === undefined) return { gameOver: false, winner: null };
-    return { gameOver: true, winner: w === 0 ? room.config.hostName : room.config.guestName };
+    return { gameOver: true, winner: nameAtSeat(room, w === 0 ? 0 : 1) };
   }
   return { gameOver: false, winner: null };
 }
@@ -1623,6 +2137,135 @@ function validateRegistration(username, password, email) {
 const RESET_REQUEST_OK =
   'If an account matches, a password reset link has been sent. Check your email.';
 
+function onlinePresenceSets() {
+  const registered = new Set();
+  const guests = new Set();
+  for (const c of clients.values()) {
+    if (!c.username) continue;
+    if (isGuestUsername(c.username) || !isRegisteredUser(c.username)) guests.add(c.username);
+    else registered.add(c.username);
+  }
+  return { registered, guests };
+}
+
+function rosterEntry(user, onlineNames) {
+  const stats = user.stats || {};
+  return {
+    username: user.username,
+    admin: !!user.admin,
+    owner: !!user.owner,
+    approved: user.approved !== false,
+    pending: user.approved === false,
+    createdAt: user.createdAt || null,
+    gamesPlayed: stats.gamesPlayed || 0,
+    wins: stats.wins || 0,
+    losses: stats.losses || 0,
+    tournamentsWon: stats.tournamentsWon || 0,
+    online: !!(onlineNames && onlineNames.has(user.username)),
+  };
+}
+
+function ownerDeskPayload() {
+  const arena = ensureArenaSettings();
+  const users = Object.values(db.users || {}).filter(u => u && u.username);
+  const { registered, guests } = onlinePresenceSets();
+  let live = 0;
+  let waiting = 0;
+  for (const room of rooms.values()) {
+    if (room.status === 'active') live++;
+    else if (room.status === 'waiting') waiting++;
+  }
+  const tournaments = Array.isArray(db.tournaments) ? db.tournaments : [];
+  const countStatus = (status) => tournaments.filter(t => t.status === status).length;
+  let gamesPlayed = 0;
+  let wins = 0;
+  let oneEighties = 0;
+  for (const u of users) {
+    gamesPlayed += u.stats?.gamesPlayed || 0;
+    wins += u.stats?.wins || 0;
+    oneEighties += u.stats?.oneEighties || 0;
+  }
+  let dataBytes = 0;
+  try { dataBytes = fs.statSync(DATA_FILE).size; } catch { /* missing store */ }
+  const players = users.map(u => ({
+    ...rosterEntry(u, registered),
+    email: typeof u.email === 'string' ? u.email : '',
+  })).sort((a, b) => a.username.localeCompare(b.username));
+  return {
+    type: 'owner_desk',
+    generatedAt: Date.now(),
+    uptimeSec: Math.round(process.uptime()),
+    softLaunch: SOFT_LAUNCH,
+    env: NODE_ENV,
+    dataBytes,
+    sessions: Object.keys(db.sessions || {}).length,
+    arena: { mode: arena.mode, message: arena.message || '' },
+    counts: {
+      registered: users.length,
+      approved: users.filter(u => u.approved !== false).length,
+      pending: users.filter(u => u.approved === false).length,
+      admins: users.filter(u => u.admin && !u.owner).length,
+      onlineRegistered: registered.size,
+      onlineGuests: guests.size,
+      onlineTotal: registered.size + guests.size,
+      liveMatches: live,
+      waitingMatches: waiting,
+      tournaments: tournaments.length,
+      tournamentsRegistration: countStatus('registration'),
+      tournamentsActive: countStatus('active'),
+      tournamentsCompleted: countStatus('completed'),
+      gamesPlayed,
+      wins,
+      oneEighties,
+    },
+    players,
+  };
+}
+
+function pushRoleChanged(user) {
+  if (!user?.username) return;
+  const admin = userIsAdmin(user);
+  sendToUsername(user.username, {
+    type: 'role_changed',
+    admin,
+    owner: userIsOwner(user),
+    message: admin
+      ? 'You have admin status. The Admin tab is now in your navigation.'
+      : 'Your admin status was removed. The Admin tab is no longer available.',
+  });
+}
+
+function scrubRemovedPlayer(username) {
+  for (const user of Object.values(db.users || {})) {
+    if (!user || user.username === username) continue;
+    const f = ensureFriendsFields(user);
+    f.friends = f.friends.filter(n => n !== username);
+    f.friendRequests.incoming = f.friendRequests.incoming.filter(n => n !== username);
+    f.friendRequests.outgoing = f.friendRequests.outgoing.filter(n => n !== username);
+  }
+  for (const t of db.tournaments || []) {
+    if (!t || t.status !== 'registration' || !Array.isArray(t.players)) continue;
+    t.players = t.players.filter(p => p !== username);
+  }
+}
+
+function disconnectRemovedPlayer(username, message) {
+  const sockets = [];
+  for (const c of clients.values()) {
+    if (c.username === username && c.ws) sockets.push(c.ws);
+  }
+  const payload = JSON.stringify({
+    type: 'account_removed',
+    message: message || 'Your account was removed from the arena.',
+  });
+  for (const ws of sockets) {
+    try { if (ws.readyState === 1) ws.send(payload); } catch { /* ignore */ }
+    setTimeout(() => {
+      try { ws.close(4000, 'account removed'); } catch { /* already closing */ }
+    }, 200);
+  }
+}
+
 wss.on('connection', (ws, req) => {
   const ip = clientIp(req);
   const n = (wsConnByIp.get(ip) || 0) + 1;
@@ -1701,6 +2344,7 @@ async function handleMessage(wsId, msg) {
         type: 'auth_ok',
         username: client.username,
         admin: false,
+        owner: false,
         softLaunch: SOFT_LAUNCH,
         ...publicProfilePayload(null),
       });
@@ -1737,6 +2381,8 @@ async function handleMessage(wsId, msg) {
         mustChangePassword: false,
         stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0 },
         profile: defaultUserProfile(),
+        friends: [],
+        friendRequests: { incoming: [], outgoing: [] },
         createdAt: Date.now()
       };
       saveData(db);
@@ -1752,9 +2398,11 @@ async function handleMessage(wsId, msg) {
       }
       {
         const user = db.users[username];
+        ensureFriendsFields(user);
         const token = await createSession(username, user.id);
         bindClientSession(client, user, token);
         send(wsId, authOkPayload(user, token));
+        broadcastPresence();
       }
       break;
     }
@@ -1772,7 +2420,7 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'auth_error', message: 'Invalid username or password.' });
       }
       const arena = ensureArenaSettings();
-      if (arena.mode === 'maintenance' && !user.admin) {
+      if (arena.mode === 'maintenance' && !userIsAdmin(user)) {
         return send(wsId, {
           type: 'auth_error',
           message: arena.message || 'The arena is offline for maintenance.',
@@ -1782,9 +2430,11 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'auth_error', message: 'Your account is awaiting admin approval.' });
       }
       {
+        ensureFriendsFields(user);
         const token = await createSession(username, user.id);
         bindClientSession(client, user, token);
         send(wsId, authOkPayload(user, token));
+        broadcastPresence();
       }
       break;
     }
@@ -1800,7 +2450,7 @@ async function handleMessage(wsId, msg) {
       }
       const { user } = found;
       const arena = ensureArenaSettings();
-      if (arena.mode === 'maintenance' && !user.admin) {
+      if (arena.mode === 'maintenance' && !userIsAdmin(user)) {
         return send(wsId, {
           type: 'auth_error',
           message: arena.message || 'The arena is offline for maintenance.',
@@ -1815,8 +2465,10 @@ async function handleMessage(wsId, msg) {
       // Ensure the refreshed expiry is durable before we confirm the resume —
       // otherwise a restart right after reconnect can revert to a stale TTL.
       await flushData();
+      ensureFriendsFields(user);
       bindClientSession(client, user, token);
       send(wsId, authOkPayload(user, token));
+      broadcastPresence();
       break;
     }
 
@@ -1967,14 +2619,68 @@ async function handleMessage(wsId, msg) {
 
     // ── ADMIN ─────────────────────────────────
     case 'set_admin': {
-      if (!client.username || !db.users[client.username]?.admin) {
-        return send(wsId, { type: 'error', message: 'Unauthorized.' });
+      if (!clientIsOwner(client)) {
+        return send(wsId, { type: 'error', message: 'Only the arena owner can assign admin status.' });
       }
-      const target = db.users[msg.username];
-      if (!target) return send(wsId, { type: 'error', message: 'User not found.' });
-      target.admin = !!msg.value;
-      saveData(db);
-      send(wsId, { type: 'admin_updated', username: msg.username, admin: target.admin });
+      const username = String(msg.username || '').trim();
+      const target = db.users[username];
+      if (!target || !isRegisteredUser(username)) {
+        return send(wsId, { type: 'error', message: 'Registered player not found.' });
+      }
+      if (userIsOwner(target)) {
+        return send(wsId, { type: 'error', message: 'The owner always keeps admin status.' });
+      }
+      const next = !!msg.value;
+      if (!!target.admin === next) {
+        send(wsId, { type: 'admin_updated', username, admin: !!target.admin });
+        break;
+      }
+      target.admin = next;
+      if (next) target.approved = true;
+      saveDirty = true;
+      await flushData();
+      pushRoleChanged(target);
+      send(wsId, { type: 'admin_updated', username, admin: !!target.admin });
+      log('info', `${client.username} ${next ? 'granted' : 'revoked'} admin for "${username}".`);
+      break;
+    }
+
+    case 'get_owner_desk': {
+      if (!clientIsOwner(client)) {
+        return send(wsId, { type: 'error', message: 'Owner Desk is private.' });
+      }
+      send(wsId, ownerDeskPayload());
+      break;
+    }
+
+    case 'remove_player': {
+      if (!clientIsAdmin(client)) {
+        return send(wsId, { type: 'error', message: 'Admin only.' });
+      }
+      const username = String(msg.username || '').trim();
+      const target = db.users[username];
+      if (!target || !isRegisteredUser(username)) {
+        return send(wsId, { type: 'error', message: 'Registered player not found.' });
+      }
+      if (username === client.username) {
+        return send(wsId, { type: 'error', message: 'You cannot remove your own account.' });
+      }
+      if (userIsOwner(target)) {
+        return send(wsId, { type: 'error', message: 'The owner account cannot be removed.' });
+      }
+      if (target.admin && !clientIsOwner(client)) {
+        return send(wsId, { type: 'error', message: 'Only the owner can remove an admin. Revoke admin status first.' });
+      }
+      clearPasswordResetsForUser(username);
+      revokeUserSessions(username);
+      scrubRemovedPlayer(username);
+      disconnectRemovedPlayer(username, 'Your account was removed by an arena admin.');
+      delete db.users[username];
+      saveDirty = true;
+      await flushData();
+      broadcastArenaStatus();
+      send(wsId, { type: 'player_removed', username });
+      log('info', `${client.username} removed player "${username}".`);
       break;
     }
 
@@ -1984,7 +2690,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'set_arena_mode': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const mode = msg.mode;
@@ -2004,7 +2710,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'approve_user': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const username = String(msg.username || '').trim();
@@ -2024,7 +2730,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'reject_user': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const username = String(msg.username || '').trim();
@@ -2048,13 +2754,11 @@ async function handleMessage(wsId, msg) {
 
     // ── LOBBY ─────────────────────────────────
     case 'get_lobby': {
-      const isAdmin = !!db.users[client.username]?.admin;
       const openRooms = [...rooms.values()]
         .filter(r => (r.status === 'waiting' || r.status === 'active') && !r.config.bot)
-        .filter(r => isAdmin || !UNDER_CONSTRUCTION_GAMES.has(r.config.game))
+        .filter(r => !UNDER_CONSTRUCTION_GAMES.has(r.config.game))
         .map(lobbyRoomPayload);
       send(wsId, { type: 'lobby', rooms: openRooms });
-      if (isAdmin) send(wsId, { type: 'presence', onlineCount: getOnlineUserCount() });
       break;
     }
 
@@ -2063,6 +2767,15 @@ async function handleMessage(wsId, msg) {
       if (!canPlayGame(msg.game, client.username)) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
+      const hostProfile = ensureUserProfile(db.users[client.username]);
+      const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
+      const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
+      const hostIntroName = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : hostProfile.introNameId, 'name'
+      );
+      const hostIntroNick = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : hostProfile.introNicknameId, 'nickname'
+      );
       const room = createRoom(wsId, {
         game: msg.game, hostName: client.username,
         guestName: null, tournamentId: msg.tournamentId || null,
@@ -2071,10 +2784,32 @@ async function handleMessage(wsId, msg) {
         legs: msg.legs || null,
         visitTimerSeconds: parseInt(msg.visitTimerSeconds, 10) || 0,
         golfCourse: msg.golfCourse || 'B',
-        capEnabled: msg.capEnabled !== false
+        capEnabled: msg.capEnabled !== false,
+        hostWalkoutId: hostWalkout,
+        guestWalkoutId: '',
+        hostStandsOptIn: hostStands,
+        guestStandsOptIn: false,
+        hostIntroNameId: hostIntroName,
+        hostIntroNicknameId: hostIntroNick,
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
       });
+      applyDoublesToConfig(room.config, msg);
       client.roomId = room.id;
-      send(wsId, { type: 'room_created', roomId: room.id, game: msg.game });
+      let partnerInvited = null;
+      let partnerInviteError = null;
+      if (room.config.doubles && room.config.hostPartnerMode === 'online') {
+        const invited = inviteDoublesPartner(room, client.username, room.config.hostPartnerUser, 'host');
+        if (invited.ok) partnerInvited = invited.username;
+        else {
+          partnerInviteError = invited.error;
+          revertPartnerHome(room, 'host', msg.partnerName);
+        }
+      }
+      send(wsId, {
+        type: 'room_created', roomId: room.id, game: msg.game,
+        partnerInvited, partnerInviteError,
+      });
       broadcastLobbyUpdate();
       break;
     }
@@ -2101,40 +2836,157 @@ async function handleMessage(wsId, msg) {
       if (!canPlayGame(msg.game, client.username)) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
+      const botLevel = normalizeBotLevel(msg.botSkill);
+      const hostProfile = ensureUserProfile(db.users[client.username]);
+      const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
+      const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
+      const hostIntroName = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : hostProfile.introNameId, 'name'
+      );
+      const hostIntroNick = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : hostProfile.introNicknameId, 'nickname'
+      );
       const room = createRoom(wsId, {
         game: msg.game, hostName: client.username,
-        guestName: `Bot (${msg.botSkill || 'easy'})`, bot: true, botSkill: msg.botSkill || 'easy',
+        guestName: `Bot (Level ${botLevel})`, bot: true, botSkill: botLevel,
         variation: msg.variation || null, startRule: msg.startRule || null,
         finishRule: msg.finishRule || null, x01Base: msg.x01Base || null,
         legs: msg.legs || null,
         visitTimerSeconds: parseInt(msg.visitTimerSeconds, 10) || 0,
         golfCourse: msg.golfCourse || 'B',
-        capEnabled: msg.capEnabled !== false
+        capEnabled: msg.capEnabled !== false,
+        hostWalkoutId: hostWalkout,
+        guestWalkoutId: BOT_WALKOUT_ID,
+        hostStandsOptIn: hostStands,
+        guestStandsOptIn: false,
+        hostIntroNameId: hostIntroName,
+        hostIntroNicknameId: hostIntroNick,
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
       });
+      applyDoublesToConfig(room.config, msg);
       room.gameState = initGameState(msg.game, room.config);
+      syncDoublesPresence(room);
       client.roomId = room.id;
+      let partnerInvited = null;
+      let partnerInviteError = null;
+      if (room.config.doubles && room.config.hostPartnerMode === 'online') {
+        const invited = inviteDoublesPartner(room, client.username, room.config.hostPartnerUser, 'host');
+        if (invited.ok) partnerInvited = invited.username;
+        else {
+          partnerInviteError = invited.error;
+          revertPartnerHome(room, 'host', msg.partnerName);
+        }
+        syncDoublesPresence(room);
+      }
       send(wsId, {
         type: 'bot_room_started', roomId: room.id, game: msg.game,
         opponentName: room.config.guestName, gameState: room.gameState,
-        matchPreview: buildMatchPreview(msg.game, room.config.hostName, room.config.guestName),
+        botSkill: botLevel,
+        partnerInvited, partnerInviteError,
+        matchPreview: buildMatchPreview(msg.game, room.config.hostName, room.config.guestName, room),
       });
+      break;
+    }
+
+    case 'create_local_room': {
+      if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
+      if (!canPlayGame(msg.game, client.username)) {
+        return send(wsId, { type: 'error', message: underConstructionMessage() });
+      }
+      const hostProfile = ensureUserProfile(db.users[client.username]);
+      const hostWalkout = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : hostProfile.walkoutId);
+      const hostStands = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : hostProfile.standsOptIn) === '1';
+      const hostIntroName = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : hostProfile.introNameId, 'name'
+      );
+      const hostIntroNick = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : hostProfile.introNicknameId, 'nickname'
+      );
+      const guestName = (typeof msg.guestName === 'string' && msg.guestName.trim())
+        ? msg.guestName.trim().slice(0, 24)
+        : 'Player 2';
+      const room = createRoom(wsId, {
+        game: msg.game, hostName: client.username,
+        guestName, local: true, bot: false,
+        variation: msg.variation || null, startRule: msg.startRule || null,
+        finishRule: msg.finishRule || null, x01Base: msg.x01Base || null,
+        legs: msg.legs || null,
+        visitTimerSeconds: parseInt(msg.visitTimerSeconds, 10) || 0,
+        golfCourse: msg.golfCourse || 'B',
+        capEnabled: msg.capEnabled !== false,
+        hostWalkoutId: hostWalkout,
+        guestWalkoutId: '',
+        hostStandsOptIn: hostStands,
+        guestStandsOptIn: false,
+        hostIntroNameId: hostIntroName,
+        hostIntroNicknameId: hostIntroNick,
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
+      });
+      applyDoublesToConfig(room.config, { ...msg, local: true });
+      // Local rooms start active immediately (pass-and-play on one device).
+      room.status = 'active';
+      room.gameState = initGameState(msg.game, room.config);
+      syncDoublesPresence(room);
+      client.roomId = room.id;
+      send(wsId, {
+        type: 'local_room_started', roomId: room.id, game: msg.game,
+        opponentName: guestName, gameState: room.gameState,
+        guestName,
+      });
+      broadcastLobbyUpdate();
       break;
     }
 
     case 'join_room': {
       if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
       const room = rooms.get(msg.roomId);
-      if (!room || room.status !== 'waiting') return send(wsId, { type: 'error', message: 'Room not available.' });
+      if (!room || room.status !== 'waiting' || room.config.local || room.config.bot) {
+        return send(wsId, { type: 'error', message: 'Room not available.' });
+      }
       if (!canPlayGame(room.config.game, client.username)) {
         return send(wsId, { type: 'error', message: underConstructionMessage() });
       }
+      const guestProfile = ensureUserProfile(db.users[client.username]);
       room.guestWsId = wsId;
       room.status = 'active';
       room.config.guestName = client.username;
+      room.config.guestWalkoutId = sanitizeWalkoutId(msg.walkoutId != null ? msg.walkoutId : guestProfile.walkoutId);
+      room.config.guestStandsOptIn = sanitizeStandsOptIn(msg.standsOptIn != null ? msg.standsOptIn : guestProfile.standsOptIn) === '1';
+      room.config.guestIntroNameId = sanitizeIntroCallId(
+        msg.introNameId != null ? msg.introNameId : guestProfile.introNameId, 'name'
+      );
+      room.config.guestIntroNicknameId = sanitizeIntroCallId(
+        msg.introNicknameId != null ? msg.introNicknameId : guestProfile.introNicknameId, 'nickname'
+      );
+      let partnerInvited = null;
+      let partnerInviteError = null;
+      if (room.config.doubles) {
+        if (msg.partnerMode === 'online' && msg.partnerUser) {
+          room.config.guestPartnerMode = 'online';
+          room.config.guestPartnerUser = sanitizeShooterName(msg.partnerUser, '');
+          room.config.guestPartner = room.config.guestPartnerUser || 'Partner';
+        } else {
+          room.config.guestPartnerMode = 'home';
+          room.config.guestPartnerUser = null;
+          room.config.guestPartner = sanitizeShooterName(msg.partnerName, 'Partner');
+        }
+      }
       room.gameState = initGameState(room.config.game, room.config);
+      syncDoublesPresence(room);
+      if (room.config.doubles && room.config.guestPartnerMode === 'online') {
+        const invited = inviteDoublesPartner(room, client.username, room.config.guestPartnerUser, 'guest');
+        if (invited.ok) partnerInvited = invited.username;
+        else {
+          partnerInviteError = invited.error;
+          revertPartnerHome(room, 'guest', msg.partnerName);
+        }
+        syncDoublesPresence(room);
+      }
       room.lastActivity = Date.now();
       client.roomId = room.id;
-      const matchPreview = buildMatchPreview(room.config.game, room.config.hostName, room.config.guestName);
+      const matchPreview = buildMatchPreview(room.config.game, room.config.hostName, room.config.guestName, room);
       // Notify both players
       send(room.hostWsId, {
         type: 'opponent_joined', opponentName: client.username, roomId: room.id,
@@ -2143,8 +2995,21 @@ async function handleMessage(wsId, msg) {
       send(wsId, {
         type: 'joined_room', roomId: room.id, game: room.config.game,
         opponentName: room.config.hostName, youAre: 'guest', gameState: room.gameState,
-        matchPreview,
+        matchPreview, partnerInvited, partnerInviteError,
       });
+      if (room.hostPartnerWsId) {
+        send(room.hostPartnerWsId, {
+          type: 'team_match_ready',
+          roomId: room.id,
+          game: room.config.game,
+          opponentName: client.username,
+          gameState: room.gameState,
+          matchPreview,
+          hostSeat: roomHostSeat(room),
+          guestSeat: roomGuestSeat(room),
+        });
+      }
+      broadcastCamRoster(room);
       broadcastLobbyUpdate();
       break;
     }
@@ -2159,7 +3024,52 @@ async function handleMessage(wsId, msg) {
       client.roomId = msg.roomId;
       send(wsId, { type: 'spectating', roomId: room.id, game: room.config.game,
         hostName: room.config.hostName, guestName: room.config.guestName,
-        scores: room.scores, history: room.history, turn: room.turn });
+        hostSeat: roomHostSeat(room), guestSeat: roomGuestSeat(room),
+        scores: room.scores, history: room.history, turn: room.turn,
+        gameState: room.gameState || null,
+        bot: !!room.config.bot,
+        botSkill: room.config.botSkill,
+        local: !!room.config.local,
+        standsOptIn: roomStandsOptInMap(room) });
+      // Ask both players to fan out their camera to this spectator.
+      const joined = {
+        type: 'spectator_joined',
+        roomId: room.id,
+        spectatorWsId: wsId,
+        username: client.username || 'Fan',
+      };
+      if (room.hostWsId) send(room.hostWsId, joined);
+      if (room.guestWsId) send(room.guestWsId, joined);
+      broadcastLobbyUpdate();
+      break;
+    }
+
+    case 'gallery_reaction': {
+      const room = rooms.get(msg.roomId || client.roomId);
+      if (!room || room.status !== 'active') return;
+      const spectSet = spectators.get(room.id);
+      if (!spectSet?.has(wsId)) {
+        return send(wsId, { type: 'error', message: 'Only spectators in the stands can send gallery reactions.' });
+      }
+      const allowed = ['cheer', 'fire', 'clap', 'wow', 'bull'];
+      const reaction = allowed.includes(msg.reaction) ? msg.reaction : null;
+      if (!reaction) return;
+      const optIn = roomStandsOptInMap(room);
+      if (!optIn[room.config.hostName] && !optIn[room.config.guestName]) {
+        return send(wsId, { type: 'error', message: 'Players have not opted into Stands interactions.' });
+      }
+      const payload = {
+        type: 'gallery_reaction',
+        roomId: room.id,
+        reaction,
+        from: client.username || 'Fan',
+        ts: Date.now(),
+        standsOptIn: optIn,
+      };
+      // Deliver to players (clients filter by their own opt-in) + other spectators.
+      if (room.hostWsId) send(room.hostWsId, payload);
+      if (room.guestWsId) send(room.guestWsId, payload);
+      spectSet.forEach(sid => send(sid, payload));
       break;
     }
 
@@ -2213,23 +3123,21 @@ async function handleMessage(wsId, msg) {
         return send(wsId, { type: 'error', message: 'Only the match creator can set who starts.' });
       }
       if (room.starterLocked) return;
-      const starterIdx = msg.starterIdx === 1 ? 1 : 0;
-      room.turn = starterIdx;
-      room.starterLocked = true;
+      // msg.starterIdx is still role-based (0 = host/creator, 1 = guest/opponent).
+      const roleStarter = msg.starterIdx === 1 ? 1 : 0;
       room.starterMethod = msg.method || room.starterMethod || null;
-      if (room.gameState && typeof room.gameState === 'object') {
-        if (room.gameState.legStarter !== undefined) room.gameState.legStarter = starterIdx;
-        if ('nextTurn' in room.gameState) room.gameState.nextTurn = starterIdx;
-      }
+      lockMatchSeats(room, roleStarter);
       if (room.config.game === 'Golf Checkouts') {
         room.turn = gcSkipWaitingTurn(room.turn, room.gameState);
       }
-      const names = [room.config.hostName, room.config.guestName];
-      const starterName = msg.starterName || names[starterIdx] || 'Player';
+      const starterName = msg.starterName || nameAtSeat(room, 0) || 'Player';
       broadcastToRoom(room, {
         type: 'match_starter_set',
         roomId: room.id,
-        starterIdx: room.turn,
+        starterIdx: 0,
+        roleStarterIdx: roleStarter,
+        hostSeat: roomHostSeat(room),
+        guestSeat: roomGuestSeat(room),
         starterName,
         method: room.starterMethod,
         turn: room.turn,
@@ -2244,7 +3152,7 @@ async function handleMessage(wsId, msg) {
       if (room.hostWsId !== wsId) return;
       if (room.uiReady) return;
       room.uiReady = true;
-      if (room.config.bot && room.turn === 1) {
+      if (room.config.bot && room.turn === botSeat(room)) {
         scheduleBotMove(room.id);
       }
       break;
@@ -2282,6 +3190,18 @@ async function handleMessage(wsId, msg) {
       profile.country = scrub(msg.country, 40);
       profile.league = scrub(msg.league, 60);
       profile.equipment = scrub(msg.equipment, 120);
+      if (Object.prototype.hasOwnProperty.call(msg, 'walkoutId')) {
+        profile.walkoutId = sanitizeWalkoutId(msg.walkoutId);
+      }
+      if (Object.prototype.hasOwnProperty.call(msg, 'standsOptIn')) {
+        profile.standsOptIn = sanitizeStandsOptIn(msg.standsOptIn);
+      }
+      if (Object.prototype.hasOwnProperty.call(msg, 'introNameId')) {
+        profile.introNameId = sanitizeIntroCallId(msg.introNameId, 'name');
+      }
+      if (Object.prototype.hasOwnProperty.call(msg, 'introNicknameId')) {
+        profile.introNicknameId = sanitizeIntroCallId(msg.introNicknameId, 'nickname');
+      }
       if (Object.prototype.hasOwnProperty.call(msg, 'avatarUrl')) {
         const avatar = sanitizeAvatarDataUrl(msg.avatarUrl);
         if (avatar === null) {
@@ -2313,8 +3233,26 @@ async function handleMessage(wsId, msg) {
     case 'webrtc_ice': {
       const room = rooms.get(client.roomId);
       if (!room) return;
-      const targetId = room.hostWsId === wsId ? room.guestWsId : room.hostWsId;
-      if (targetId) send(targetId, msg);
+      const spectSet = spectators.get(room.id);
+      const camRole = camRoleOf(room, wsId);
+      const isSpectator = !!spectSet?.has(wsId);
+      if (!camRole && !isSpectator) return;
+
+      const fromRole = camRole || 'spectator';
+      const directed = !!msg.targetWsId;
+      const payload = { ...msg, fromWsId: wsId, fromRole, directed };
+      delete payload.targetWsId;
+
+      let targetId = msg.targetWsId;
+      if (!targetId) {
+        // Legacy player↔player path (no explicit target).
+        if (camRole === 'host') targetId = room.guestWsId;
+        else if (camRole === 'guest') targetId = room.hostWsId;
+      }
+      if (!targetId || targetId === wsId) return;
+
+      const targetOk = !!camRoleOf(room, targetId) || !!spectSet?.has(targetId);
+      if (targetOk) send(targetId, payload);
       break;
     }
 
@@ -2322,19 +3260,46 @@ async function handleMessage(wsId, msg) {
     case 'submit_score': {
       const room = rooms.get(client.roomId);
       if (!room || room.status !== 'active') return;
-      const isHost = room.hostWsId === wsId;
-      const playerIdx = isHost ? 0 : 1;
-      if (room.turn !== playerIdx) return send(wsId, { type: 'error', message: 'Not your turn.' });
+      const isLocalRoom = !!room.config.local;
+      let playerIdx;
+      if (isLocalRoom) {
+        // Pass-and-play: only the host device submits, for whichever seat is up.
+        if (room.hostWsId !== wsId) return;
+        playerIdx = typeof msg.playerIdx === 'number' ? msg.playerIdx : room.turn;
+        if (playerIdx !== 0 && playerIdx !== 1) playerIdx = room.turn;
+      } else {
+        playerIdx = seatOfWs(room, wsId);
+        if (playerIdx < 0) return;
+        if (room.turn !== playerIdx) return send(wsId, { type: 'error', message: 'Not your turn.' });
+        if (!doublesShooterAllowed(room, wsId, playerIdx)) {
+          const next = room.gameState?.nextShooter?.[playerIdx] === 1 ? 1 : 0;
+          const role = playerIdx === roomHostSeat(room) ? 'host' : 'guest';
+          const partnerHere = role === 'host' ? !!room.hostPartnerWsId : !!room.guestPartnerWsId;
+          const waiting = next === 1 && shooterIndexOfWs(room, wsId) === 0 && !partnerHere;
+          return send(wsId, {
+            type: 'error',
+            message: waiting ? 'Waiting for your partner.' : 'Not your visit.',
+          });
+        }
+      }
 
       room.gameState = msg.gameState
         ? structuredClone(msg.gameState)
         : room.gameState;
+      syncDoublesPresence(room);
       room.lastActivity = Date.now();
       room.scores[playerIdx] += msg.delta || 0;
       if (msg.absoluteScore !== undefined) room.scores[playerIdx] = msg.absoluteScore;
-      room.history.unshift({ player: client.username, score: msg.displayScore, note: msg.note, ts: Date.now() });
+      const scorerName = isLocalRoom
+        ? (typeof msg.scorerName === 'string' && msg.scorerName.trim()
+          ? msg.scorerName.trim().slice(0, 40)
+          : (nameAtSeat(room, playerIdx) || client.username))
+        : client.username;
+      room.history.unshift({ player: scorerName, score: msg.displayScore, note: msg.note, ts: Date.now() });
       if (room.history.length > 50) room.history.pop();
-      trackPendingX01Extras(room, client.username, { checkout: msg.x01Checkout });
+      if (!isLocalRoom) {
+        accrueCareerVisit(room, client.username, msg.displayScore, { checkout: msg.x01Checkout });
+      }
       room.round = Math.floor(room.history.length / 2);
       const turnEnded = shouldSwitchTurn(room.config.game, room.gameState);
       if (turnEnded) {
@@ -2355,7 +3320,9 @@ async function handleMessage(wsId, msg) {
         round: room.round, history: room.history.slice(0, 1),
         gameState: room.gameState
       };
-      broadcastToRoom(room, update);
+      // Local host already applied optimistically — only push to the stands.
+      if (isLocalRoom) broadcastToSpectators(room, update);
+      else broadcastToRoom(room, update);
 
       let gameOver = msg.gameOver;
       let winnerName = msg.winner;
@@ -2381,17 +3348,20 @@ async function handleMessage(wsId, msg) {
       if (gameOver) {
         room.status = 'finished';
         room.lastActivity = Date.now();
-        commitMatchCareerStats(room);
-        const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
-        if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
+        if (!isLocalRoom) {
+          commitCareerStats(room);
+          const loserName = winnerName === room.config.hostName ? room.config.guestName : room.config.hostName;
+          if (winnerName) updateStats(winnerName, loserName, msg.highScore || 0);
+        }
         const endMsg = buildGameOverMessage(room, winnerName, msg.matchStats);
-        broadcastToRoom(room, endMsg);
-        if (room.config.tournamentId && room.config.bracketMatchId && winnerName) {
+        if (isLocalRoom) broadcastToSpectators(room, endMsg);
+        else broadcastToRoom(room, endMsg);
+        if (!isLocalRoom && room.config.tournamentId && room.config.bracketMatchId && winnerName) {
           recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, winnerName);
         }
         broadcastLobbyUpdate();
-      } else if (room.config.bot && room.turn === 1) {
-        // Schedule on final turn===1 (not only turnEnded) so cricket/tactics
+      } else if (room.config.bot && room.turn === botSeat(room)) {
+        // Schedule on bot seat turn (not only turnEnded) so cricket/tactics
         // bots keep moving even if nextTurn wiring and turnEnded disagree.
         scheduleBotMove(room.id);
       }
@@ -2405,6 +3375,7 @@ async function handleMessage(wsId, msg) {
       const isHost = room.hostWsId === wsId;
       if (!isHost && room.guestWsId !== wsId) return;
       if (msg.gameState) room.gameState = structuredClone(msg.gameState);
+      syncDoublesPresence(room);
       if (Array.isArray(msg.scores)) room.scores = msg.scores.slice(0, 2);
       if (typeof msg.turn === 'number') room.turn = msg.turn;
       room.lastActivity = Date.now();
@@ -2412,7 +3383,8 @@ async function handleMessage(wsId, msg) {
         type: 'score_update', scores: room.scores, turn: room.turn,
         round: room.round, history: [], gameState: room.gameState
       };
-      broadcastToRoom(room, update);
+      if (room.config.local) broadcastToSpectators(room, update);
+      else broadcastToRoom(room, update);
       break;
     }
 
@@ -2508,13 +3480,15 @@ async function handleMessage(wsId, msg) {
       if (Array.isArray(msg.scores)) room.scores = msg.scores.slice(0, 2);
       if (typeof msg.turn === 'number') room.turn = msg.turn;
       room.gameState = ensureCricketState(room.gameState, room.config, room.config.game);
+      syncDoublesPresence(room);
       room.lastActivity = Date.now();
       const update = {
         type: 'score_update', scores: room.scores, turn: room.turn,
         round: room.round, history: [], gameState: room.gameState
       };
-      broadcastToRoom(room, update);
-      if (room.config.bot && room.turn === 1) scheduleBotMove(room.id);
+      if (room.config.local) broadcastToSpectators(room, update);
+      else broadcastToRoom(room, update);
+      if (room.config.bot && room.turn === botSeat(room)) scheduleBotMove(room.id);
       break;
     }
 
@@ -2524,10 +3498,27 @@ async function handleMessage(wsId, msg) {
       if (!room || room.status !== 'active') return;
       const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 200) : '';
       if (!text) return;
+      const spectSet = spectators.get(room.id);
+      const isSpectator = !!spectSet?.has(wsId);
+      const isPlayer = room.hostWsId === wsId || room.guestWsId === wsId;
+      if (!isPlayer && !isSpectator) return;
+
+      // 'players' = host/guest only; 'all' = players + stands.
+      let channel = msg.channel === 'all' ? 'all' : 'players';
+      if (isSpectator) channel = 'all'; // fans can only write to All
+      if (channel === 'players' && !isPlayer) return;
+
       const chatMsg = {
-        type: 'chat', roomId: room.id, from: client.username, text, ts: Date.now()
+        type: 'chat',
+        roomId: room.id,
+        from: client.username,
+        text,
+        channel,
+        fromSpectator: isSpectator,
+        ts: Date.now(),
       };
-      broadcastToRoom(room, chatMsg);
+      if (channel === 'players') broadcastToPlayers(room, chatMsg);
+      else broadcastToRoom(room, chatMsg);
       break;
     }
 
@@ -2549,17 +3540,35 @@ async function handleMessage(wsId, msg) {
             }
           }
         }
+        const wasSpectator = spectators.get(room.id)?.has(wsId);
         spectators.get(room.id)?.delete(wsId);
-        if (room.hostWsId === wsId && room.status === 'waiting') {
+        const isParticipant = room.hostWsId === wsId || room.guestWsId === wsId;
+        const partnerRole = partnerRoleOf(room, wsId);
+        if (partnerRole && !isParticipant) {
+          clearDoublesPartnerSocket(room, partnerRole, { username: client.username });
+        } else if (wasSpectator && !isParticipant) {
+          notifySpectatorLeft(room, wsId);
+          broadcastLobbyUpdate();
+        } else if (room.hostWsId === wsId && room.status === 'waiting') {
+          if (room.hostPartnerWsId) {
+            const partner = clients.get(room.hostPartnerWsId);
+            if (partner) partner.roomId = null;
+            send(room.hostPartnerWsId, { type: 'room_cancelled', roomId: room.id, reason: 'host_left' });
+          }
           rooms.delete(room.id);
           spectators.delete(room.id);
           broadcastLobbyUpdate();
+        } else if (room.status === 'active' && isParticipant) {
+          // A participant quit mid-match: end the match for everyone. Leaving/quitting
+          // never records stats — updateStats is only called on a real game_over.
+          room.status = 'finished';
+          room.lastActivity = Date.now();
+          if (room.hostWsId === wsId) room.hostWsId = null;
+          else room.guestWsId = null;
+          broadcastToRoom(room, { type: 'opponent_disconnected', roomId: room.id });
+          broadcastLobbyUpdate();
         } else if (room.guestWsId === wsId) {
           room.guestWsId = null;
-          if (room.status === 'active') {
-            room.status = 'finished';
-            broadcastToRoom(room, { type: 'opponent_disconnected', roomId: room.id });
-          }
         }
       }
       client.roomId = null;
@@ -2569,7 +3578,7 @@ async function handleMessage(wsId, msg) {
 
     // ── TOURNAMENTS ───────────────────────────
     case 'create_tournament': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const name = typeof msg.name === 'string' ? msg.name.trim().slice(0, 60) : '';
@@ -2579,14 +3588,25 @@ async function handleMessage(wsId, msg) {
       if (typeof msg.game !== 'string' || msg.game.length > 40) {
         return send(wsId, { type: 'error', message: 'Invalid game selection.' });
       }
+      if (!canPlayGame(msg.game, client.username)) {
+        return send(wsId, { type: 'error', message: underConstructionMessage() });
+      }
       const maxPlayers = Math.min(64, Math.max(2, parseInt(msg.maxPlayers, 10) || 16));
+      const startAt = normalizeTournamentStartAt(msg.startAt || msg.startDate);
+      if (msg.startAt && startAt === null) {
+        return send(wsId, { type: 'error', message: 'Invalid tournament start time.' });
+      }
       const t = {
         id: uuidv4(), name, game: msg.game,
         format: msg.format || 'single_elimination',
         maxPlayers,
         players: [], bracket: [], status: 'registration',
         createdBy: client.username, createdAt: Date.now(),
-        startDate: msg.startDate || null,
+        startAt,
+        // Legacy date-only field kept for older clients / display fallback
+        startDate: typeof msg.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(msg.startDate)
+          ? msg.startDate
+          : (startAt ? startAt.slice(0, 10) : null),
         waitForHostJoin: !!msg.waitForHostJoin,
         variation: msg.variation || null,
         startRule: msg.startRule || null,
@@ -2614,23 +3634,20 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'get_users': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
+      const { registered } = onlinePresenceSets();
       const data = Object.values(db.users)
-        .map(u => ({
-          username: u.username,
-          admin: !!u.admin,
-          approved: u.approved !== false,
-          pending: u.approved === false,
-        }))
+        .filter(u => u && u.username)
+        .map(u => rosterEntry(u, registered))
         .sort((a, b) => a.username.localeCompare(b.username));
       send(wsId, { type: 'users', data });
       break;
     }
 
     case 'add_tournament_player': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -2651,7 +3668,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'remove_tournament_player': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -2671,7 +3688,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'add_tournament_bots': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -2685,7 +3702,7 @@ async function handleMessage(wsId, msg) {
     }
 
     case 'start_tournament': {
-      if (!client.username || !db.users[client.username]?.admin) {
+      if (!clientIsAdmin(client)) {
         return send(wsId, { type: 'error', message: 'Admin only.' });
       }
       const t = db.tournaments.find(t => t.id === msg.tournamentId);
@@ -2726,6 +3743,7 @@ async function handleMessage(wsId, msg) {
       if (!isBotPlayer(opponent)) {
         return send(wsId, { type: 'error', message: 'Human vs human bracket matches are not available during soft launch — use bots or play from the lobby.' });
       }
+      const hostProfile = ensureUserProfile(db.users[user]);
       const room = createRoom(wsId, {
         game: t.game,
         hostName: user,
@@ -2738,7 +3756,15 @@ async function handleMessage(wsId, msg) {
         startRule: t.startRule || null,
         finishRule: t.finishRule || null,
         x01Base: t.x01Base || null,
-        legs: t.legs || null
+        legs: t.legs || null,
+        hostWalkoutId: sanitizeWalkoutId(hostProfile.walkoutId),
+        guestWalkoutId: BOT_WALKOUT_ID,
+        hostStandsOptIn: sanitizeStandsOptIn(hostProfile.standsOptIn) === '1',
+        guestStandsOptIn: false,
+        hostIntroNameId: sanitizeIntroCallId(hostProfile.introNameId, 'name'),
+        hostIntroNicknameId: sanitizeIntroCallId(hostProfile.introNicknameId, 'nickname'),
+        guestIntroNameId: '',
+        guestIntroNicknameId: '',
       });
       room.gameState = initGameState(t.game, room.config);
       client.roomId = room.id;
@@ -2750,10 +3776,11 @@ async function handleMessage(wsId, msg) {
         game: t.game,
         opponentName: opponent,
         gameState: room.gameState,
+        botSkill: room.config.botSkill,
         tournamentId: t.id,
         bracketMatchId: match.id,
         tournamentName: t.name,
-        matchPreview: buildMatchPreview(t.game, user, opponent),
+        matchPreview: buildMatchPreview(t.game, user, opponent, room),
       });
       break;
     }
@@ -2765,7 +3792,7 @@ async function handleMessage(wsId, msg) {
       if (!isTournamentUnplayed(t)) {
         return send(wsId, { type: 'error', message: 'Only unplayed tournaments can be removed.' });
       }
-      const isAdmin = !!db.users[client.username]?.admin;
+      const isAdmin = clientIsAdmin(client);
       if (t.createdBy !== client.username && !isAdmin) {
         return send(wsId, { type: 'error', message: 'Only the creator or an admin can remove this tournament.' });
       }
@@ -2779,6 +3806,301 @@ async function handleMessage(wsId, msg) {
       send(wsId, { type: 'tournaments', data: db.tournaments.map(sanitizeTournament) });
       break;
     }
+
+    // ── PRESENCE & FRIENDS ────────────────────
+    case 'get_presence': {
+      send(wsId, presencePayload());
+      break;
+    }
+
+    case 'get_friends': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, {
+          type: 'friends',
+          friends: [],
+          friendRequests: { incoming: [], outgoing: [] },
+          onlineFriends: [],
+        });
+      }
+      ensureFriendsFields(db.users[client.username]);
+      send(wsId, friendsPayloadFor(client.username));
+      break;
+    }
+
+    case 'friend_request': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to add friends.' });
+      }
+      const targetName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      if (!targetName) return send(wsId, { type: 'error', message: 'Username required.' });
+      if (targetName === client.username) {
+        return send(wsId, { type: 'error', message: 'You cannot friend yourself.' });
+      }
+      if (!isRegisteredUser(targetName)) {
+        return send(wsId, { type: 'error', message: 'That player was not found.' });
+      }
+      const me = ensureFriendsFields(db.users[client.username]);
+      const them = ensureFriendsFields(db.users[targetName]);
+      if (me.friends.includes(targetName)) {
+        return send(wsId, { type: 'error', message: 'You are already friends.' });
+      }
+      if (me.friendRequests.outgoing.includes(targetName)) {
+        return send(wsId, { type: 'error', message: 'Friend request already sent.' });
+      }
+      // If they already requested us, auto-accept.
+      if (me.friendRequests.incoming.includes(targetName)) {
+        me.friendRequests.incoming = me.friendRequests.incoming.filter(n => n !== targetName);
+        them.friendRequests.outgoing = them.friendRequests.outgoing.filter(n => n !== client.username);
+        if (!me.friends.includes(targetName)) me.friends.push(targetName);
+        if (!them.friends.includes(client.username)) them.friends.push(client.username);
+        saveData();
+        pushFriendsUpdate(client.username);
+        pushFriendsUpdate(targetName);
+        send(wsId, { type: 'friend_request_ok', username: targetName, accepted: true });
+        sendToUsername(targetName, {
+          type: 'friend_accepted',
+          username: client.username,
+          message: `${client.username} accepted your friend request.`,
+        });
+        break;
+      }
+      if (!me.friendRequests.outgoing.includes(targetName)) me.friendRequests.outgoing.push(targetName);
+      if (!them.friendRequests.incoming.includes(client.username)) {
+        them.friendRequests.incoming.push(client.username);
+      }
+      saveData();
+      pushFriendsUpdate(client.username);
+      pushFriendsUpdate(targetName);
+      send(wsId, { type: 'friend_request_ok', username: targetName, accepted: false });
+      sendToUsername(targetName, {
+        type: 'friend_request_received',
+        username: client.username,
+        message: `${client.username} sent you a friend request.`,
+      });
+      break;
+    }
+
+    case 'friend_respond': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to manage friends.' });
+      }
+      const fromName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      const accept = !!msg.accept;
+      if (!fromName) return send(wsId, { type: 'error', message: 'Username required.' });
+      const me = ensureFriendsFields(db.users[client.username]);
+      if (!me.friendRequests.incoming.includes(fromName)) {
+        return send(wsId, { type: 'error', message: 'No pending request from that player.' });
+      }
+      me.friendRequests.incoming = me.friendRequests.incoming.filter(n => n !== fromName);
+      const them = ensureFriendsFields(db.users[fromName]);
+      if (them) {
+        them.friendRequests.outgoing = them.friendRequests.outgoing.filter(n => n !== client.username);
+      }
+      if (accept && them) {
+        if (!me.friends.includes(fromName)) me.friends.push(fromName);
+        if (!them.friends.includes(client.username)) them.friends.push(client.username);
+      }
+      saveData();
+      pushFriendsUpdate(client.username);
+      if (them) {
+        pushFriendsUpdate(fromName);
+        sendToUsername(fromName, {
+          type: accept ? 'friend_accepted' : 'friend_declined',
+          username: client.username,
+          message: accept
+            ? `${client.username} accepted your friend request.`
+            : `${client.username} declined your friend request.`,
+        });
+      }
+      send(wsId, { type: 'friend_respond_ok', username: fromName, accept });
+      break;
+    }
+
+    case 'friend_remove': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to manage friends.' });
+      }
+      const targetName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      if (!targetName) return send(wsId, { type: 'error', message: 'Username required.' });
+      const me = ensureFriendsFields(db.users[client.username]);
+      me.friends = me.friends.filter(n => n !== targetName);
+      me.friendRequests.incoming = me.friendRequests.incoming.filter(n => n !== targetName);
+      me.friendRequests.outgoing = me.friendRequests.outgoing.filter(n => n !== targetName);
+      const them = ensureFriendsFields(db.users[targetName]);
+      if (them) {
+        them.friends = them.friends.filter(n => n !== client.username);
+        them.friendRequests.incoming = them.friendRequests.incoming.filter(n => n !== client.username);
+        them.friendRequests.outgoing = them.friendRequests.outgoing.filter(n => n !== client.username);
+      }
+      saveData();
+      pushFriendsUpdate(client.username);
+      if (them) pushFriendsUpdate(targetName);
+      send(wsId, { type: 'friend_remove_ok', username: targetName });
+      break;
+    }
+
+    case 'invite_friend': {
+      if (!client.username || !isRegisteredUser(client.username)) {
+        return send(wsId, { type: 'error', message: 'Sign in with a registered account to invite friends.' });
+      }
+      const targetName = typeof msg.username === 'string' ? msg.username.trim() : '';
+      const roomId = msg.roomId || client.roomId;
+      if (!targetName) return send(wsId, { type: 'error', message: 'Username required.' });
+      if (!roomId) return send(wsId, { type: 'error', message: 'No match to invite to.' });
+      const me = ensureFriendsFields(db.users[client.username]);
+      if (!me.friends.includes(targetName)) {
+        return send(wsId, { type: 'error', message: 'You can only invite friends.' });
+      }
+      const room = rooms.get(roomId);
+      if (!room) return send(wsId, { type: 'error', message: 'Match not found.' });
+      const asPartner = msg.role === 'partner';
+      if (asPartner) {
+        const isHost = room.hostWsId === wsId;
+        const isGuest = room.guestWsId === wsId;
+        if (!isHost && !isGuest) {
+          return send(wsId, { type: 'error', message: 'Only a team lead can invite a partner.' });
+        }
+        const waitingOk = room.status === 'waiting' && !room.config.bot && isHost;
+        const botOk = room.status === 'active' && !!room.config.bot && isHost;
+        const liveOk = room.status === 'active' && !room.config.bot;
+        if (!(waitingOk || botOk || liveOk)) {
+          return send(wsId, { type: 'error', message: 'This match is not open for a partner.' });
+        }
+        const invited = inviteDoublesPartner(room, client.username, targetName, isHost ? 'host' : 'guest');
+        if (!invited.ok) return send(wsId, { type: 'error', message: invited.error });
+        if (room.gameState) {
+          syncDoublesPresence(room);
+          broadcastToRoom(room, partnerPresencePayload(room, {
+            teamRole: isHost ? 'host' : 'guest',
+            here: false,
+            username: invited.username,
+          }));
+        }
+        send(wsId, { type: 'invite_friend_ok', username: targetName, roomId: room.id, role: 'partner' });
+        break;
+      }
+      if (!room || room.status !== 'waiting' || room.config.bot) {
+        return send(wsId, { type: 'error', message: 'Match is not waiting for an opponent.' });
+      }
+      if (room.hostWsId !== wsId) {
+        return send(wsId, { type: 'error', message: 'Only the host can invite a friend.' });
+      }
+      if (!usernameOnline(targetName)) {
+        return send(wsId, { type: 'error', message: `${targetName} is not online.` });
+      }
+      room.config.invitedUser = targetName;
+      const delivered = sendToUsername(targetName, {
+        type: 'match_invite',
+        roomId: room.id,
+        game: room.config.game,
+        from: client.username,
+        hostName: room.config.hostName,
+        doubles: !!room.config.doubles,
+        role: 'opponent',
+      });
+      if (!delivered) {
+        return send(wsId, { type: 'error', message: `${targetName} is not online.` });
+      }
+      send(wsId, { type: 'invite_friend_ok', username: targetName, roomId: room.id, role: 'opponent' });
+      break;
+    }
+
+    case 'join_partner': {
+      if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
+      const room = rooms.get(msg.roomId);
+      if (!room || !room.config?.doubles || room.status === 'finished') {
+        return send(wsId, { type: 'error', message: 'That doubles match is not available.' });
+      }
+      if (!canPlayGame(room.config.game, client.username)) {
+        return send(wsId, { type: 'error', message: underConstructionMessage() });
+      }
+      let teamRole = null;
+      if (room.config.hostPartnerMode === 'online' && room.config.hostPartnerUser === client.username) teamRole = 'host';
+      else if (room.config.guestPartnerMode === 'online' && room.config.guestPartnerUser === client.username) teamRole = 'guest';
+      if (!teamRole) {
+        return send(wsId, { type: 'error', message: 'You are not invited as a partner on this match.' });
+      }
+      if (wsId === room.hostWsId || wsId === room.guestWsId) {
+        return send(wsId, { type: 'error', message: 'You are already playing in this match.' });
+      }
+      if (client.roomId && client.roomId !== room.id) {
+        return send(wsId, { type: 'error', message: 'Leave your current match before joining a team.' });
+      }
+      const slotKey = teamRole === 'host' ? 'hostPartnerWsId' : 'guestPartnerWsId';
+      const previous = room[slotKey];
+      if (previous && previous !== wsId) {
+        const old = clients.get(previous);
+        if (old) old.roomId = null;
+        send(previous, { type: 'error', message: 'You joined this team from another session.' });
+      }
+      room[slotKey] = wsId;
+      client.roomId = room.id;
+      syncDoublesPresence(room);
+      room.lastActivity = Date.now();
+      const leadName = teamRole === 'host' ? room.config.hostName : room.config.guestName;
+      const opponentName = teamRole === 'host'
+        ? (room.config.guestName || null)
+        : room.config.hostName;
+      const starterLocked = !!room.starterLocked || !!room.config.bot;
+      const matchPreview = (room.status === 'active' && !starterLocked)
+        ? buildMatchPreview(room.config.game, room.config.hostName, room.config.guestName, room)
+        : null;
+      send(wsId, {
+        type: 'partner_joined',
+        roomId: room.id,
+        game: room.config.game,
+        status: room.status,
+        teamRole,
+        leadName,
+        opponentName,
+        youAre: 'partner',
+        starterLocked,
+        gameState: room.gameState,
+        turn: room.turn,
+        scores: room.scores,
+        history: Array.isArray(room.history) ? room.history.slice(0, 20) : [],
+        hostSeat: roomHostSeat(room),
+        guestSeat: roomGuestSeat(room),
+        matchPreview,
+        bot: !!room.config.bot,
+      });
+      broadcastToRoom(room, partnerPresencePayload(room, {
+        teamRole,
+        here: true,
+        username: client.username,
+      }));
+      broadcastCamRoster(room);
+      broadcastLobbyUpdate();
+      break;
+    }
+
+    case 'decline_invite': {
+      if (!client.username) return send(wsId, { type: 'error', message: 'Must be logged in.' });
+      const room = rooms.get(msg.roomId);
+      if (!room) break;
+      if (msg.role === 'partner') {
+        const teamRole = msg.teamRole === 'guest' ? 'guest' : 'host';
+        const leadId = teamRole === 'guest' ? room.guestWsId : room.hostWsId;
+        if (leadId) {
+          send(leadId, {
+            type: 'invite_declined',
+            roomId: room.id,
+            username: client.username,
+            role: 'partner',
+          });
+        }
+        send(wsId, { type: 'decline_invite_ok', roomId: room.id });
+        break;
+      }
+      if (room.status !== 'waiting') break;
+      send(room.hostWsId, {
+        type: 'invite_declined',
+        roomId: room.id,
+        username: client.username,
+      });
+      send(wsId, { type: 'decline_invite_ok', roomId: room.id });
+      break;
+    }
   }
 }
 
@@ -2787,24 +4109,50 @@ function handleDisconnect(wsId) {
   if (client?.roomId) {
     const room = rooms.get(client.roomId);
     if (room) {
-      if (room.status === 'waiting' && !room.config.bot) {
+      const spectSet = spectators.get(client.roomId);
+      const wasSpectator = !!spectSet?.has(wsId);
+      const isParticipant = room.hostWsId === wsId || room.guestWsId === wsId;
+      const partnerRole = partnerRoleOf(room, wsId);
+      spectSet?.delete(wsId);
+
+      if (partnerRole && !isParticipant) {
+        clearDoublesPartnerSocket(room, partnerRole, { username: client.username });
+      } else if (wasSpectator && !isParticipant) {
+        notifySpectatorLeft(room, wsId);
+        broadcastLobbyUpdate();
+      } else if (room.status === 'waiting' && !room.config.bot) {
+        if (room.hostPartnerWsId && room.hostPartnerWsId !== wsId) {
+          const partner = clients.get(room.hostPartnerWsId);
+          if (partner) partner.roomId = null;
+          send(room.hostPartnerWsId, { type: 'room_cancelled', roomId: room.id, reason: 'host_left' });
+        }
         rooms.delete(client.roomId);
         spectators.delete(client.roomId);
         broadcastLobbyUpdate();
-      } else if (room.status === 'active') {
+      } else if (room.status === 'active' && isParticipant) {
         if (room.config.bot) {
+          if (room.hostPartnerWsId && room.hostPartnerWsId !== wsId) {
+            const partner = clients.get(room.hostPartnerWsId);
+            if (partner) partner.roomId = null;
+            send(room.hostPartnerWsId, { type: 'opponent_disconnected', roomId: room.id });
+          }
           rooms.delete(client.roomId);
           spectators.delete(client.roomId);
+          broadcastLobbyUpdate();
         } else {
-          const otherId = room.hostWsId === wsId ? room.guestWsId : room.hostWsId;
-          if (otherId) send(otherId, { type: 'opponent_disconnected', roomId: room.id });
+          const gone = { type: 'opponent_disconnected', roomId: room.id };
+          eachPlayerWs(room, id => { if (id !== wsId) send(id, gone); });
+          spectSet?.forEach(sid => send(sid, gone));
           room.status = 'finished';
           room.lastActivity = Date.now();
           broadcastLobbyUpdate();
         }
+      } else if (room.guestWsId === wsId) {
+        room.guestWsId = null;
       }
+    } else {
+      spectators.get(client.roomId)?.delete(wsId);
     }
-    spectators.get(client.roomId)?.delete(wsId);
   }
   clients.delete(wsId);
   broadcastPresence();
@@ -2813,43 +4161,49 @@ function handleDisconnect(wsId) {
 // ─────────────────────────────────────────────
 //  BOT AI
 // ─────────────────────────────────────────────
-function scheduleBotMove(roomId, attempt = 0) {
+function scheduleBotMove(roomId, attempt = 0, delayMs = null) {
+  const wait = delayMs != null
+    ? delayMs
+    : (attempt === 0 ? BOT_MOVE_DELAY_MS : BOT_RETRY_DELAY_MS);
   setTimeout(() => {
     const room = rooms.get(roomId);
-    if (!room || !room.config.bot || room.status !== 'active' || room.turn !== 1) return;
+    const bSeat = room ? botSeat(room) : -1;
+    if (!room || !room.config.bot || room.status !== 'active' || room.turn !== bSeat) return;
     try {
       botTakeTurn(room);
     } catch (err) {
       console.error('Bot turn failed:', err);
       // Recover from transient state errors so cricket/tactics bots don't freeze mid-match.
-      if (attempt < 2 && room.status === 'active' && room.turn === 1) {
+      if (attempt < 2 && room.status === 'active' && room.turn === bSeat) {
         if (isCricketGame(room.config.game)) {
           room.gameState = ensureCricketState(room.gameState, room.config, room.config.game);
         }
         scheduleBotMove(roomId, attempt + 1);
       }
     }
-  }, attempt === 0 ? 1000 : 600);
+  }, wait);
 }
 
 function botTakeTurn(room) {
+  const B = botSeat(room);
+  const H = 1 - B;
   const move = computeBotMove(room);
   room.lastActivity = Date.now();
   room.history.unshift({ player: room.config.guestName, score: move.displayScore, note: move.note, ts: Date.now() });
   if (room.history.length > 50) room.history.pop();
   room.turn = (move.nextTurn !== undefined && move.nextTurn !== null)
     ? move.nextTurn
-    : (move.keepTurn ? 1 : 0);
+    : (move.keepTurn ? B : H);
   if (room.config.game === 'Golf Checkouts' && !move.keepTurn) {
     room.turn = gcSkipWaitingTurn(room.turn, room.gameState);
   }
-  if (move.absoluteScore !== undefined) room.scores[1] = move.absoluteScore;
-  else room.scores[1] += move.delta || 0;
+  if (move.absoluteScore !== undefined) room.scores[B] = move.absoluteScore;
+  else room.scores[B] += move.delta || 0;
   room.gameState = move.gameState || room.gameState;
   if (move.gameOver) {
     room.status = 'finished';
     room.lastActivity = Date.now();
-    commitMatchCareerStats(room);
+    commitCareerStats(room);
     if (move.winner === room.config.guestName) {
       updateStats(room.config.guestName, room.config.hostName, move.highScore || 0);
     } else if (move.winner === room.config.hostName) {
@@ -2862,21 +4216,22 @@ function botTakeTurn(room) {
     round: room.round, history: room.history.slice(0, 1),
     gameState: room.gameState
   };
-  send(room.hostWsId, update);
+  eachPlayerWs(room, id => send(id, update));
   if (move.gameOver) {
     const endMsg = buildGameOverMessage(room, move.winner, move.matchStats);
-    send(room.hostWsId, endMsg);
+    eachPlayerWs(room, id => send(id, endMsg));
     if (room.config.tournamentId && room.config.bracketMatchId && move.winner) {
       recordTournamentMatchResult(room.config.tournamentId, room.config.bracketMatchId, move.winner);
     }
-  } else if (room.turn === 1 && room.status === 'active') {
-    scheduleBotMove(room.id);
+  } else if (room.turn === B && room.status === 'active') {
+    scheduleBotMove(room.id, 0, BOT_CHAIN_DELAY_MS);
   }
 }
 
 function computeBotMove(room) {
   const gs = room.gameState || {};
-  const skill = room.config.botSkill || 'easy';
+  const skill = room.config.botSkill;
+  const profile = botLevelProfile(skill);
   const rand = () => Math.random();
   const chooseTarget = (targetValue) => {
     if (typeof targetValue === 'number') return targetValue;
@@ -2885,16 +4240,20 @@ function computeBotMove(room) {
     if (targetValue === 'Bull') return 25;
     return 20;
   };
-  const difficulty = { easy: 0.45, medium: 0.65, hard: 0.85, adaptive: 0.75 }[skill] || 0.55;
+  const difficulty = profile.difficulty;
   let move = { delta: 0, absoluteScore: undefined, displayScore: 'MISS', note: 'Miss', gameState: gs, gameOver: false, winner: '', keepTurn: false };
   const game = room.config.game;
+  const B = botSeat(room);
+  const H = 1 - B;
+  const botName = room.config.guestName;
+  const humanName = room.config.hostName;
 
   if (isX01Game(game)) {
-    const p = 1;
+    const p = B;
     if (!gs.remaining) Object.assign(gs, initX01State(room.config, game));
     const rem = gs.remaining[p];
-    const avg = { easy: 38, medium: 58, hard: 84, adaptive: 70 }[skill] || 45;
-    const coAttempt = { easy: 0.18, medium: 0.34, hard: 0.6, adaptive: 0.45 }[skill] || 0.2;
+    const avg = profile.threeDartAvg;
+    const coAttempt = profile.checkoutPct;
 
     let total;
     if (!gs.opened[p]) {
@@ -2921,24 +4280,24 @@ function computeBotMove(room) {
     move.delta = 0;
     move.absoluteScore = gs.legs[p];
     move.keepTurn = false;
-    move.nextTurn = res.matchOver ? 0 : gs.nextTurn;
+    move.nextTurn = res.matchOver ? H : gs.nextTurn;
     move.displayScore = res.bust ? 'BUST' : String(total);
-    if (res.matchOver) move.note = `${room.config.guestName} wins the match!`;
-    else if (res.legWon) move.note = `${room.config.guestName} wins leg ${gs.currentLeg - 1}!`;
+    if (res.matchOver) move.note = `${botName} wins the match!`;
+    else if (res.legWon) move.note = `${botName} wins leg ${gs.currentLeg - 1}!`;
     else if (res.bust) move.note = `BUST · ${gs.remaining[p]} left`;
     else move.note = `${total} · ${gs.remaining[p]} left`;
-    if (res.matchOver) { move.gameOver = true; move.winner = room.config.guestName; }
+    if (res.matchOver) { move.gameOver = true; move.winner = botName; }
     move.highScore = Math.max(gs.points[0], gs.points[1]);
     move.matchStats = { scores: [gs.legs[0], gs.legs[1]], time: Math.floor((Date.now() - room.createdAt) / 1000), bestRound: Math.max(gs.points[0], gs.points[1]) };
     return move;
   }
 
   if (isCricketGame(game)) {
-    const p = 1;
+    const p = B;
     room.gameState = ensureCricketState(gs, room.config, game);
     const state = room.gameState;
-    const hitChance = { easy: 0.45, medium: 0.62, hard: 0.8, adaptive: 0.72 }[skill] || 0.5;
-    const tripleChance = { easy: 0.07, medium: 0.15, hard: 0.28, adaptive: 0.2 }[skill] || 0.1;
+    const hitChance = profile.hitChance;
+    const tripleChance = profile.tripleChance;
     const doubleChance = 0.2;
     const darts = [];
     for (let i = 0; i < 3; i++) {
@@ -2976,12 +4335,12 @@ function computeBotMove(room) {
     move.gameState = state;
     move.absoluteScore = state.score[p];
     move.nextTurn = res.matchOver
-      ? 0
-      : (state.nextTurn === 0 || state.nextTurn === 1 ? state.nextTurn : 0);
+      ? H
+      : (state.nextTurn === 0 || state.nextTurn === 1 ? state.nextTurn : H);
     move.displayScore = darts.map(d => d.label).join(' ');
-    if (res.matchOver) move.note = `${room.config.guestName} wins the match!`;
+    if (res.matchOver) move.note = `${botName} wins the match!`;
     else if (res.legWon) {
-      const lw = res.legWinnerIdx === 0 ? room.config.hostName : room.config.guestName;
+      const lw = nameAtSeat(room, res.legWinnerIdx === 0 ? 0 : 1);
       move.note = `${lw} wins the leg!`;
     } else if (res.points > 0) move.note = `BOT ${move.displayScore} · +${res.points}`;
     else move.note = `BOT ${move.displayScore}`;
@@ -2989,8 +4348,8 @@ function computeBotMove(room) {
       move.gameOver = true;
       const w = res.winnerIdx !== null && res.winnerIdx !== undefined
         ? res.winnerIdx
-        : (state.legs[1] >= (state.legsToWin || 1) ? 1 : 0);
-      move.winner = w === 0 ? room.config.hostName : room.config.guestName;
+        : (state.legs[B] >= (state.legsToWin || 1) ? B : H);
+      move.winner = nameAtSeat(room, w === 0 ? 0 : 1);
     }
     move.highScore = Math.max(state.score[0], state.score[1]);
     move.matchStats = {
@@ -3007,7 +4366,7 @@ function computeBotMove(room) {
       { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] },
       { round: 0, throws: 0, hits: 0, pending: 0, total: 0, currentDarts: [] }
     ];
-    const progress = gs.roundProgress[1];
+    const progress = gs.roundProgress[B];
     const target = gs.targets[progress.round] ?? gs.targets[0];
     const hitChance = Math.min(0.95, Math.max(0.25, difficulty + (typeof target === 'number' ? 0 : 0.1)));
     const dartLabels = [];
@@ -3054,7 +4413,7 @@ function computeBotMove(room) {
       move.note = `BOT round complete +${progress.pending}`;
     }
     gs.playerRounds = gs.playerRounds || [[], []];
-    gs.playerRounds[1].push({
+    gs.playerRounds[B].push({
       round: progress.round + 1, target, darts: progress.throws,
       hits: progress.hits, roundScore: progress.pending, total: progress.total, hit: progress.hits > 0
     });
@@ -3067,11 +4426,13 @@ function computeBotMove(room) {
     move.keepTurn = false;
     if (halveItGameOver(gs)) {
       move.gameOver = true;
-      move.winner = halveItWinner({ ...room, scores: [room.scores[0], move.absoluteScore ?? room.scores[1]] });
+      move.winner = halveItWinner({ ...room, scores: B === 0
+        ? [move.absoluteScore ?? room.scores[0], room.scores[1]]
+        : [room.scores[0], move.absoluteScore ?? room.scores[1]] });
     }
     move.gameState = gs;
   } else if (game === 'Football Darts') {
-    const playerIdx = 1;
+    const playerIdx = B;
     const botName = room.config.guestName || 'Bot';
     gs.goals = gs.goals || [0, 0];
     gs.events = gs.events || [];
@@ -3086,6 +4447,10 @@ function computeBotMove(room) {
     if (!hasPossession) {
       if (rand() < difficulty * 0.55) {
         gs.possession = playerIdx;
+        // P0 attacks toward high ballX (bottom); P1 toward low ballX (top).
+        gs.ballX = playerIdx === 0
+          ? Math.max(gs.ballX || 50, 62)
+          : Math.min(gs.ballX || 50, 38);
         gs.events.unshift({ text: `🟢 ${botName} took possession!` });
         move.displayScore = 'DBULL';
         move.note = 'BOT took possession!';
@@ -3098,7 +4463,10 @@ function computeBotMove(room) {
     } else if (rand() < difficulty) {
       const useDBull = rand() < 0.12;
       gs.goals[playerIdx] = (gs.goals[playerIdx] || 0) + 1;
-      gs.ballX = Math.max(5, (gs.ballX || 50) - 15);
+      gs.ballX = playerIdx === 0
+        ? Math.min(95, (gs.ballX || 50) + 15)
+        : Math.max(5, (gs.ballX || 50) - 15);
+      gs.lastGoal = { player: playerIdx, id: Date.now() };
       gs.events.unshift({ text: `⚽ GOAL by ${botName}!` });
       move.delta = 1;
       scored = true;
@@ -3132,23 +4500,23 @@ function computeBotMove(room) {
     }
     if (!move.gameOver && gs.turnEnded && (gs.round || 0) >= 20) {
       move.gameOver = true;
-      const g0 = gs.goals[0] || 0, g1 = gs.goals[1] || 0;
-      move.winner = g1 === g0 ? null : (g1 > g0 ? botName : room.config.hostName);
+      const gBot = gs.goals[B] || 0, gHum = gs.goals[H] || 0;
+      move.winner = gBot === gHum ? null : (gBot > gHum ? botName : humanName);
     }
     move.gameState = gs;
   } else if (game === 'Snakes & Ladders') {
     const roll = Math.ceil(rand() * 6);
     gs.pos = gs.pos || [0,0];
-    let pos = gs.pos[1] + roll;
+    let pos = gs.pos[B] + roll;
     if (pos > 100) pos = 100 - (pos - 100);
     if (gs.ladders?.[pos]) { pos = gs.ladders[pos]; move.note = `BOT Ladder ${pos}`; }
     else if (gs.snakes?.[pos]) { pos = gs.snakes[pos]; move.note = `BOT Snake ${pos}`; }
-    gs.pos[1] = Math.min(100, Math.max(0, pos));
-    move.absoluteScore = gs.pos[1];
-    move.displayScore = `sq.${gs.pos[1]}`;
-    if (gs.pos[1] >= 100) {
+    gs.pos[B] = Math.min(100, Math.max(0, pos));
+    move.absoluteScore = gs.pos[B];
+    move.displayScore = `sq.${gs.pos[B]}`;
+    if (gs.pos[B] >= 100) {
       move.gameOver = true;
-      move.winner = room.config.guestName;
+      move.winner = botName;
     }
     move.gameState = gs;
   } else if (game === 'Golf Darts') {
@@ -3164,9 +4532,9 @@ function computeBotMove(room) {
     gs.playerHoles = gs.playerHoles || [0,0];
     gs.playerDarts = gs.playerDarts || [[],[]];
     gs.playerHoleScores = gs.playerHoleScores || [[],[]];
-    const holeIdx = gs.playerHoles[1] || 0;
+    const holeIdx = gs.playerHoles[B] || 0;
     const target = gs.holes?.[holeIdx] ?? holeIdx + 1;
-    const darts = gs.playerDarts[1] || [];
+    const darts = gs.playerDarts[B] || [];
     if (darts.length >= 3) {
       move.note = 'BOT already finished hole';
       move.keepTurn = false;
@@ -3203,14 +4571,14 @@ function computeBotMove(room) {
       darts.push(parsed);
       move.displayScore = parsed.isMiss ? 'MISS' : `${parsed.segment}${parsed.base}`;
       move.note = `Dart ${darts.length}/3: ${move.displayScore} (${parsed.golfPts})`;
-      gs.playerDarts[1] = darts;
+      gs.playerDarts[B] = darts;
       if (darts.length >= 3) {
         const { holeScore, hatTrick } = finalizeGolfHole(darts, target);
         move.delta = holeScore;
-        move.absoluteScore = (room.scores[1] || 0) + holeScore;
+        move.absoluteScore = (room.scores[B] || 0) + holeScore;
         move.displayScore = `Hole ${holeIdx + 1}: ${holeScore}`;
         move.note = `Hole ${holeIdx + 1} complete · best ${holeScore}${hatTrick ? ' · Hat trick −1!' : ''}`;
-        gs.playerHoleScores[1].push({
+        gs.playerHoleScores[B].push({
           hole: holeIdx + 1,
           target,
           darts: darts.map(d => d.isMiss ? 'MISS' : `${d.segment}${d.base}`),
@@ -3218,8 +4586,8 @@ function computeBotMove(room) {
           score: holeScore,
           bonus: hatTrick
         });
-        gs.playerDarts[1] = [];
-        gs.playerHoles[1] = holeIdx + 1;
+        gs.playerDarts[B] = [];
+        gs.playerHoles[B] = holeIdx + 1;
         gs.turnEnded = true;
         move.keepTurn = false;
       } else {
@@ -3234,7 +4602,7 @@ function computeBotMove(room) {
       { hole: 0, remaining: gs.holes?.[0]?.target || 0, currentHoleDarts: 0, totalDarts: 0, holeResults: [], finished: false, holeDone: false },
       { hole: 0, remaining: gs.holes?.[0]?.target || 0, currentHoleDarts: 0, totalDarts: 0, holeResults: [], finished: false, holeDone: false }
     ];
-    const playerIdx = 1;
+    const playerIdx = B;
     const progress = gs.playerProgress[playerIdx];
     if (!gcPlayerCanThrow(gs, playerIdx)) {
       move.note = progress?.finished ? 'BOT finished' : 'BOT waiting for opponent';
@@ -3243,11 +4611,11 @@ function computeBotMove(room) {
       move.gameState = gs;
     } else {
       const rem = progress.remaining || 0;
-      const avg = { easy: 38, medium: 58, hard: 84, adaptive: 70 }[skill] || 45;
-      const coAttempt = { easy: 0.18, medium: 0.34, hard: 0.6, adaptive: 0.45 }[skill] || 0.2;
+      const avg = profile.threeDartAvg;
+      const coAttempt = profile.checkoutPct;
       let total;
       let visitDarts = GC_DARTS_PER_TURN;
-      if (rem > 0 && rem <= 180 && rand() < coAttempt) {
+      if (rem > 0 && rem <= 180 && x01IsValidCheckout(rem, 'double-out') && rand() < coAttempt) {
         total = rem;
         if (rem < 170) {
           const minD = gcMinDartsForScore(rem);
@@ -3270,34 +4638,34 @@ function computeBotMove(room) {
       move.gameState = gs;
     }
   } else if (game === 'Around the Clock') {
-    const needed = gs.progress?.[1] || 1;
+    const needed = gs.progress?.[B] || 1;
     if (rand() < difficulty) {
       move.displayScore = `S${needed}`;
       move.delta = needed;
       gs.progress = gs.progress || [1,1];
-      gs.progress[1] = needed + 1;
+      gs.progress[B] = needed + 1;
       move.note = `BOT hit ${needed}`;
-      if (gs.progress[1] > 20) {
+      if (gs.progress[B] > 20) {
         move.gameOver = true;
-        move.winner = room.config.guestName;
+        move.winner = botName;
       }
     } else {
       move.displayScore = 'MISS';
       move.note = 'BOT MISS';
       gs.progress = gs.progress || [1,1];
     }
-    move.absoluteScore = (gs.progress[1] || 1) - 1;
+    move.absoluteScore = (gs.progress[B] || 1) - 1;
     move.gameState = gs;
   } else if (game === 'Killer') {
     gs.isKiller = gs.isKiller || [false,false];
     gs.hitCount = gs.hitCount || [0,0];
     gs.lives = gs.lives || [5,5];
-    if (!gs.isKiller[1]) {
+    if (!gs.isKiller[B]) {
       if (rand() < difficulty) {
-        gs.hitCount[1] = Math.min(3, gs.hitCount[1] + 1);
-        move.note = `BOT hit ${gs.numbers?.[1] || '?'} (${gs.hitCount[1]}/3)`;
-        if (gs.hitCount[1] >= 3) {
-          gs.isKiller[1] = true;
+        gs.hitCount[B] = Math.min(3, gs.hitCount[B] + 1);
+        move.note = `BOT hit ${gs.numbers?.[B] || '?'} (${gs.hitCount[B]}/3)`;
+        if (gs.hitCount[B] >= 3) {
+          gs.isKiller[B] = true;
           move.note = '⚡ BOT KILLER!';
         }
       } else {
@@ -3305,11 +4673,11 @@ function computeBotMove(room) {
       }
     } else {
       if (rand() < difficulty) {
-        gs.lives[0] = Math.max(0, gs.lives[0] - 1);
-        move.note = `BOT hit your number ${gs.numbers?.[0] || '?'} -1 life`;
-        if (gs.lives[0] <= 0) {
+        gs.lives[H] = Math.max(0, gs.lives[H] - 1);
+        move.note = `BOT hit your number ${gs.numbers?.[H] || '?'} -1 life`;
+        if (gs.lives[H] <= 0) {
           move.gameOver = true;
-          move.winner = room.config.guestName;
+          move.winner = botName;
         }
       } else {
         move.note = 'BOT MISS';
@@ -3322,7 +4690,7 @@ function computeBotMove(room) {
       { round: 0, throws: 0, hits: { S:0,D:0,T:0 }, total: 0 },
       { round: 0, throws: 0, hits: { S:0,D:0,T:0 }, total: 0 }
     ];
-    const progress = gs.roundProgress[1];
+    const progress = gs.roundProgress[B];
     const target = (gs.roundIdx || 0) + 1;
     const hitTarget = rand() < difficulty;
     if (hitTarget) {
@@ -3340,13 +4708,13 @@ function computeBotMove(room) {
     if (progress.throws >= 3) {
       if (progress.hits.S && progress.hits.D && progress.hits.T) {
         move.gameOver = true;
-        move.winner = room.config.guestName;
+        move.winner = botName;
         move.note = 'BOT SHANGHAI!';
       }
       gs.roundScores = gs.roundScores || [[],[]];
-      gs.roundScores[1].push(progress.total);
+      gs.roundScores[B].push(progress.total);
       move.delta = progress.total;
-      move.absoluteScore = room.scores[1] + progress.total;
+      move.absoluteScore = room.scores[B] + progress.total;
       progress.round++;
       progress.throws = 0;
       progress.hits = { S:0, D:0, T:0 };
@@ -3360,21 +4728,21 @@ function computeBotMove(room) {
     }
     move.gameState = gs;
   } else if (game === 'High Score') {
-    const score = Math.max(0, Math.min(180, Math.round((rand() * 140 + 20) * (skill === 'easy' ? 0.75 : skill === 'medium' ? 0.9 : 1))));
+    const score = Math.max(0, Math.min(180, Math.round(profile.threeDartAvg + (rand() * 50 - 25))));
     move.delta = score;
     move.displayScore = score;
     move.note = `BOT scored ${score}`;
     gs.roundScores = gs.roundScores || [[],[]];
-    gs.roundScores[1].push(score);
+    gs.roundScores[B].push(score);
     gs.roundIdx = (gs.roundIdx || 0) + 1;
     if (gs.roundIdx >= 10) {
       move.gameOver = true;
-      move.winner = (room.scores[1] + score) >= room.scores[0] ? room.config.guestName : room.config.hostName;
+      move.winner = (room.scores[B] + score) >= room.scores[H] ? botName : humanName;
     }
     move.gameState = gs;
   }
 
-  move.highScore = Math.max(room.scores[1], room.scores[0]);
+  move.highScore = Math.max(room.scores[B], room.scores[H]);
   move.matchStats = { scores: room.scores, time: Math.floor((Date.now() - room.createdAt) / 1000), bestRound: 0 };
   return move;
 }
@@ -3402,13 +4770,45 @@ function broadcastAll(msg) {
   clients.forEach((_, wsId) => sendRaw(wsId, str));
 }
 
-// Broadcast one payload to host + guest + spectators, stringifying ONCE.
+// Broadcast one payload to every player (leads and online partners) + spectators, stringifying ONCE.
 function broadcastToRoom(room, msg) {
   if (!room) return;
   const str = JSON.stringify(msg);
-  sendRaw(room.hostWsId, str);
-  if (room.guestWsId) sendRaw(room.guestWsId, str);
+  eachPlayerWs(room, id => sendRaw(id, str));
   spectators.get(room.id)?.forEach(sid => sendRaw(sid, str));
+}
+
+/** Leads and online partners only (Players chat / private match events). */
+function broadcastToPlayers(room, msg) {
+  if (!room) return;
+  const str = JSON.stringify(msg);
+  eachPlayerWs(room, id => sendRaw(id, str));
+}
+
+/** Spectators only — used for local-match state sync without echoing to the host. */
+function broadcastToSpectators(room, msg) {
+  if (!room) return;
+  const str = JSON.stringify(msg);
+  spectators.get(room.id)?.forEach(sid => sendRaw(sid, str));
+}
+
+function lobbyRoomPayload(r) {
+  const hostStats = ensureUserStats(db.users[r.config.hostName]);
+  return {
+    id: r.id,
+    game: r.config.game,
+    hostName: r.config.hostName,
+    guestName: r.config.guestName || null,
+    hostThreeDartAvg: hostStats.threeDartAvg || 0,
+    status: r.status,
+    createdAt: r.createdAt,
+    spectators: spectators.get(r.id)?.size || 0,
+    local: !!r.config.local,
+    bot: !!r.config.bot,
+    doubles: !!r.config.doubles,
+    hostPartner: r.config.doubles ? (r.config.hostPartner || null) : null,
+    guestPartner: r.config.doubles ? (r.config.guestPartner || null) : null,
+  };
 }
 
 function broadcastLobbyUpdate() {
@@ -3416,6 +4816,14 @@ function broadcastLobbyUpdate() {
     .filter(r => (r.status === 'waiting' || r.status === 'active') && !r.config.bot)
     .map(lobbyRoomPayload);
   broadcastAll({ type: 'lobby_update', rooms: openRooms });
+}
+
+/** Tell host/guest a spectator left so they can tear down that peer connection. */
+function notifySpectatorLeft(room, spectatorWsId) {
+  if (!room || !spectatorWsId) return;
+  const payload = { type: 'spectator_left', roomId: room.id, spectatorWsId };
+  if (room.hostWsId) send(room.hostWsId, payload);
+  if (room.guestWsId) send(room.guestWsId, payload);
 }
 
 function shouldSwitchTurn(game, gameState) {
@@ -3436,7 +4844,7 @@ function computeGolfGameOver(room) {
     const p1done = (gs.playerHoles?.[1] || 0) >= (gs.holes?.length || 18);
     if (p0done && p1done) {
       if (room.scores[0] === room.scores[1]) return { gameOver: true, winner: null };
-      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? room.config.hostName : room.config.guestName };
+      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? nameAtSeat(room, 0) : nameAtSeat(room, 1) };
     }
   }
   if (game === 'Golf Checkouts') {
@@ -3444,7 +4852,7 @@ function computeGolfGameOver(room) {
     const p1done = !!gs.playerProgress?.[1]?.finished;
     if (p0done && p1done) {
       if (room.scores[0] === room.scores[1]) return { gameOver: true, winner: null };
-      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? room.config.hostName : room.config.guestName };
+      return { gameOver: true, winner: room.scores[0] < room.scores[1] ? nameAtSeat(room, 0) : nameAtSeat(room, 1) };
     }
   }
   return { gameOver: false, winner: null };
@@ -3488,7 +4896,7 @@ function finalizeGolfHole(darts, target) {
   return { scores, best, holeScore: Math.max(0, best - (hatTrick ? 1 : 0)), hatTrick };
 }
 
-const TOURNAMENT_TEST_BOTS = ['Bot (Easy)', 'Bot (Medium)', 'Bot (Hard)', 'Bot (Adaptive)'];
+const TOURNAMENT_TEST_BOTS = ['Bot (Level 2)', 'Bot (Level 5)', 'Bot (Level 8)', 'Bot (Level 10)'];
 
 function ensureTournamentPlayers(t) {
   if (!Array.isArray(t.players)) t.players = [];
@@ -3512,8 +4920,8 @@ function isBotPlayer(name) {
 }
 
 function botSkillFromName(name) {
-  const m = (name || '').match(/\((easy|medium|hard|adaptive)\)/i);
-  return m ? m[1].toLowerCase() : 'easy';
+  const m = (name || '').match(/\((?:level\s*)?(\d{1,2}|easy|medium|hard|adaptive)\)/i);
+  return m ? normalizeBotLevel(m[1]) : 3;
 }
 
 function findBracketMatch(t, matchId) {
@@ -3642,296 +5050,29 @@ function generateBracket(players) {
   return rounds;
 }
 
+/** Accept ISO datetime or legacy YYYY-MM-DD; return UTC ISO or null. */
+function normalizeTournamentStartAt(raw) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Legacy date-only — keep as-is for display; not a full timestamp
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const ms = Date.parse(trimmed);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
 function sanitizeTournament(t) {
   return { id: t.id, name: t.name, game: t.game, format: t.format,
     maxPlayers: t.maxPlayers, players: t.players, bracket: t.bracket,
-    status: t.status, createdBy: t.createdBy, createdAt: t.createdAt, startDate: t.startDate,
+    status: t.status, createdBy: t.createdBy, createdAt: t.createdAt,
+    startAt: t.startAt || null,
+    startDate: t.startDate || null,
     waitForHostJoin: !!t.waitForHostJoin,
     variation: t.variation || null, startRule: t.startRule || null,
     finishRule: t.finishRule || null, x01Base: t.x01Base || null };
 }
-
-// ─────────────────────────────────────────────
-//  WDL STANDINGS PROXY (worlddartsleague.com)
-// ─────────────────────────────────────────────
-const WDL_BASE = 'https://worlddartsleague.com';
-const WDL_CACHE_MS = 5 * 60 * 1000;
-let wdlStandingsCache = { data: null, fetchedAt: 0 };
-let wdlInFlight = null; // shared promise so concurrent cold-cache callers refresh ONCE
-
-function formatWdlPlayerName(name) {
-  if (!name) return 'Unknown';
-  return name.includes('@') ? name.split('@')[0] : name;
-}
-
-async function fetchWdlJson(urlPath) {
-  const res = await fetch(WDL_BASE + urlPath, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`WDL ${urlPath} returned ${res.status}`);
-  return res.json();
-}
-
-// Run async tasks with a small concurrency cap so we don't open hundreds of
-// sockets to the upstream API at once while still parallelizing the work.
-async function mapWithConcurrency(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
-    while (true) {
-      const i = next++;
-      if (i >= items.length) break;
-      results[i] = await fn(items[i], i);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-async function buildWdlStandings() {
-  const regionalsRes = await fetchWdlJson('/api/regionals');
-  const regionals = regionalsRes.regionals || [];
-
-  // 1) Fetch every regional's league list in parallel.
-  const perRegional = await mapWithConcurrency(regionals, 5, async (reg) => {
-    const leaguesRes = await fetchWdlJson(`/api/regionals/${reg.id}/leagues`);
-    return (leaguesRes.leagues || []).map(league => ({ reg, league }));
-  });
-  const flatLeagues = perRegional.flat();
-
-  // 2) Fetch every league's standings in parallel.
-  const built = await mapWithConcurrency(flatLeagues, 6, async ({ reg, league }) => {
-    const standingsRes = await fetchWdlJson(`/api/leagues/${league.id}/standings`);
-    const top3 = (standingsRes.standings || []).slice(0, 3);
-    if (!top3.length) return null;
-    return {
-      regional: reg.name,
-      regionalFlag: reg.flag || '',
-      league: league.name,
-      tier: league.tier,
-      top3: top3.map(p => ({
-        pos: p.pos,
-        name: formatWdlPlayerName(p.playerName),
-        points: p.points,
-        played: p.played,
-        won: p.won,
-      })),
-    };
-  });
-
-  const leagues = built.filter(Boolean);
-  leagues.sort((a, b) => (a.tier - b.tier) || a.league.localeCompare(b.league));
-
-  const payload = { ok: true, leagues, updatedAt: Date.now() };
-  wdlStandingsCache = { data: payload, fetchedAt: Date.now() };
-  return payload;
-}
-
-async function fetchWdlStandings() {
-  if (wdlStandingsCache.data && Date.now() - wdlStandingsCache.fetchedAt < WDL_CACHE_MS) {
-    return wdlStandingsCache.data;
-  }
-  // Single-flight: concurrent cold-cache callers share one in-flight refresh.
-  if (wdlInFlight) return wdlInFlight;
-  wdlInFlight = buildWdlStandings().finally(() => { wdlInFlight = null; });
-  return wdlInFlight;
-}
-
-// Pre-warm slightly under the cache TTL so the ticker stays warm and visitors
-// rarely pay the cold-fetch latency. Best-effort; failures are swallowed.
-setInterval(() => {
-  fetchWdlStandings().catch(() => {});
-}, WDL_CACHE_MS - 30 * 1000);
-
-// ─────────────────────────────────────────────
-//  LAZY-LEAGUES STANDINGS PROXY (lazy-leagues.web.app)
-// ─────────────────────────────────────────────
-// Lazy Leagues is a Firebase (Firestore) web app. Division tables are computed
-// client-side from the `users` collection. Current score fields:
-//   league (0-11), firstName, lastName, totalPoints, averagePPG, gamesPlayed,
-//   rollingAverage, ppgHistory[] (legacy fallback).
-// Division names below mirror the site's leagueNames array. Firestore rules
-// require an authenticated session, so the proxy signs in via the Firebase
-// Auth REST API (email/password) to obtain an ID token. Credentials come from
-// env vars LAZY_LEAGUES_EMAIL / LAZY_LEAGUES_PASSWORD, else from a local
-// (gitignored) lazy-credentials.json; LAZY_LEAGUES_TOKEN overrides sign-in.
-const LAZY_PROJECT = 'lazy-leagues';
-const LAZY_API_KEY = 'AIzaSyCPn78FhyBpelCjwlD7yf3g8Y8D5mwuxfM';
-const LAZY_FS_BASE = `https://firestore.googleapis.com/v1/projects/${LAZY_PROJECT}/databases/(default)/documents`;
-const LAZY_CACHE_MS = 5 * 60 * 1000;
-const LAZY_DIVISIONS = [
-  'Premier League', 'Champs League', 'The Bridge',
-  'Gold One', 'Gold Two', 'Gold Three',
-  'Silver One', 'Silver Two', 'Silver Three',
-  'Bronze One', 'Bronze Two', 'Pending League',
-];
-let lazyStandingsCache = { data: null, fetchedAt: 0 };
-let lazyInFlight = null;
-let lazyAuth = { idToken: '', refreshToken: '', expiresAt: 0 };
-
-function loadLazyCredentials() {
-  let email = process.env.LAZY_LEAGUES_EMAIL || '';
-  let password = process.env.LAZY_LEAGUES_PASSWORD || '';
-  if (!email || !password) {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'lazy-credentials.json'), 'utf8'));
-      email = email || cfg.email || '';
-      password = password || cfg.password || '';
-    } catch { /* no local credentials file — fall through */ }
-  }
-  return { email, password };
-}
-
-async function lazySignIn() {
-  const { email, password } = loadLazyCredentials();
-  if (!email || !password) throw new Error('no Lazy-Leagues credentials configured');
-  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${LAZY_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, returnSecureToken: true }),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(`Lazy sign-in failed: ${json.error?.message || res.status}`);
-  lazyAuth = {
-    idToken: json.idToken,
-    refreshToken: json.refreshToken,
-    expiresAt: Date.now() + (Number(json.expiresIn || 3600) - 60) * 1000,
-  };
-  return lazyAuth.idToken;
-}
-
-async function lazyRefreshToken() {
-  if (!lazyAuth.refreshToken) return lazySignIn();
-  const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${LAZY_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(lazyAuth.refreshToken)}`,
-  });
-  const json = await res.json();
-  if (!res.ok) return lazySignIn();
-  lazyAuth = {
-    idToken: json.id_token,
-    refreshToken: json.refresh_token || lazyAuth.refreshToken,
-    expiresAt: Date.now() + (Number(json.expires_in || 3600) - 60) * 1000,
-  };
-  return lazyAuth.idToken;
-}
-
-async function getLazyToken() {
-  if (process.env.LAZY_LEAGUES_TOKEN) return process.env.LAZY_LEAGUES_TOKEN;
-  if (lazyAuth.idToken && Date.now() < lazyAuth.expiresAt) return lazyAuth.idToken;
-  if (lazyAuth.refreshToken) return lazyRefreshToken();
-  return lazySignIn();
-}
-
-function lazyFieldNumber(f) {
-  if (!f) return 0;
-  if (f.integerValue !== undefined) return Number(f.integerValue);
-  if (f.doubleValue !== undefined) return Number(f.doubleValue);
-  return 0;
-}
-
-function lazyParseUser(fields) {
-  const f = fields || {};
-  const first = f.firstName?.stringValue || '';
-  const last = f.lastName?.stringValue || '';
-  const name = `${first} ${last}`.trim() || (f.displayName?.stringValue || 'Unknown');
-  const league = f.league?.integerValue !== undefined ? Number(f.league.integerValue)
-    : (f.league?.doubleValue !== undefined ? Number(f.league.doubleValue) : null);
-
-  // Prefer current aggregate fields; fall back to legacy ppgHistory[].
-  const hist = f.ppgHistory?.arrayValue?.values || [];
-  const histPoints = hist.reduce((a, v) => a + lazyFieldNumber(v), 0);
-  const histMatches = hist.length;
-  const histAvg = histMatches ? +(histPoints / histMatches).toFixed(1) : 0;
-
-  const gamesPlayed = lazyFieldNumber(f.gamesPlayed) || histMatches;
-  const totalPoints = lazyFieldNumber(f.totalPoints) || histPoints;
-  let averagePPG = lazyFieldNumber(f.averagePPG);
-  if (!averagePPG && histAvg) averagePPG = histAvg;
-  if (!averagePPG && gamesPlayed > 0 && totalPoints > 0) {
-    averagePPG = +(totalPoints / gamesPlayed).toFixed(1);
-  }
-  const rollingAverage = lazyFieldNumber(f.rollingAverage);
-
-  return {
-    name,
-    league,
-    matches: gamesPlayed,
-    points: totalPoints,
-    avg: averagePPG || rollingAverage || 0,
-    rollingAverage,
-    isMember: f.isMember?.booleanValue === true,
-  };
-}
-
-async function fetchLazyUsers(token) {
-  const headers = { Accept: 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const users = [];
-  let pageToken = '';
-  do {
-    const url = `${LAZY_FS_BASE}/users?key=${LAZY_API_KEY}&pageSize=300`
-      + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
-    const res = await fetch(url, { headers });
-    if (res.status === 401 || res.status === 403) {
-      const err = new Error(`Lazy users auth ${res.status}`);
-      err.authError = true;
-      throw err;
-    }
-    if (!res.ok) throw new Error(`Lazy users returned ${res.status}`);
-    const json = await res.json();
-    for (const doc of json.documents || []) users.push(lazyParseUser(doc.fields));
-    pageToken = json.nextPageToken || '';
-  } while (pageToken);
-  return users;
-}
-
-async function buildLazyStandings() {
-  let users;
-  try {
-    users = await fetchLazyUsers(await getLazyToken());
-  } catch (err) {
-    if (!err.authError) throw err;
-    // Force a fresh sign-in once if the cached token was rejected.
-    lazyAuth = { idToken: '', refreshToken: '', expiresAt: 0 };
-    users = await fetchLazyUsers(await lazySignIn());
-  }
-
-  const divisions = [];
-  LAZY_DIVISIONS.forEach((division, leagueIndex) => {
-    // Pending League (11) is a queue, not a ranked table — skip on the ticker.
-    if (leagueIndex === 11) return;
-    const top2 = users
-      .filter(u => u.league === leagueIndex && u.matches > 0 && (u.avg > 0 || u.points > 0))
-      .sort((a, b) => (b.avg - a.avg) || (b.points - a.points) || a.name.localeCompare(b.name))
-      .slice(0, 2)
-      .map((u, i) => ({
-        pos: i + 1,
-        name: u.name,
-        points: u.points,
-        avg: u.avg,
-        matches: u.matches,
-      }));
-    if (top2.length) divisions.push({ division, leagueIndex, top2 });
-  });
-
-  const payload = { ok: true, divisions, updatedAt: Date.now() };
-  lazyStandingsCache = { data: payload, fetchedAt: Date.now() };
-  return payload;
-}
-
-async function fetchLazyStandings() {
-  if (lazyStandingsCache.data && Date.now() - lazyStandingsCache.fetchedAt < LAZY_CACHE_MS) {
-    return lazyStandingsCache.data;
-  }
-  if (lazyInFlight) return lazyInFlight;
-  lazyInFlight = buildLazyStandings().finally(() => { lazyInFlight = null; });
-  return lazyInFlight;
-}
-
-// Keep Lazy cache warm the same way as WDL (best-effort).
-setInterval(() => {
-  fetchLazyStandings().catch(() => {});
-}, LAZY_CACHE_MS - 30 * 1000);
 
 // ─────────────────────────────────────────────
 //  EXPRESS
@@ -3953,6 +5094,7 @@ app.use(helmet({
       styleSrcElem: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:'],
+      mediaSrc: ["'self'", 'blob:'],
       connectSrc: ["'self'", 'ws:', 'wss:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -3965,6 +5107,7 @@ app.use(helmet({
 
 // gzip responses (HTML/CSS/JS/JSON) before they hit the wire.
 app.use(compression());
+app.use(express.json({ limit: '16kb' }));
 
 // Health check for uptime monitors / load balancers. Cheap + never cached.
 app.get('/healthz', (req, res) => {
@@ -3993,21 +5136,563 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
-app.get('/api/wdl-standings', async (req, res) => {
+// ─── AI commentary (Groq text → Deepgram Aura TTS; dual optional) ───
+const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
+const DEEPGRAM_API_KEY = (process.env.DEEPGRAM_API_KEY || '').trim();
+let groqClient = null;
+
+function getGroqClient() {
+  if (!GROQ_API_KEY) return null;
+  if (!groqClient) groqClient = new Groq({ apiKey: GROQ_API_KEY });
+  return groqClient;
+}
+
+function commentaryConfigured() {
+  return !!(GROQ_API_KEY && DEEPGRAM_API_KEY);
+}
+
+/** Keep each speaker line short for TTS latency / cost. */
+function clampCommentaryWords(text, maxWords = 12) {
+  const cleaned = String(text || '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+  const words = cleaned.split(' ');
+  return words.length <= maxWords ? cleaned : words.slice(0, maxWords).join(' ');
+}
+
+function parseDualCommentaryJson(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) text = fenced[1].trim();
   try {
-    res.json(await fetchWdlStandings());
+    const parsed = JSON.parse(text);
+    const speaker1 = clampCommentaryWords(parsed?.speaker1, 10);
+    const speaker2 = clampCommentaryWords(parsed?.speaker2, 10);
+    if (!speaker1 || !speaker2) return null;
+    return { speaker1, speaker2 };
+  } catch {
+    return null;
+  }
+}
+
+async function synthesizeDeepgramSpeech(text, model, opts = {}) {
+  const models = Array.isArray(model)
+    ? model.filter(Boolean)
+    : [model].filter(Boolean);
+  if (!models.length) {
+    const err = new Error('Deepgram TTS failed: no voice model');
+    err.status = 400;
+    throw err;
+  }
+
+  const speedRaw = Number(opts.speed);
+  const speed = Number.isFinite(speedRaw)
+    ? Math.min(1.5, Math.max(0.7, speedRaw))
+    : null;
+
+  let lastErr = null;
+  for (const m of models) {
+    const params = new URLSearchParams({
+      model: m,
+      encoding: 'mp3',
+    });
+    if (speed != null) params.set('speed', String(speed));
+    const url = `https://api.deepgram.com/v1/speak?${params.toString()}`;
+    // Deepgram API keys use "Token", not "Bearer" (Bearer is only for short-lived JWTs).
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${DEEPGRAM_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: String(text) }),
+    });
+    if (upstream.ok) {
+      if (m !== models[0]) {
+        log('info', `Deepgram TTS fell back to model ${m}`);
+      }
+      return Buffer.from(await upstream.arrayBuffer());
+    }
+    const detail = await upstream.text().catch(() => '');
+    lastErr = new Error(`Deepgram TTS failed (${upstream.status}): ${detail.slice(0, 200)}`);
+    lastErr.status = upstream.status;
+    // Try next fallback on bad/unknown model; otherwise stop.
+    if (upstream.status !== 400 && upstream.status !== 404) break;
+  }
+  throw lastErr || new Error('Deepgram TTS failed');
+}
+
+function resolveDualSpeakers(body = {}) {
+  const raw1 = typeof body.speaker1Id === 'string' ? body.speaker1Id.trim().toLowerCase() : '';
+  const raw2 = typeof body.speaker2Id === 'string' ? body.speaker2Id.trim().toLowerCase() : '';
+  const id1 = raw1 || PERSONALITIES.DUAL.defaultSpeaker1;
+  const id2 = raw2 || PERSONALITIES.DUAL.defaultSpeaker2;
+  const speaker1 = PERSONALITIES.getSpeaker(id1);
+  const speaker2 = PERSONALITIES.getSpeaker(id2);
+  if (!speaker1 || !speaker2) return null;
+  if (speaker1.id === speaker2.id) return null;
+  return { speaker1, speaker2 };
+}
+
+function resolveRequestLocale(body = {}) {
+  const raw = typeof body.locale === 'string'
+    ? body.locale
+    : (typeof body.accent === 'string' ? body.accent : PERSONALITIES.DEFAULT_LOCALE);
+  return PERSONALITIES.getLocale(raw);
+}
+
+function normalizeIntroGameType(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '501';
+  const n = parseInt(s, 10);
+  if (Number.isFinite(n) && n >= 101 && n <= 1001) return String(n);
+  if (/^x01$/i.test(s)) return '501';
+  return s.slice(0, 40);
+}
+
+function clampIntroWords(text, maxWords = 25) {
+  const cleaned = String(text || '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+  const words = cleaned.split(' ');
+  return words.length <= maxWords ? cleaned : words.slice(0, maxWords).join(' ');
+}
+
+function clampRefWords(text, maxWords = 6) {
+  return clampCommentaryWords(text, maxWords);
+}
+
+/** Spoken English for dart visit totals (0–180) — clear Ref Russ callouts. */
+function scoreToSpokenWords(n) {
+  const num = Math.round(Number(n));
+  if (!Number.isFinite(num) || num < 0) return '';
+  if (num === 0) return 'ZERO';
+  if (num === 180) return 'ONE HUNDRED AND EIGHTY';
+
+  const ones = [
+    '', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+    'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN',
+    'SEVENTEEN', 'EIGHTEEN', 'NINETEEN',
+  ];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+
+  const under100 = (v) => {
+    if (v < 20) return ones[v];
+    const t = Math.floor(v / 10);
+    const o = v % 10;
+    return o ? `${tens[t]}-${ones[o]}` : tens[t];
+  };
+
+  if (num < 100) return under100(num);
+  if (num < 200) {
+    const rest = num - 100;
+    return rest ? `ONE HUNDRED AND ${under100(rest)}` : 'ONE HUNDRED';
+  }
+  return String(num);
+}
+
+/** Deterministic Ref Russ callouts — preferred for correct English scoring. */
+function fallbackRefCallout({ score, bust, matchWon, legWon } = {}) {
+  if (bust) return 'BUST!';
+  if (matchWon) return 'GAME SHOT AND THE MATCH!';
+  if (legWon) return 'GAME SHOT!';
+  const n = Number(score);
+  if (n === 180) return 'ONE HUNDRED AND EIGHTY!';
+  if (Number.isFinite(n)) {
+    const spoken = scoreToSpokenWords(n);
+    return spoken ? `${spoken}!` : `${Math.round(n)}!`;
+  }
+  return '';
+}
+
+function energizeRefLine(line) {
+  const cleaned = String(line || '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+  const upper = cleaned.toUpperCase();
+  return /[!?]$/.test(upper) ? upper : `${upper}!`;
+}
+
+/** True when Groq's ref line is safe to speak (matches the visit facts). */
+function isValidRefCallout(line, { score, bust, matchWon, legWon } = {}) {
+  const upper = String(line || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!upper) return false;
+  if (bust) return /\bBUST\b/.test(upper);
+  if (matchWon) return /GAME SHOT/.test(upper) && /\bMATCH\b/.test(upper);
+  if (legWon) return /GAME SHOT/.test(upper) && !/\bMATCH\b/.test(upper);
+  const n = Math.round(Number(score));
+  if (!Number.isFinite(n)) return false;
+  if (n === 180) return /ONE HUNDRED AND EIGHTY|HUNDRED AND EIGHTY|\b180\b/.test(upper);
+  // Reject clearly wrong invented totals (e.g. calling 26 as SIXTY).
+  const expected = scoreToSpokenWords(n).replace(/-/g, ' ');
+  const compact = upper.replace(/-/g, ' ');
+  if (expected && compact.includes(expected)) return true;
+  if (new RegExp(`\\b${n}\\b`).test(compact)) return true;
+  return false;
+}
+
+app.get('/api/personalities', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    configured: commentaryConfigured(),
+    deepgram: !!DEEPGRAM_API_KEY,
+    personalities: PERSONALITIES.listPersonalities(),
+    speakers: PERSONALITIES.listSpeakers(),
+    locales: PERSONALITIES.listLocales(),
+    defaultLocale: PERSONALITIES.DEFAULT_LOCALE,
+    refAnnouncer: {
+      id: PERSONALITIES.REF_ANNOUNCER.id,
+      name: PERSONALITIES.REF_ANNOUNCER.name,
+      voice: PERSONALITIES.REF_ANNOUNCER.voice,
+    },
+    introAnnouncer: {
+      id: PERSONALITIES.INTRO_ANNOUNCER.id,
+      name: PERSONALITIES.INTRO_ANNOUNCER.name,
+      voice: PERSONALITIES.INTRO_ANNOUNCER.voice,
+    },
+  });
+});
+
+app.get('/api/commentary-status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    configured: commentaryConfigured(),
+    groq: !!GROQ_API_KEY,
+    deepgram: !!DEEPGRAM_API_KEY,
+    personalities: PERSONALITIES.listPersonalities().map((p) => p.id),
+    speakers: PERSONALITIES.listSpeakers().map((s) => s.id),
+    locales: PERSONALITIES.listLocales().map((l) => l.id),
+    introVoice: PERSONALITIES.INTRO_ANNOUNCER.voice,
+    refVoice: PERSONALITIES.REF_ANNOUNCER.voice,
+  });
+});
+
+/**
+ * Thunderous Tom match intro (Groq → Deepgram Helios).
+ * Accepts POST { player1, player2, gameType, locale? } for generated intros,
+ * or { text, locale? } for walk-on / name-call TTS only.
+ */
+app.post('/api/match-intro', async (req, res) => {
+  try {
+    if (!DEEPGRAM_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Intro announcer is not configured (set DEEPGRAM_API_KEY).',
+      });
+    }
+
+    const locale = resolveRequestLocale(req.body);
+    const voices = PERSONALITIES.resolveIntroVoiceFallbacks();
+    let text = String(req.body?.text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 320);
+
+    const player1 = typeof req.body?.player1 === 'string' ? req.body.player1.trim().slice(0, 40) : '';
+    const player2 = typeof req.body?.player2 === 'string' ? req.body.player2.trim().slice(0, 40) : '';
+    const gameType = normalizeIntroGameType(req.body?.gameType || req.body?.game);
+      const fallbackIntro = player1 && player2
+      ? `LADIES AND GENTLEMEN... ${String(player1).toUpperCase()} versus ${String(player2).toUpperCase()}... IIIIIT'S ${String(gameType).toUpperCase()} TIME!`
+      : '';
+
+    if (!text && player1 && player2) {
+      const groq = getGroqClient();
+      if (groq) {
+        try {
+          const completion = await groq.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            temperature: 0.95,
+            max_tokens: 80,
+            messages: [
+              {
+                role: 'system',
+                content: PERSONALITIES.getIntroSystemPrompt(locale.id),
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({ player1, player2, gameType }),
+              },
+            ],
+          });
+          text = clampIntroWords(completion?.choices?.[0]?.message?.content || '', 30);
+        } catch (err) {
+          log('warn', 'Thunderous Tom Groq failed, using fallback line:', err.message);
+        }
+      }
+      if (!text) text = fallbackIntro;
+    }
+
+    if (!text) return res.status(400).json({ ok: false, error: 'Missing text or players.' });
+
+    const buf = await synthesizeDeepgramSpeech(text, voices, {
+      speed: PERSONALITIES.INTRO_ANNOUNCER.speed,
+    });
+    if (!buf.length) {
+      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('X-Intro-Voice', voices[0] || PERSONALITIES.INTRO_ANNOUNCER.voice);
+    res.setHeader('X-Intro-Text', encodeURIComponent(text));
+    res.setHeader('X-Intro-Locale', locale.id);
+    res.send(buf);
   } catch (err) {
-    log('error', 'WDL standings fetch failed:', err.message);
-    res.status(502).json({ ok: false, error: 'Could not load WDL standings right now.' });
+    log('error', 'Match intro TTS failed:', err.message);
+    res.status(502).json({ ok: false, error: 'Intro voice unavailable.' });
   }
 });
 
-app.get('/api/lazy-standings', async (req, res) => {
+/**
+ * Ref Russ score callouts (Groq → Deepgram Perseus / locale voice).
+ * POST { score, bust?, matchWon?, legWon?, locale? }
+ */
+app.post('/api/ref-announce', async (req, res) => {
   try {
-    res.json(await fetchLazyStandings());
+    const scoreNum = Number(req.body?.score);
+    const bust = req.body?.bust === true || req.body?.bust === 'true' || req.body?.bust === 1
+      || /^bust$/i.test(String(req.body?.display || ''));
+    const matchWon = req.body?.matchWon === true || req.body?.matchWon === 'true' || req.body?.matchWon === 1;
+    const legWon = req.body?.legWon === true || req.body?.legWon === 'true' || req.body?.legWon === 1;
+    const locale = resolveRequestLocale(req.body);
+    const voices = PERSONALITIES.resolveRefVoiceFallbacks(locale.id);
+
+    if (!bust && !matchWon && !legWon && !Number.isFinite(scoreNum)) {
+      return res.status(400).json({ ok: false, error: 'Invalid score.' });
+    }
+    if (!DEEPGRAM_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Ref announcer is not configured (set DEEPGRAM_API_KEY).',
+      });
+    }
+
+    const score = Number.isFinite(scoreNum) ? Math.round(scoreNum) : 0;
+    // English locales: deterministic spoken totals so Ref Russ never invents a wrong score.
+    // Non-English: Groq may translate, but only if the callout validates against the facts.
+    const preferDeterministic = !locale?.language || locale.language === 'en';
+    let line = preferDeterministic ? fallbackRefCallout({ score, bust, matchWon, legWon }) : '';
+    if (!preferDeterministic) {
+      const groq = getGroqClient();
+      if (groq) {
+        try {
+          const completion = await groq.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            temperature: 0.1,
+            max_tokens: 24,
+            messages: [
+              {
+                role: 'system',
+                content: PERSONALITIES.getRefSystemPrompt(locale.id),
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  score,
+                  bust,
+                  matchWon,
+                  legWon,
+                }),
+              },
+            ],
+          });
+          const candidate = clampRefWords(completion?.choices?.[0]?.message?.content || '', 6);
+          if (isValidRefCallout(candidate, { score, bust, matchWon, legWon })) {
+            line = candidate;
+          }
+        } catch (err) {
+          log('warn', 'Ref Russ Groq failed, using fallback:', err.message);
+        }
+      }
+    }
+    if (!line) line = fallbackRefCallout({ score, bust, matchWon, legWon });
+    line = energizeRefLine(line);
+    if (!line) {
+      return res.status(502).json({ ok: false, error: 'Ref callout generation failed.' });
+    }
+
+    const buf = await synthesizeDeepgramSpeech(line, voices, {
+      speed: PERSONALITIES.REF_ANNOUNCER.speed,
+    });
+    if (!buf.length) {
+      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('X-Ref-Text', encodeURIComponent(line));
+    res.setHeader('X-Ref-Voice', voices[0] || PERSONALITIES.REF_ANNOUNCER.voice);
+    res.setHeader('X-Ref-Locale', locale.id);
+    res.send(buf);
   } catch (err) {
-    log('error', 'Lazy-Leagues standings fetch failed:', err.message);
-    res.status(502).json({ ok: false, error: 'Could not load Lazy-Leagues standings right now.' });
+    log('error', 'Ref announce failed:', err.message);
+    res.status(502).json({ ok: false, error: 'Ref voice unavailable.' });
+  }
+});
+
+app.post('/api/commentary', async (req, res) => {
+  try {
+    const player = typeof req.body?.player === 'string' ? req.body.player.trim().slice(0, 40) : '';
+    const personalityRaw = typeof req.body?.personality === 'string'
+      ? req.body.personality.trim().toLowerCase()
+      : '';
+    const scoreNum = Number(req.body?.score);
+    const remainingNum = Number(req.body?.remaining);
+    const turnNum = Number(req.body?.turnNumber);
+    const checkout = req.body?.checkout === true
+      || req.body?.checkout === 'true'
+      || req.body?.checkout === 1;
+    const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
+    const locale = resolveRequestLocale(req.body);
+
+    if (!player) return res.status(400).json({ ok: false, error: 'Missing player.' });
+    if (!Number.isFinite(scoreNum)) {
+      return res.status(400).json({ ok: false, error: 'Invalid score.' });
+    }
+    if (!Number.isFinite(remainingNum)) {
+      return res.status(400).json({ ok: false, error: 'Invalid remaining.' });
+    }
+
+    const groq = getGroqClient();
+    if (!groq || !DEEPGRAM_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Commentary is not configured (set GROQ_API_KEY and DEEPGRAM_API_KEY).',
+      });
+    }
+
+    const score = Math.round(scoreNum);
+    const remaining = Math.round(remainingNum);
+    const turnNumber = Number.isFinite(turnNum) && turnNum > 0 ? Math.round(turnNum) : 1;
+    const history = historyRaw
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n))
+      .slice(-5)
+      .map((n) => Math.round(n));
+    const onCheckout = checkout || (remaining > 0 && remaining <= 170);
+
+    // ── Dual team (optional): two speakers, JSON lines, parallel TTS ──
+    if (personalityRaw === PERSONALITIES.DUAL.id || personalityRaw === 'dual') {
+      const pair = resolveDualSpeakers(req.body);
+      if (!pair) {
+        return res.status(400).json({
+          ok: false,
+          error: `Pick two different speakers (${PERSONALITIES.listSpeakers().map((s) => s.id).join(', ')}).`,
+        });
+      }
+      const voice1 = PERSONALITIES.resolveSpeakerVoice(pair.speaker1, locale);
+      const voice2 = PERSONALITIES.resolveSpeakerVoice(pair.speaker2, locale);
+
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.9,
+        max_tokens: 100,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: PERSONALITIES.buildDualSystemPrompt(pair.speaker1, pair.speaker2, locale.id),
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              player,
+              score,
+              remaining,
+              turnNumber,
+              checkout: onCheckout,
+              history,
+            }),
+          },
+        ],
+      });
+
+      const dual = parseDualCommentaryJson(completion?.choices?.[0]?.message?.content || '');
+      if (!dual) {
+        log('warn', 'Groq dual commentary JSON parse failed:',
+          String(completion?.choices?.[0]?.message?.content || '').slice(0, 200));
+        return res.status(502).json({ ok: false, error: 'Commentary generation failed.' });
+      }
+
+      const [audioBuffer1, audioBuffer2] = await Promise.all([
+        synthesizeDeepgramSpeech(dual.speaker1, voice1),
+        synthesizeDeepgramSpeech(dual.speaker2, voice2),
+      ]);
+      if (!audioBuffer1.length || !audioBuffer2.length) {
+        log('warn', 'Deepgram TTS returned empty audio');
+        return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+      }
+
+      // JSON + base64 so the client can play clips sequentially (raw MP3 concat is unreliable).
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({
+        ok: true,
+        mode: 'dual',
+        speaker1: dual.speaker1,
+        speaker2: dual.speaker2,
+        voice1,
+        voice2,
+        locale: locale.id,
+        audio1: audioBuffer1.toString('base64'),
+        audio2: audioBuffer2.toString('base64'),
+      });
+    }
+
+    // ── Single personality (default path — one line, one TTS) ──
+    const pack = PERSONALITIES.getSingle(personalityRaw, locale.id);
+    if (!pack) {
+      return res.status(400).json({
+        ok: false,
+        error: `Invalid personality. Use one of: ${PERSONALITIES.listPersonalities().map((p) => p.id).join(', ')}.`,
+      });
+    }
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.9,
+      max_tokens: 40,
+      messages: [
+        { role: 'system', content: pack.systemPrompt },
+        {
+          role: 'user',
+          content:
+            `Player "${player}" just scored ${score} points and has ${remaining} remaining` +
+            (history.length ? ` (recent visits: ${history.join(', ')})` : '') +
+            (onCheckout ? ' and is on a checkout.' : '.') +
+            ' Give one short commentary line.',
+        },
+      ],
+    });
+
+    const commentary = clampCommentaryWords(completion?.choices?.[0]?.message?.content || '', 12);
+    if (!commentary) {
+      log('warn', 'Groq commentary returned empty text');
+      return res.status(502).json({ ok: false, error: 'Commentary generation failed.' });
+    }
+
+    const buf = await synthesizeDeepgramSpeech(commentary, pack.voice);
+    if (!buf.length) {
+      log('warn', 'Deepgram TTS returned empty audio');
+      return res.status(502).json({ ok: false, error: 'Voice service unavailable.' });
+    }
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('X-Commentary-Text', encodeURIComponent(commentary));
+    res.setHeader('X-Commentary-Personality', personalityRaw);
+    res.setHeader('X-Commentary-Voice', pack.voice);
+    res.setHeader('X-Commentary-Locale', locale.id);
+    res.send(buf);
+  } catch (err) {
+    log('error', 'Commentary endpoint failed:', err.message);
+    res.status(502).json({ ok: false, error: 'Commentary service unavailable.' });
   }
 });
 
@@ -4049,7 +5734,7 @@ server.listen(PORT, HOST, () => {
   backupData();
   backupTimer = setInterval(backupData, BACKUP_INTERVAL_MS);
   console.log('\n╔════════════════════════════════════════╗');
-  console.log('║   TREBLE-MAKERS FUNHOUSE — WDL         ║');
+  console.log('║   TREBLE-MAKERS ARENA                  ║');
   console.log(`║   Running at http://localhost:${PORT}      ║`);
   console.log('║                                        ║');
   if (SOFT_LAUNCH) {

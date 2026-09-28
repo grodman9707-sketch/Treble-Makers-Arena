@@ -56,7 +56,6 @@ Health check: `https://your-domain/healthz`
 
 ## Still admin-only / disabled
 
-- Under-construction games (Snakes & Ladders, Around the Clock, Killer, Shanghai, High Score)
 - Human vs human tournament bracket matches
 
 ## Opening for full launch later

@@ -26,13 +26,7 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const ASSETS = [
   'treble_arena_background.webp',
   'treblemak_crests/Treble-makers_Main_Crest.webp',
-  'wdl-images/WDL_Crest.webp',
-  'lazy-images/LazyLeagues_Crest.webp',
-  'wdl-images/WDL_American_Crest.webp',
-  'wdl-images/WDL_European_Crest.webp',
-  'wdl-images/WDL_UK_Crest.webp',
   'Golf Darts/par-3-course.webp',
-  'lazy-images/LazyLeagues_Crest.png',
   'golf_imgs/hole-1.webp',
   'golf_imgs/hole-2.webp',
   'golf_imgs/hole-3.webp',
@@ -115,12 +109,55 @@ async function build() {
     copied++;
   }
 
+  // 6) Copy walkout audio clips into public/ so Railway (and any static deploy) can serve them.
+  const WALKOUT_DIR = 'TrebleMakers_Walkout_clips';
+  let walkoutCopied = 0;
+  const walkoutFrom = path.join(ROOT, WALKOUT_DIR);
+  if (fs.existsSync(walkoutFrom)) {
+    const walkoutTo = path.join(PUBLIC_DIR, WALKOUT_DIR);
+    fs.mkdirSync(walkoutTo, { recursive: true });
+    for (const name of fs.readdirSync(walkoutFrom)) {
+      if (!name.toLowerCase().endsWith('.mp3')) continue;
+      fs.copyFileSync(path.join(walkoutFrom, name), path.join(walkoutTo, name));
+      walkoutCopied++;
+    }
+  } else {
+    console.warn(`  ! missing walkout clips folder: ${WALKOUT_DIR}`);
+  }
+
+  // 7) Copy arena SFX (boxing bell, match-intro segments, name/nickname calls).
+  const SFX_DIR = 'sfx';
+  let sfxCopied = 0;
+  const sfxFrom = path.join(ROOT, SFX_DIR);
+  if (fs.existsSync(sfxFrom)) {
+    const sfxTo = path.join(PUBLIC_DIR, SFX_DIR);
+    const copySfxTree = (fromDir, toDir) => {
+      fs.mkdirSync(toDir, { recursive: true });
+      for (const name of fs.readdirSync(fromDir)) {
+        const from = path.join(fromDir, name);
+        const to = path.join(toDir, name);
+        if (fs.statSync(from).isDirectory()) {
+          copySfxTree(from, to);
+          continue;
+        }
+        if (!/\.(mp3|json)$/i.test(name)) continue;
+        fs.copyFileSync(from, to);
+        sfxCopied++;
+      }
+    };
+    copySfxTree(sfxFrom, sfxTo);
+  } else {
+    console.warn(`  ! missing sfx folder: ${SFX_DIR}`);
+  }
+
   const kb = (p) => (fs.statSync(p).size / 1024).toFixed(1);
   console.log('Build complete -> public/');
   console.log(`  index.html : ${kb(path.join(PUBLIC_DIR, 'index.html'))} KB`);
   console.log(`  app.css    : ${kb(path.join(PUBLIC_DIR, 'app.css'))} KB (minified)`);
   console.log(`  app.js     : ${kb(path.join(PUBLIC_DIR, 'app.js'))} KB (minified)`);
   console.log(`  assets     : ${copied} copied${missing ? `, ${missing} MISSING` : ''}`);
+  console.log(`  walkouts   : ${walkoutCopied} mp3 copied`);
+  console.log(`  sfx        : ${sfxCopied} mp3 copied`);
 }
 
 build().catch((err) => { console.error(err); process.exit(1); });

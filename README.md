@@ -1,8 +1,6 @@
 # Treble-Makers Arena
 
-A World Darts League (WDL) darts arena web app. Players authenticate, create or join live matches (human, bot, or tournament brackets) with optional webcam feeds, and play X01, Cricket, Tactics, Halve-It, Shanghai, Golf Darts, Golf Checkouts, Football, Snakes & Ladders, Around the Clock, Killer, and High Score.
-
-The landing page also shows live **WDL** and **Lazy Leagues** division standings via server-side proxies.
+A darts arena web app. Players authenticate, create or join live matches (human, bot, or tournament brackets) with optional webcam feeds, and play X01, Cricket, Tactics, Halve-It, Golf Darts, Golf Checkouts, and Football.
 
 ## Architecture
 
@@ -74,8 +72,6 @@ npm run build   # copy new WebP into public/
 
 - `treble_arena_background.png` → `treble_arena_background.webp`
 - `treblemak_crests/_originals/` → `remove-crest-bg.js` → `Treble-makers_Main_Crest.png` → WebP
-- `wdl-images/_originals/` → same pipeline for WDL crests
-- `lazy-images/_originals/` + `LazyLeagues_Crest_metal.png` → Lazy Leagues partner crest
 - `Golf Darts/par-3-course.png` → WebP
 - `golf_imgs/Hole N.png` → `trim-golf-courses.js` → `hole-N.webp`
 
@@ -111,11 +107,6 @@ Copy `.env.example` → `.env` and adjust. The server loads `.env` automatically
 | `EMAIL_FROM` | — | Verified Resend sender, e.g. `Treble-Makers <noreply@yourdomain.com>` |
 | `APP_URL` | — | Public base URL for reset links (no trailing slash) |
 | `PASSWORD_RESET_TTL_MS` | 1 hour | Password-reset token lifetime |
-| `LAZY_LEAGUES_EMAIL` | — | Lazy Leagues Firebase sign-in (optional) |
-| `LAZY_LEAGUES_PASSWORD` | — | Lazy Leagues Firebase sign-in (optional) |
-| `LAZY_LEAGUES_TOKEN` | — | Pre-made Firebase ID token (overrides above) |
-
-If Lazy Leagues credentials are missing, `/api/lazy-standings` returns 502 gracefully; the rest of the app works normally. A local `lazy-credentials.json` (gitignored) is also supported as a dev fallback.
 
 ## Backups
 
@@ -153,6 +144,8 @@ On first run (when `data.json` does not exist), an admin is seeded:
 - **Username:** `ADMIN_USERNAME` (default `GViking01`)
 - **Password:** `ADMIN_PASSWORD` from env, or a random one-time password printed in the server log
 
+That seeded account is the **arena owner**. Only the owner sees the **Owner Desk** tab (site stats, and granting or removing admin status). A player sees the **Admin** tab only while they hold admin status. Admins can create tournaments, change arena access, and remove player accounts. They cannot grant admin status, and they cannot remove the owner or another admin.
+
 **Change this password after first login.** Sessions use opaque tokens (passwords are never stored in the browser). Do not expose port 3000 without TLS in production.
 
 ## Project layout
@@ -170,8 +163,6 @@ public/             Generated client bundle (gitignored)
 backups/            Timestamped data.json snapshots (gitignored)
 docs/               Game rules reference
 treblemak_crests/   Main crest source art + _originals/
-wdl-images/         WDL crest source art + _originals/
-lazy-images/        Lazy Leagues partner crest art + _originals/
 golf_imgs/          Golf Checkouts hole source PNGs + WebP output
 Golf Darts/         Golf Darts course illustration source
 ```

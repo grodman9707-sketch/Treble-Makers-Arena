@@ -1,0 +1,1852 @@
+{
+  "version": 1,
+  "assetVer": "bruce-calls1",
+  "dir": "sfx/match_intro_calls",
+  "insertAfter": {
+    "player1Lead": "sfx/match_intro_open_lead.mp3",
+    "player2Lead": "sfx/match_intro_enter_lead.mp3",
+    "close": "sfx/match_intro_close.mp3"
+  },
+  "sequence": [
+    "boxing_bell",
+    "match_intro_open_lead",
+    "player1_name_and_or_nickname",
+    "player1_walkout",
+    "match_intro_enter_lead",
+    "player2_name_and_or_nickname",
+    "player2_walkout",
+    "match_intro_close"
+  ],
+  "packs": {
+    "male": {
+      "nicknames": [
+        {
+          "id": "male_nickname_viking",
+          "label": "Viking",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/viking.mp3",
+          "start": 0.58,
+          "end": 1.29
+        },
+        {
+          "id": "male_nickname_the_hammer",
+          "label": "The Hammer",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_hammer.mp3",
+          "start": 1.3,
+          "end": 2.04
+        },
+        {
+          "id": "male_nickname_the_machine",
+          "label": "The Machine",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_machine.mp3",
+          "start": 2.05,
+          "end": 2.91
+        },
+        {
+          "id": "male_nickname_the_assassin",
+          "label": "The Assassin",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_assassin.mp3",
+          "start": 2.92,
+          "end": 3.934
+        },
+        {
+          "id": "male_nickname_the_natural",
+          "label": "The Natural",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_natural.mp3",
+          "start": 3.944,
+          "end": 4.77
+        },
+        {
+          "id": "male_nickname_the_beast",
+          "label": "The Beast",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_beast.mp3",
+          "start": 4.78,
+          "end": 5.52
+        },
+        {
+          "id": "male_nickname_the_bull",
+          "label": "The Bull",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_bull.mp3",
+          "start": 5.53,
+          "end": 6.24
+        },
+        {
+          "id": "male_nickname_the_tiger",
+          "label": "The Tiger",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_tiger.mp3",
+          "start": 6.25,
+          "end": 7.11
+        },
+        {
+          "id": "male_nickname_the_rocket",
+          "label": "The Rocket",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_rocket.mp3",
+          "start": 7.12,
+          "end": 8.04
+        },
+        {
+          "id": "male_nickname_the_cobra",
+          "label": "The Cobra",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_cobra.mp3",
+          "start": 8.05,
+          "end": 8.92
+        },
+        {
+          "id": "male_nickname_the_viper",
+          "label": "The Viper",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_viper.mp3",
+          "start": 8.92,
+          "end": 9.84
+        },
+        {
+          "id": "male_nickname_the_dragon",
+          "label": "The Dragon",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_dragon.mp3",
+          "start": 9.85,
+          "end": 10.87
+        },
+        {
+          "id": "male_nickname_the_wolf",
+          "label": "The Wolf",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_wolf.mp3",
+          "start": 11.085,
+          "end": 11.58
+        },
+        {
+          "id": "male_nickname_the_lion",
+          "label": "The Lion",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_lion.mp3",
+          "start": 11.59,
+          "end": 12.36
+        },
+        {
+          "id": "male_nickname_the_eagle",
+          "label": "The Eagle",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_eagle.mp3",
+          "start": 12.37,
+          "end": 13.17
+        },
+        {
+          "id": "male_nickname_the_falcon",
+          "label": "The Falcon",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_falcon.mp3",
+          "start": 13.18,
+          "end": 14.075
+        },
+        {
+          "id": "male_nickname_the_ghost",
+          "label": "The Ghost",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_ghost.mp3",
+          "start": 14.085,
+          "end": 14.779
+        },
+        {
+          "id": "male_nickname_the_phantom",
+          "label": "The Phantom",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_phantom.mp3",
+          "start": 14.789,
+          "end": 15.6
+        },
+        {
+          "id": "male_nickname_the_reaper",
+          "label": "The Reaper",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_reaper.mp3",
+          "start": 15.61,
+          "end": 16.32
+        },
+        {
+          "id": "male_nickname_the_juggernaut",
+          "label": "The Juggernaut",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_juggernaut.mp3",
+          "start": 16.33,
+          "end": 17.38
+        },
+        {
+          "id": "male_nickname_the_titan",
+          "label": "The Titan",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_titan.mp3",
+          "start": 17.62,
+          "end": 18.125
+        },
+        {
+          "id": "male_nickname_the_warrior",
+          "label": "The Warrior",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_warrior.mp3",
+          "start": 18.135,
+          "end": 18.93
+        },
+        {
+          "id": "male_nickname_the_gladiator",
+          "label": "The Gladiator",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_gladiator.mp3",
+          "start": 18.94,
+          "end": 20.08
+        },
+        {
+          "id": "male_nickname_the_enforcer",
+          "label": "The Enforcer",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_enforcer.mp3",
+          "start": 20.14,
+          "end": 21.03
+        },
+        {
+          "id": "male_nickname_the_outlaw",
+          "label": "The Outlaw",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_outlaw.mp3",
+          "start": 21.04,
+          "end": 21.99
+        },
+        {
+          "id": "male_nickname_the_maverick",
+          "label": "The Maverick",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_maverick.mp3",
+          "start": 22.0,
+          "end": 22.95
+        },
+        {
+          "id": "male_nickname_the_prodigy",
+          "label": "The Prodigy",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_prodigy.mp3",
+          "start": 22.96,
+          "end": 23.97
+        },
+        {
+          "id": "male_nickname_the_legend",
+          "label": "The Legend",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_legend.mp3",
+          "start": 23.98,
+          "end": 24.991
+        },
+        {
+          "id": "male_nickname_the_icon",
+          "label": "The Icon",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_icon.mp3",
+          "start": 25.001,
+          "end": 26.04
+        },
+        {
+          "id": "male_nickname_the_showman",
+          "label": "The Showman",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_showman.mp3",
+          "start": 26.05,
+          "end": 26.94
+        },
+        {
+          "id": "male_nickname_the_marksman",
+          "label": "The Marksman",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_marksman.mp3",
+          "start": 26.95,
+          "end": 28.02
+        },
+        {
+          "id": "male_nickname_the_sharpshooter",
+          "label": "The Sharpshooter",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_sharpshooter.mp3",
+          "start": 28.03,
+          "end": 29.22
+        },
+        {
+          "id": "male_nickname_the_sniper",
+          "label": "The Sniper",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_sniper.mp3",
+          "start": 29.23,
+          "end": 30.21
+        },
+        {
+          "id": "male_nickname_the_surgeon",
+          "label": "The Surgeon",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_surgeon.mp3",
+          "start": 30.22,
+          "end": 31.17
+        },
+        {
+          "id": "male_nickname_the_technician",
+          "label": "The Technician",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_technician.mp3",
+          "start": 31.18,
+          "end": 32.31
+        },
+        {
+          "id": "male_nickname_the_finisher",
+          "label": "The Finisher",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_finisher.mp3",
+          "start": 32.32,
+          "end": 33.3
+        },
+        {
+          "id": "male_nickname_the_flash",
+          "label": "The Flash",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_flash.mp3",
+          "start": 33.31,
+          "end": 34.2
+        },
+        {
+          "id": "male_nickname_the_cyclone",
+          "label": "The Cyclone",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_cyclone.mp3",
+          "start": 34.21,
+          "end": 35.38
+        },
+        {
+          "id": "male_nickname_the_storm",
+          "label": "The Storm",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_storm.mp3",
+          "start": 35.704,
+          "end": 36.24
+        },
+        {
+          "id": "male_nickname_the_hurricane",
+          "label": "The Hurricane",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_hurricane.mp3",
+          "start": 36.25,
+          "end": 37.38
+        },
+        {
+          "id": "male_nickname_the_thunder",
+          "label": "The Thunder",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_thunder.mp3",
+          "start": 37.39,
+          "end": 38.25
+        },
+        {
+          "id": "male_nickname_the_lightning",
+          "label": "The Lightning",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_lightning.mp3",
+          "start": 38.26,
+          "end": 39.33
+        },
+        {
+          "id": "male_nickname_the_blizzard",
+          "label": "The Blizzard",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_blizzard.mp3",
+          "start": 39.34,
+          "end": 40.29
+        },
+        {
+          "id": "male_nickname_the_iceman",
+          "label": "The Iceman",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_iceman.mp3",
+          "start": 40.3,
+          "end": 41.4
+        },
+        {
+          "id": "male_nickname_the_heat",
+          "label": "The Heat",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_heat.mp3",
+          "start": 41.55,
+          "end": 42.059
+        },
+        {
+          "id": "male_nickname_the_fireball",
+          "label": "The Fireball",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_fireball.mp3",
+          "start": 42.069,
+          "end": 43.29
+        },
+        {
+          "id": "male_nickname_the_wild_card",
+          "label": "The Wild Card",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_wild_card.mp3",
+          "start": 43.3,
+          "end": 44.67
+        },
+        {
+          "id": "male_nickname_the_ace",
+          "label": "The Ace",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_ace.mp3",
+          "start": 44.68,
+          "end": 45.36
+        },
+        {
+          "id": "male_nickname_the_king",
+          "label": "The King",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_king.mp3",
+          "start": 45.37,
+          "end": 46.32
+        },
+        {
+          "id": "male_nickname_the_duke",
+          "label": "The Duke",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_duke.mp3",
+          "start": 46.33,
+          "end": 47.2
+        },
+        {
+          "id": "male_nickname_the_captain",
+          "label": "The Captain",
+          "kind": "nickname",
+          "gender": "male",
+          "file": "male/the_captain.mp3",
+          "start": 47.23,
+          "end": 48.39
+        }
+      ],
+      "names": [
+        {
+          "id": "male_name_jack",
+          "label": "Jack",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/jack.mp3",
+          "start": 48.4,
+          "end": 48.81
+        },
+        {
+          "id": "male_name_james",
+          "label": "James",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/james.mp3",
+          "start": 48.82,
+          "end": 49.29
+        },
+        {
+          "id": "male_name_john",
+          "label": "John",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/john.mp3",
+          "start": 49.3,
+          "end": 49.77
+        },
+        {
+          "id": "male_name_ryan",
+          "label": "Ryan",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/ryan.mp3",
+          "start": 49.78,
+          "end": 50.19
+        },
+        {
+          "id": "male_name_tyler",
+          "label": "Tyler",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/tyler.mp3",
+          "start": 50.2,
+          "end": 50.76
+        },
+        {
+          "id": "male_name_logan",
+          "label": "Logan",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/logan.mp3",
+          "start": 50.77,
+          "end": 51.24
+        },
+        {
+          "id": "male_name_mason",
+          "label": "Mason",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/mason.mp3",
+          "start": 51.25,
+          "end": 51.744
+        },
+        {
+          "id": "male_name_ethan",
+          "label": "Ethan",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/ethan.mp3",
+          "start": 51.754,
+          "end": 52.11
+        },
+        {
+          "id": "male_name_cole",
+          "label": "Cole",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/cole.mp3",
+          "start": 52.12,
+          "end": 52.471
+        },
+        {
+          "id": "male_name_dylan",
+          "label": "Dylan",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/dylan.mp3",
+          "start": 52.481,
+          "end": 52.84
+        },
+        {
+          "id": "male_name_connor",
+          "label": "Connor",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/connor.mp3",
+          "start": 52.87,
+          "end": 53.34
+        },
+        {
+          "id": "male_name_jordan",
+          "label": "Jordan",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/jordan.mp3",
+          "start": 53.35,
+          "end": 53.76
+        },
+        {
+          "id": "male_name_hunter",
+          "label": "Hunter",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/hunter.mp3",
+          "start": 53.77,
+          "end": 54.12
+        },
+        {
+          "id": "male_name_chase",
+          "label": "Chase",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/chase.mp3",
+          "start": 54.13,
+          "end": 54.58
+        },
+        {
+          "id": "male_name_blake",
+          "label": "Blake",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/blake.mp3",
+          "start": 54.88,
+          "end": 55.19
+        },
+        {
+          "id": "male_name_gavin",
+          "label": "Gavin",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/gavin.mp3",
+          "start": 55.15,
+          "end": 55.55
+        },
+        {
+          "id": "male_name_austin",
+          "label": "Austin",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/austin.mp3",
+          "start": 55.33,
+          "end": 55.74
+        },
+        {
+          "id": "male_name_brandon",
+          "label": "Brandon",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/brandon.mp3",
+          "start": 55.75,
+          "end": 56.17
+        },
+        {
+          "id": "male_name_kyle",
+          "label": "Kyle",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/kyle.mp3",
+          "start": 56.23,
+          "end": 56.67
+        },
+        {
+          "id": "male_name_justin",
+          "label": "Justin",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/justin.mp3",
+          "start": 56.68,
+          "end": 57.16
+        },
+        {
+          "id": "male_name_aaron",
+          "label": "Aaron",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/aaron.mp3",
+          "start": 57.19,
+          "end": 57.49
+        },
+        {
+          "id": "male_name_alex",
+          "label": "Alex",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/alex.mp3",
+          "start": 57.55,
+          "end": 57.9
+        },
+        {
+          "id": "male_name_ben",
+          "label": "Ben",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/ben.mp3",
+          "start": 57.91,
+          "end": 58.468
+        },
+        {
+          "id": "male_name_chris",
+          "label": "Chris",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/chris.mp3",
+          "start": 58.478,
+          "end": 58.95
+        },
+        {
+          "id": "male_name_derek",
+          "label": "Derek",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/derek.mp3",
+          "start": 58.96,
+          "end": 59.533
+        },
+        {
+          "id": "male_name_eric",
+          "label": "Eric",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/eric.mp3",
+          "start": 59.588,
+          "end": 60.44
+        },
+        {
+          "id": "male_name_jason",
+          "label": "Jason",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/jason.mp3",
+          "start": 60.45,
+          "end": 60.75
+        },
+        {
+          "id": "male_name_kevin",
+          "label": "Kevin",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/kevin.mp3",
+          "start": 60.65,
+          "end": 61.3
+        },
+        {
+          "id": "male_name_matt",
+          "label": "Matt",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/matt.mp3",
+          "start": 61.24,
+          "end": 61.74
+        },
+        {
+          "id": "male_name_nick",
+          "label": "Nick",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/nick.mp3",
+          "start": 61.75,
+          "end": 62.25
+        },
+        {
+          "id": "male_name_scott",
+          "label": "Scott",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/scott.mp3",
+          "start": 62.26,
+          "end": 62.73
+        },
+        {
+          "id": "male_name_shane",
+          "label": "Shane",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/shane.mp3",
+          "start": 62.74,
+          "end": 63.333
+        },
+        {
+          "id": "male_name_trevor",
+          "label": "Trevor",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/trevor.mp3",
+          "start": 63.343,
+          "end": 64.023
+        },
+        {
+          "id": "male_name_zach",
+          "label": "Zach",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/zach.mp3",
+          "start": 64.033,
+          "end": 64.48
+        },
+        {
+          "id": "male_name_cody",
+          "label": "Cody",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/cody.mp3",
+          "start": 64.48,
+          "end": 65.2
+        },
+        {
+          "id": "male_name_brad",
+          "label": "Brad",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/brad.mp3",
+          "start": 65.32,
+          "end": 65.97
+        },
+        {
+          "id": "male_name_lance",
+          "label": "Lance",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/lance.mp3",
+          "start": 65.98,
+          "end": 66.79
+        },
+        {
+          "id": "male_name_brett",
+          "label": "Brett",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/brett.mp3",
+          "start": 66.82,
+          "end": 67.38
+        },
+        {
+          "id": "male_name_casey",
+          "label": "Casey",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/casey.mp3",
+          "start": 67.39,
+          "end": 68.26
+        },
+        {
+          "id": "male_name_sean",
+          "label": "Sean",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/sean.mp3",
+          "start": 68.26,
+          "end": 68.82
+        },
+        {
+          "id": "male_name_travis",
+          "label": "Travis",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/travis.mp3",
+          "start": 68.83,
+          "end": 69.54
+        },
+        {
+          "id": "male_name_wesley",
+          "label": "Wesley",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/wesley.mp3",
+          "start": 69.55,
+          "end": 70.096
+        },
+        {
+          "id": "male_name_grant",
+          "label": "Grant",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/grant.mp3",
+          "start": 70.27,
+          "end": 70.96
+        },
+        {
+          "id": "male_name_owen",
+          "label": "Owen",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/owen.mp3",
+          "start": 70.96,
+          "end": 71.38
+        },
+        {
+          "id": "male_name_luke",
+          "label": "Luke",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/luke.mp3",
+          "start": 71.47,
+          "end": 71.88
+        },
+        {
+          "id": "male_name_noah",
+          "label": "Noah",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/noah.mp3",
+          "start": 71.89,
+          "end": 72.334
+        },
+        {
+          "id": "male_name_levi",
+          "label": "Levi",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/levi.mp3",
+          "start": 72.427,
+          "end": 73.33
+        },
+        {
+          "id": "male_name_wyatt",
+          "label": "Wyatt",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/wyatt.mp3",
+          "start": 73.45,
+          "end": 74.02
+        },
+        {
+          "id": "male_name_jake",
+          "label": "Jake",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/jake.mp3",
+          "start": 74.16,
+          "end": 74.597
+        },
+        {
+          "id": "male_name_cole_2",
+          "label": "Cole",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/cole_2.mp3",
+          "start": 74.638,
+          "end": 75.086
+        },
+        {
+          "id": "male_name_gordon",
+          "label": "Gordon",
+          "kind": "name",
+          "gender": "male",
+          "file": "male/gordon.mp3",
+          "start": 75.096,
+          "end": 75.91
+        }
+      ]
+    },
+    "female": {
+      "nicknames": [
+        {
+          "id": "female_nickname_the_queen",
+          "label": "The Queen",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_queen.mp3",
+          "start": 0.58,
+          "end": 1.48
+        },
+        {
+          "id": "female_nickname_the_empress",
+          "label": "The Empress",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_empress.mp3",
+          "start": 1.66,
+          "end": 2.46
+        },
+        {
+          "id": "female_nickname_the_huntress",
+          "label": "The Huntress",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_huntress.mp3",
+          "start": 2.47,
+          "end": 3.21
+        },
+        {
+          "id": "female_nickname_the_vixen",
+          "label": "The Vixen",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_vixen.mp3",
+          "start": 3.22,
+          "end": 3.91
+        },
+        {
+          "id": "female_nickname_the_tigress",
+          "label": "The Tigress",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_tigress.mp3",
+          "start": 4.0,
+          "end": 4.8
+        },
+        {
+          "id": "female_nickname_the_panther",
+          "label": "The Panther",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_panther.mp3",
+          "start": 4.81,
+          "end": 5.74
+        },
+        {
+          "id": "female_nickname_the_falcon",
+          "label": "The Falcon",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_falcon.mp3",
+          "start": 5.74,
+          "end": 6.72
+        },
+        {
+          "id": "female_nickname_the_phoenix",
+          "label": "The Phoenix",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_phoenix.mp3",
+          "start": 6.73,
+          "end": 7.575
+        },
+        {
+          "id": "female_nickname_the_valkyrie",
+          "label": "The Valkyrie",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_valkyrie.mp3",
+          "start": 8.012,
+          "end": 8.46
+        },
+        {
+          "id": "female_nickname_the_siren",
+          "label": "The Siren",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_siren.mp3",
+          "start": 8.47,
+          "end": 9.27
+        },
+        {
+          "id": "female_nickname_the_shadow",
+          "label": "The Shadow",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_shadow.mp3",
+          "start": 9.28,
+          "end": 10.02
+        },
+        {
+          "id": "female_nickname_the_ghost",
+          "label": "The Ghost",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_ghost.mp3",
+          "start": 10.03,
+          "end": 10.74
+        },
+        {
+          "id": "female_nickname_the_blade",
+          "label": "The Blade",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_blade.mp3",
+          "start": 10.75,
+          "end": 11.55
+        },
+        {
+          "id": "female_nickname_the_enforcer",
+          "label": "The Enforcer",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_enforcer.mp3",
+          "start": 11.56,
+          "end": 12.69
+        },
+        {
+          "id": "female_nickname_the_dominator",
+          "label": "The Dominator",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_dominator.mp3",
+          "start": 12.7,
+          "end": 13.74
+        },
+        {
+          "id": "female_nickname_the_crusher",
+          "label": "The Crusher",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_crusher.mp3",
+          "start": 13.75,
+          "end": 14.64
+        },
+        {
+          "id": "female_nickname_the_warrior",
+          "label": "The Warrior",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_warrior.mp3",
+          "start": 14.65,
+          "end": 15.51
+        },
+        {
+          "id": "female_nickname_the_gladiatrix",
+          "label": "The Gladiatrix",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_gladiatrix.mp3",
+          "start": 15.52,
+          "end": 16.768
+        },
+        {
+          "id": "female_nickname_the_assassin",
+          "label": "The Assassin",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_assassin.mp3",
+          "start": 16.778,
+          "end": 17.94
+        },
+        {
+          "id": "female_nickname_the_sniper",
+          "label": "The Sniper",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_sniper.mp3",
+          "start": 17.95,
+          "end": 18.78
+        },
+        {
+          "id": "female_nickname_the_sharpshot",
+          "label": "The Sharpshot",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_sharpshot.mp3",
+          "start": 18.79,
+          "end": 19.889
+        },
+        {
+          "id": "female_nickname_the_marksqueen",
+          "label": "The Marksqueen",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_marksqueen.mp3",
+          "start": 19.899,
+          "end": 21.0
+        },
+        {
+          "id": "female_nickname_the_machine",
+          "label": "The Machine",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_machine.mp3",
+          "start": 21.01,
+          "end": 21.96
+        },
+        {
+          "id": "female_nickname_the_natural",
+          "label": "The Natural",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_natural.mp3",
+          "start": 21.97,
+          "end": 22.95
+        },
+        {
+          "id": "female_nickname_the_icon",
+          "label": "The Icon",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_icon.mp3",
+          "start": 22.96,
+          "end": 24.154
+        },
+        {
+          "id": "female_nickname_the_prodigy",
+          "label": "The Prodigy",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_prodigy.mp3",
+          "start": 24.164,
+          "end": 25.23
+        },
+        {
+          "id": "female_nickname_the_legend",
+          "label": "The Legend",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_legend.mp3",
+          "start": 25.24,
+          "end": 26.22
+        },
+        {
+          "id": "female_nickname_the_storm",
+          "label": "The Storm",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_storm.mp3",
+          "start": 26.23,
+          "end": 27.03
+        },
+        {
+          "id": "female_nickname_the_lightning",
+          "label": "The Lightning",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_lightning.mp3",
+          "start": 27.04,
+          "end": 27.84
+        },
+        {
+          "id": "female_nickname_the_thunder",
+          "label": "The Thunder",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_thunder.mp3",
+          "start": 27.85,
+          "end": 28.65
+        },
+        {
+          "id": "female_nickname_the_hurricane",
+          "label": "The Hurricane",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_hurricane.mp3",
+          "start": 28.66,
+          "end": 29.7
+        },
+        {
+          "id": "female_nickname_the_blizzard",
+          "label": "The Blizzard",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_blizzard.mp3",
+          "start": 29.71,
+          "end": 30.63
+        },
+        {
+          "id": "female_nickname_the_ice_queen",
+          "label": "The Ice Queen",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_ice_queen.mp3",
+          "start": 30.64,
+          "end": 31.712
+        },
+        {
+          "id": "female_nickname_the_firestorm",
+          "label": "The Firestorm",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_firestorm.mp3",
+          "start": 31.722,
+          "end": 32.97
+        },
+        {
+          "id": "female_nickname_the_wild_card",
+          "label": "The Wild Card",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_wild_card.mp3",
+          "start": 32.98,
+          "end": 34.24
+        },
+        {
+          "id": "female_nickname_the_ace",
+          "label": "The Ace",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_ace.mp3",
+          "start": 34.55,
+          "end": 35.3
+        },
+        {
+          "id": "female_nickname_the_captain",
+          "label": "The Captain",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_captain.mp3",
+          "start": 35.32,
+          "end": 35.897
+        },
+        {
+          "id": "female_nickname_the_commander",
+          "label": "The Commander",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_commander.mp3",
+          "start": 35.907,
+          "end": 36.96
+        },
+        {
+          "id": "female_nickname_the_maverick",
+          "label": "The Maverick",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_maverick.mp3",
+          "start": 36.97,
+          "end": 37.898
+        },
+        {
+          "id": "female_nickname_the_rebel",
+          "label": "The Rebel",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_rebel.mp3",
+          "start": 38.32,
+          "end": 38.86
+        },
+        {
+          "id": "female_nickname_the_outlaw",
+          "label": "The Outlaw",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_outlaw.mp3",
+          "start": 38.89,
+          "end": 39.6
+        },
+        {
+          "id": "female_nickname_the_hammer",
+          "label": "The Hammer",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_hammer.mp3",
+          "start": 39.61,
+          "end": 40.36
+        },
+        {
+          "id": "female_nickname_the_rocket",
+          "label": "The Rocket",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_rocket.mp3",
+          "start": 40.57,
+          "end": 41.46
+        },
+        {
+          "id": "female_nickname_the_flash",
+          "label": "The Flash",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_flash.mp3",
+          "start": 41.47,
+          "end": 42.49
+        },
+        {
+          "id": "female_nickname_the_cyclone",
+          "label": "The Cyclone",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_cyclone.mp3",
+          "start": 43.06,
+          "end": 43.84
+        },
+        {
+          "id": "female_nickname_the_tempest",
+          "label": "The Tempest",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_tempest.mp3",
+          "start": 44.4,
+          "end": 44.97
+        },
+        {
+          "id": "female_nickname_the_fury",
+          "label": "The Fury",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_fury.mp3",
+          "start": 44.98,
+          "end": 45.87
+        },
+        {
+          "id": "female_nickname_the_inferno",
+          "label": "The Inferno",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_inferno.mp3",
+          "start": 45.88,
+          "end": 46.86
+        },
+        {
+          "id": "female_nickname_the_raptor",
+          "label": "The Raptor",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_raptor.mp3",
+          "start": 46.87,
+          "end": 47.73
+        },
+        {
+          "id": "female_nickname_the_titaness",
+          "label": "The Titaness",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_titaness.mp3",
+          "start": 47.74,
+          "end": 48.81
+        },
+        {
+          "id": "female_nickname_the_beast",
+          "label": "The Beast",
+          "kind": "nickname",
+          "gender": "female",
+          "file": "female/the_beast.mp3",
+          "start": 48.82,
+          "end": 49.84
+        }
+      ],
+      "names": [
+        {
+          "id": "female_name_emma",
+          "label": "Emma",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/emma.mp3",
+          "start": 50.2,
+          "end": 50.72
+        },
+        {
+          "id": "female_name_olivia",
+          "label": "Olivia",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/olivia.mp3",
+          "start": 50.72,
+          "end": 51.3
+        },
+        {
+          "id": "female_name_sophia",
+          "label": "Sophia",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/sophia.mp3",
+          "start": 51.28,
+          "end": 51.94
+        },
+        {
+          "id": "female_name_isabella",
+          "label": "Isabella",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/isabella.mp3",
+          "start": 51.94,
+          "end": 52.56
+        },
+        {
+          "id": "female_name_mia",
+          "label": "Mia",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/mia.mp3",
+          "start": 52.57,
+          "end": 53.08
+        },
+        {
+          "id": "female_name_charlotte",
+          "label": "Charlotte",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/charlotte.mp3",
+          "start": 53.08,
+          "end": 53.68
+        },
+        {
+          "id": "female_name_amelia",
+          "label": "Amelia",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/amelia.mp3",
+          "start": 53.68,
+          "end": 54.12
+        },
+        {
+          "id": "female_name_harper",
+          "label": "Harper",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/harper.mp3",
+          "start": 54.13,
+          "end": 54.6
+        },
+        {
+          "id": "female_name_evelyn",
+          "label": "Evelyn",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/evelyn.mp3",
+          "start": 54.61,
+          "end": 55.0
+        },
+        {
+          "id": "female_name_abigail",
+          "label": "Abigail",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/abigail.mp3",
+          "start": 55.12,
+          "end": 55.81
+        },
+        {
+          "id": "female_name_ella",
+          "label": "Ella",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/ella.mp3",
+          "start": 55.81,
+          "end": 56.19
+        },
+        {
+          "id": "female_name_grace",
+          "label": "Grace",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/grace.mp3",
+          "start": 56.2,
+          "end": 56.55
+        },
+        {
+          "id": "female_name_chloe",
+          "label": "Chloe",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/chloe.mp3",
+          "start": 56.4,
+          "end": 56.85
+        },
+        {
+          "id": "female_name_madison",
+          "label": "Madison",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/madison.mp3",
+          "start": 56.77,
+          "end": 57.37
+        },
+        {
+          "id": "female_name_lily",
+          "label": "Lily",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/lily.mp3",
+          "start": 57.37,
+          "end": 57.84
+        },
+        {
+          "id": "female_name_hannah",
+          "label": "Hannah",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/hannah.mp3",
+          "start": 57.85,
+          "end": 58.35
+        },
+        {
+          "id": "female_name_aria",
+          "label": "Aria",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/aria.mp3",
+          "start": 58.36,
+          "end": 58.84
+        },
+        {
+          "id": "female_name_scarlett",
+          "label": "Scarlett",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/scarlett.mp3",
+          "start": 58.99,
+          "end": 59.67
+        },
+        {
+          "id": "female_name_victoria",
+          "label": "Victoria",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/victoria.mp3",
+          "start": 59.68,
+          "end": 60.45
+        },
+        {
+          "id": "female_name_nora",
+          "label": "Nora",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/nora.mp3",
+          "start": 60.46,
+          "end": 60.96
+        },
+        {
+          "id": "female_name_zoe",
+          "label": "Zoe",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/zoe.mp3",
+          "start": 60.97,
+          "end": 61.53
+        },
+        {
+          "id": "female_name_stella",
+          "label": "Stella",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/stella.mp3",
+          "start": 61.54,
+          "end": 62.26
+        },
+        {
+          "id": "female_name_natalie",
+          "label": "Natalie",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/natalie.mp3",
+          "start": 62.26,
+          "end": 62.88
+        },
+        {
+          "id": "female_name_lucy",
+          "label": "Lucy",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/lucy.mp3",
+          "start": 62.89,
+          "end": 63.33
+        },
+        {
+          "id": "female_name_audrey",
+          "label": "Audrey",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/audrey.mp3",
+          "start": 63.34,
+          "end": 63.81
+        },
+        {
+          "id": "female_name_savannah",
+          "label": "Savannah",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/savannah.mp3",
+          "start": 63.82,
+          "end": 64.51
+        },
+        {
+          "id": "female_name_brooklyn",
+          "label": "Brooklyn",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/brooklyn.mp3",
+          "start": 64.54,
+          "end": 64.95
+        },
+        {
+          "id": "female_name_claire",
+          "label": "Claire",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/claire.mp3",
+          "start": 64.96,
+          "end": 65.56
+        },
+        {
+          "id": "female_name_anna",
+          "label": "Anna",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/anna.mp3",
+          "start": 65.56,
+          "end": 65.94
+        },
+        {
+          "id": "female_name_leah",
+          "label": "Leah",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/leah.mp3",
+          "start": 65.95,
+          "end": 66.28
+        },
+        {
+          "id": "female_name_sarah",
+          "label": "Sarah",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/sarah.mp3",
+          "start": 66.361,
+          "end": 66.96
+        },
+        {
+          "id": "female_name_allison",
+          "label": "Allison",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/allison.mp3",
+          "start": 66.97,
+          "end": 67.65
+        },
+        {
+          "id": "female_name_haley",
+          "label": "Haley",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/haley.mp3",
+          "start": 67.66,
+          "end": 68.29
+        },
+        {
+          "id": "female_name_aubrey",
+          "label": "Aubrey",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/aubrey.mp3",
+          "start": 68.29,
+          "end": 68.97
+        },
+        {
+          "id": "female_name_ellie",
+          "label": "Ellie",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/ellie.mp3",
+          "start": 68.98,
+          "end": 69.42
+        },
+        {
+          "id": "female_name_caroline",
+          "label": "Caroline",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/caroline.mp3",
+          "start": 69.43,
+          "end": 70.14
+        },
+        {
+          "id": "female_name_kennedy",
+          "label": "Kennedy",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/kennedy.mp3",
+          "start": 70.15,
+          "end": 70.78
+        },
+        {
+          "id": "female_name_maya",
+          "label": "Maya",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/maya.mp3",
+          "start": 70.78,
+          "end": 71.274
+        },
+        {
+          "id": "female_name_skyler",
+          "label": "Skyler",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/skyler.mp3",
+          "start": 71.348,
+          "end": 71.94
+        },
+        {
+          "id": "female_name_paisley",
+          "label": "Paisley",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/paisley.mp3",
+          "start": 71.95,
+          "end": 72.55
+        },
+        {
+          "id": "female_name_genesis",
+          "label": "Genesis",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/genesis.mp3",
+          "start": 72.97,
+          "end": 73.36
+        },
+        {
+          "id": "female_name_bella",
+          "label": "Bella",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/bella.mp3",
+          "start": 73.36,
+          "end": 73.83
+        },
+        {
+          "id": "female_name_naomi",
+          "label": "Naomi",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/naomi.mp3",
+          "start": 73.84,
+          "end": 74.547
+        },
+        {
+          "id": "female_name_eva",
+          "label": "Eva",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/eva.mp3",
+          "start": 74.48,
+          "end": 74.85
+        },
+        {
+          "id": "female_name_kylie",
+          "label": "Kylie",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/kylie.mp3",
+          "start": 74.86,
+          "end": 75.33
+        },
+        {
+          "id": "female_name_ruby",
+          "label": "Ruby",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/ruby.mp3",
+          "start": 75.34,
+          "end": 75.94
+        },
+        {
+          "id": "female_name_alice",
+          "label": "Alice",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/alice.mp3",
+          "start": 75.97,
+          "end": 76.44
+        },
+        {
+          "id": "female_name_piper",
+          "label": "Piper",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/piper.mp3",
+          "start": 76.45,
+          "end": 77.01
+        },
+        {
+          "id": "female_name_quinn",
+          "label": "Quinn",
+          "kind": "name",
+          "gender": "female",
+          "file": "female/quinn.mp3",
+          "start": 77.02,
+          "end": 77.74
+        }
+      ]
+    }
+  }
+}
