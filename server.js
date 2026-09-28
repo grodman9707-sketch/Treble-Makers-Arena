@@ -126,7 +126,7 @@ function loadData() {
           owner: true,
           approved: true,
           mustChangePassword: seeded.mustChange,
-          stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0 },
+          stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0 },
           profile: { country: '', league: '', equipment: '', avatarUrl: '' },
           createdAt: Date.now()
         }
@@ -669,7 +669,7 @@ function underConstructionMessage() {
 function defaultUserStats() {
   return {
     wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0,
-    threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0,
+    threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0,
   };
 }
 
@@ -932,21 +932,33 @@ function accrueCareerVisit(room, username, displayScore, extras = {}) {
 }
 
 // Commit the pending per-visit career stats accrued during a completed match.
+// X01 3-dart average is the mean of completed-match averages, not a running
+// visit total, and it is written only when the match actually finishes.
 function commitCareerStats(room) {
-  if (!room || !room.careerAccum) return;
+  if (!room || !room.careerAccum || room.careerStatsCommitted) return;
+  const x01 = isX01Game(room.config?.game);
   for (const [username, a] of Object.entries(room.careerAccum)) {
     if (!db.users[username]) continue;
     const s = ensureUserStats(db.users[username]);
     if (a.visitCount > 0) {
       s.x01VisitCount += a.visitCount;
       s.x01PointsTotal += a.pointsTotal;
-      s.threeDartAvg = s.x01VisitCount > 0
-        ? Math.round((s.x01PointsTotal / s.x01VisitCount) * 100) / 100
-        : 0;
       s.oneEighties += a.oneEighties;
+      if (x01) {
+        const matchAvg = a.pointsTotal / a.visitCount;
+        const prevCount = s.x01MatchCount || 0;
+        const prevAvg = s.threeDartAvg || 0;
+        // Averages saved before match counts existed stay as one prior sample.
+        const priorVisits = s.x01VisitCount - a.visitCount;
+        const seeded = prevCount === 0 && prevAvg > 0 && priorVisits > 0;
+        const baseCount = seeded ? 1 : prevCount;
+        s.x01MatchCount = baseCount + 1;
+        s.threeDartAvg = Math.round(((prevAvg * baseCount) + matchAvg) / s.x01MatchCount * 100) / 100;
+      }
     }
     if (a.highestCheckout > (s.highestCheckout || 0)) s.highestCheckout = a.highestCheckout;
   }
+  room.careerStatsCommitted = true;
   room.careerAccum = {};
   saveData(db);
 }
@@ -2367,7 +2379,7 @@ async function handleMessage(wsId, msg) {
         admin: false,
         approved: !needsApproval,
         mustChangePassword: false,
-        stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0 },
+        stats: { wins: 0, losses: 0, highScore: 0, gamesPlayed: 0, tournamentsWon: 0, threeDartAvg: 0, highestCheckout: 0, oneEighties: 0, x01VisitCount: 0, x01PointsTotal: 0, x01MatchCount: 0 },
         profile: defaultUserProfile(),
         friends: [],
         friendRequests: { incoming: [], outgoing: [] },
@@ -4781,11 +4793,13 @@ function broadcastToSpectators(room, msg) {
 }
 
 function lobbyRoomPayload(r) {
+  const hostStats = ensureUserStats(db.users[r.config.hostName]);
   return {
     id: r.id,
     game: r.config.game,
     hostName: r.config.hostName,
     guestName: r.config.guestName || null,
+    hostThreeDartAvg: hostStats.threeDartAvg || 0,
     status: r.status,
     createdAt: r.createdAt,
     spectators: spectators.get(r.id)?.size || 0,

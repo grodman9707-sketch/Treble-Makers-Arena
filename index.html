@@ -483,6 +483,14 @@ body.app-active .arena-bg { animation: none !important; }
   font-family: 'Orbitron', monospace; padding: 2px 8px; border-radius: 2px;
   letter-spacing: 0.06em; animation: livePulse 2s infinite;
 }
+.mc-3da {
+  margin-left: 0.35rem;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.68rem;
+  color: var(--gold-light);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 @keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
 /* APP CONTENT */
@@ -6569,11 +6577,25 @@ function lobbyRoomVisible(r) {
   return canPlayGame(r.game, S.user);
 }
 
+function updateLiveBadge() {
+  const el = document.getElementById('nav-live');
+  if (!el) return;
+  if (S.user?.admin) {
+    const n = typeof S.onlineCount === 'number' ? S.onlineCount : 0;
+    el.textContent = `● ${n} LIVE`;
+    el.title = 'People currently on the site';
+    return;
+  }
+  const active = (S.lobbies || []).filter(r => r.status === 'active' && lobbyRoomVisible(r));
+  el.textContent = `● ${active.length} LIVE`;
+  el.title = 'Live matches';
+}
+
 function renderLobby(filter = currentFilter) {
   const waiting = S.lobbies.filter(r => r.status === 'waiting' && lobbyRoomMatchesFilter(r, filter) && lobbyRoomVisible(r));
   const active = S.lobbies.filter(r => r.status === 'active' && lobbyRoomMatchesFilter(r, filter) && lobbyRoomVisible(r));
 
-  document.getElementById('nav-live').textContent = `● ${active.length} LIVE`;
+  updateLiveBadge();
 
   const wg = document.getElementById('matches-grid');
   const ag = document.getElementById('active-grid');
@@ -6613,6 +6635,7 @@ function applyPresenceUpdate(msg) {
   S.onlinePlayers = Array.isArray(msg.online) ? msg.online : [];
   S.onlineFriends = computeOnlineFriends();
   updatePresenceBar();
+  updateLiveBadge();
   refreshOpenPresencePanels();
 }
 
@@ -7000,9 +7023,13 @@ function matchCard(r, isActive) {
   const guestFull = guestLabel && r.doubles && r.guestPartner
     ? `${guestLabel} & ${escapeHtml(r.guestPartner)}`
     : guestLabel;
+  const hostAvg = Number(r.hostThreeDartAvg);
+  const hostAvgLabel = Number.isFinite(hostAvg) && hostAvg > 0
+    ? `<span class="mc-3da" title="Host career 3-dart average">${hostAvg.toFixed(1)} 3DA</span>`
+    : `<span class="mc-3da" title="No completed X01 matches yet">— 3DA</span>`;
   const vsLine = guestFull
-    ? `<div class="mc-host">${hostLabel} <span style="color:var(--muted)">vs</span> ${guestFull}</div>`
-    : `<div class="mc-host">Host: <strong>${hostLabel}</strong></div>`;
+    ? `<div class="mc-host">${hostLabel}${hostAvgLabel} <span style="color:var(--muted)">vs</span> ${guestFull}</div>`
+    : `<div class="mc-host">Host: <strong>${hostLabel}</strong>${hostAvgLabel}</div>`;
   return `<div class="match-card">
     <div class="mc-game">${r.game}</div>
     ${vsLine}
